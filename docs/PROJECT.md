@@ -104,6 +104,7 @@ Perspektivisch: Webbasiertes Tool für Kollegen.
 | 2026-06-15 | Samples-per-record = 0 im manuellen Parser | EDF+D format — immer mne verwenden, nicht manuell parsen |
 | 2026-06-15 | EKG-Kanäle heißen `$A1`/`$A2`, nicht `EKG` | NeuroFax-spezifische Bezeichnung, Kanal-Mapping dokumentiert |
 | 2026-06-15 | EKG-Amplituden ~-12000 mV | DC-Offset aus Kalibrierung — `signal - signal.mean()` vor Analyse |
+| 2026-06-15 | R-Peak-Detektion: HR ~48bpm, pNN50=92% unrealistisch | scipy `find_peaks` mit adaptivem Threshold suboptimal — nächster Schritt: Pan-Tompkins-Algorithmus oder Python-3.10 + neurokit2 |
 
 ---
 
