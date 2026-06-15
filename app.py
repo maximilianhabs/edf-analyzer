@@ -1,405 +1,383 @@
-"""EDF Analyzer — lokale Streamlit-App."""
+"""EDF Analyzer — lokale Streamlit-App. Epoch-Viewer mit DGKN-Montagen."""
 
 import streamlit as st
 import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import sys, os
+import pandas as pd
+import sys, os, warnings
 
 sys.path.insert(0, os.path.dirname(__file__))
-from core.loader import load_edf, check_privacy, get_channel_groups, extract_channel, get_annotations
+warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="EDF Analyzer", layout="wide", page_icon="🧠")
 
-# ── DGKN-Montagen ────────────────────────────────────────────────────────────
-DGKN_MONTAGES = {
-    "Bipolar Temporal": {
-        "beschreibung": "Temporalreihe li + re — Außenreihe der Doppelten Banane (DGKN)",
-        "ketten": {
-            "Temporalreihe links":  [("Fp1","F7"),("F7","T3"),("T3","T5"),("T5","O1")],
-            "Temporalreihe rechts": [("Fp2","F8"),("F8","T4"),("T4","T6"),("T6","O2")],
-        },
-    },
-    "Bipolar Parasagittal": {
-        "beschreibung": "Parasagittalreihe li + re — Innenreihe der Doppelten Banane (DGKN)",
-        "ketten": {
-            "Parasagittalreihe links":  [("Fp1","F3"),("F3","C3"),("C3","P3"),("P3","O1")],
-            "Parasagittalreihe rechts": [("Fp2","F4"),("F4","C4"),("C4","P4"),("P4","O2")],
-        },
-    },
-    "Doppelte Banane (komplett)": {
-        "beschreibung": "Vollständige bipolare Längsreihe nach DGKN",
-        "ketten": {
-            "Temporalreihe links":      [("Fp1","F7"),("F7","T3"),("T3","T5"),("T5","O1")],
-            "Parasagittalreihe links":  [("Fp1","F3"),("F3","C3"),("C3","P3"),("P3","O1")],
-            "Mittellinie":              [("Fz","Cz"),("Cz","Pz")],
-            "Parasagittalreihe rechts": [("Fp2","F4"),("F4","C4"),("C4","P4"),("P4","O2")],
-            "Temporalreihe rechts":     [("Fp2","F8"),("F8","T4"),("T4","T6"),("T6","O2")],
-        },
-    },
-    "Referenziell Cz": {
-        "beschreibung": "Alle Elektroden gegen Cz (referenzielle Ableitung nach DGKN)",
-        "ketten": {
-            "Links temporal":      [("Fp1","Cz"),("F7","Cz"),("T3","Cz"),("T5","Cz"),("O1","Cz")],
-            "Links parasagittal":  [("F3","Cz"),("C3","Cz"),("P3","Cz")],
-            "Rechts parasagittal": [("F4","Cz"),("C4","Cz"),("P4","Cz")],
-            "Rechts temporal":     [("Fp2","Cz"),("F8","Cz"),("T4","Cz"),("T6","Cz"),("O2","Cz")],
-        },
-    },
+# ── DGKN-Montagen ─────────────────────────────────────────────────────────────
+MONTAGES = {
+    "Doppelte Banane": [
+        ("Fp1","F7"),("F7","T3"),("T3","T5"),("T5","O1"),
+        ("Fp1","F3"),("F3","C3"),("C3","P3"),("P3","O1"),
+        ("Fz","Cz"),("Cz","Pz"),
+        ("Fp2","F4"),("F4","C4"),("C4","P4"),("P4","O2"),
+        ("Fp2","F8"),("F8","T4"),("T4","T6"),("T6","O2"),
+    ],
+    "Temporal": [
+        ("Fp1","F7"),("F7","T3"),("T3","T5"),("T5","O1"),
+        ("Fp2","F8"),("F8","T4"),("T4","T6"),("T6","O2"),
+    ],
+    "Parasagittal": [
+        ("Fp1","F3"),("F3","C3"),("C3","P3"),("P3","O1"),
+        ("Fp2","F4"),("F4","C4"),("C4","P4"),("P4","O2"),
+    ],
+    "Referenziell Cz": [
+        ("Fp1","Cz"),("F7","Cz"),("T3","Cz"),("T5","Cz"),("O1","Cz"),
+        ("F3","Cz"),("C3","Cz"),("P3","Cz"),
+        ("Fz","Cz"),
+        ("F4","Cz"),("C4","Cz"),("P4","Cz"),
+        ("Fp2","Cz"),("F8","Cz"),("T4","Cz"),("T6","Cz"),("O2","Cz"),
+    ],
 }
 
-CHAIN_COLORS = ["#1a3a5c", "#1a5276", "#7b241c", "#1e6b3a", "#5b2c6f", "#784212"]
+# Kette pro Ableitungspaar für Farbgebung
+CHAIN_OF = {
+    ("Fp1","F7"):("Temporal li","#1a3a5c"), ("F7","T3"):("Temporal li","#1a3a5c"),
+    ("T3","T5"):("Temporal li","#1a3a5c"),  ("T5","O1"):("Temporal li","#1a3a5c"),
+    ("Fp1","F3"):("Parasagittal li","#7b241c"), ("F3","C3"):("Parasagittal li","#7b241c"),
+    ("C3","P3"):("Parasagittal li","#7b241c"), ("P3","O1"):("Parasagittal li","#7b241c"),
+    ("Fz","Cz"):("Mittellinie","#1e6b3a"),  ("Cz","Pz"):("Mittellinie","#1e6b3a"),
+    ("Fp2","F4"):("Parasagittal re","#6c3483"), ("F4","C4"):("Parasagittal re","#6c3483"),
+    ("C4","P4"):("Parasagittal re","#6c3483"), ("P4","O2"):("Parasagittal re","#6c3483"),
+    ("Fp2","F8"):("Temporal re","#0e6655"),  ("F8","T4"):("Temporal re","#0e6655"),
+    ("T4","T6"):("Temporal re","#0e6655"),   ("T6","O2"):("Temporal re","#0e6655"),
+}
+
+EPOCH_SEC = 10
 
 
-def get_eeg_signal(raw, electrode):
-    for ch in raw.ch_names:
-        if ch.startswith("EEG") and electrode in ch:
-            idx = raw.ch_names.index(ch)
-            d, _ = raw[[idx], :]
-            return d[0]
-    return None
+# ── Daten-Laden + Vorberechnung (einmalig, gecacht) ────────────────────────────
+@st.cache_data(show_spinner="Lade und verarbeite EDF…")
+def load_and_prepare(path: str):
+    """Lädt EDF, extrahiert alle Kanäle als numpy-Matrix, filtert ECG vorab."""
+    import mne
+    from scipy.signal import butter, filtfilt
+
+    raw = mne.io.read_raw_edf(path, preload=True, verbose=False, encoding="latin1")
+    sfreq = raw.info["sfreq"]
+    data, _ = raw[:]                          # (n_ch, n_samples) — einmalig!
+    ch_names = raw.ch_names
+    n_samples = data.shape[1]
+    duration_s = n_samples / sfreq
+
+    # Channel-Index-Map
+    ch_idx = {ch: i for i, ch in enumerate(ch_names)}
+
+    # EEG-Lookup: Kurzname → Index (z.B. "Fp1" → Index von "EEG Fp1-Ref")
+    eeg_map = {}
+    for ch in ch_names:
+        if ch.startswith("EEG"):
+            short = ch.replace("EEG ", "").replace("-Ref", "").strip()
+            eeg_map[short] = ch_idx[ch]
+
+    # ECG-Kanäle — einmalig filtern (Bandpass 0.5–40 Hz)
+    ecg_channels = [c for c in ch_names if "$A" in c]
+    ecg_filtered = {}
+    nyq = sfreq / 2
+    b, a = butter(4, [0.5 / nyq, min(40.0 / nyq, 0.99)], btype="band")
+    for ch in ecg_channels:
+        idx = ch_idx[ch]
+        sig = data[idx].copy().astype(np.float64)
+        sig -= sig.mean()                     # DC-Offset entfernen
+        sig = filtfilt(b, a, sig)             # Bandpass auf gesamtem Signal
+        ecg_filtered[ch] = sig               # in Volt, nach Filter
+
+    # Privacy
+    with open(path, "rb") as f:
+        hdr = f.read(256)
+    patient_id = hdr[8:88].decode("latin1").strip()
+    rec_id = hdr[88:168].decode("latin1").strip()
+
+    # Annotations
+    annotations = []
+    for ann in raw.annotations:
+        desc = ann["description"]
+        if "np.str_" in desc:
+            desc = desc.replace("np.str_('", "").rstrip("')")
+        if desc.startswith("+") and desc[1:].replace(".", "").isdigit():
+            continue
+        annotations.append({"onset_s": round(float(ann["onset"]), 2), "description": desc})
+
+    return {
+        "data": data,
+        "ch_names": ch_names,
+        "ch_idx": ch_idx,
+        "eeg_map": eeg_map,
+        "ecg_filtered": ecg_filtered,
+        "ecg_channels": ecg_channels,
+        "sfreq": sfreq,
+        "n_samples": n_samples,
+        "duration_s": duration_s,
+        "n_epochs": int(duration_s // EPOCH_SEC),
+        "annotations": annotations,
+        "has_patient_id": bool(patient_id),
+        "has_rec_id": bool(rec_id),
+    }
 
 
-def bipolar_derivations(raw, montage_def):
-    """Return list of (label, signal_µV, chain_name) for a montage."""
+def get_bipolar_epoch(d, eeg_map, pairs, i_s, i_e):
+    """Berechnet bipolare Ableitungen nur für die Epoche — reine numpy-Ops."""
     result = []
-    for chain_name, pairs in montage_def["ketten"].items():
-        for anode, cathode in pairs:
-            sa = get_eeg_signal(raw, anode)
-            sb = get_eeg_signal(raw, cathode)
-            if sa is not None and sb is not None:
-                result.append((f"{anode}–{cathode}", (sa - sb) * 1e6, chain_name))
-            else:
-                result.append((f"{anode}–{cathode} (?)", None, chain_name))
+    for anode, cathode in pairs:
+        ia, ib = eeg_map.get(anode), eeg_map.get(cathode)
+        label = f"{anode}–{cathode}"
+        chain, color = CHAIN_OF.get((anode, cathode), ("andere", "#555"))
+        if ia is not None and ib is not None:
+            seg = (d[ia, i_s:i_e] - d[ib, i_s:i_e]) * 1e6   # V → µV
+            result.append((label, seg, chain, color))
+        else:
+            result.append((label, None, chain, color))
     return result
 
 
-def plot_epoch(derivations, i_s, i_e, sfreq, spacing_uv, annotations, t_offset=0):
-    """Build EEG epoch figure. Returns plotly Figure."""
-    t = np.arange(i_s, i_e) / sfreq
-    n = len(derivations)
-    chain_names = []
-    for _, _, c in derivations:
-        if c not in chain_names:
-            chain_names.append(c)
-
+def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
+    n = len(derivs)
+    seen = set()
     fig = go.Figure()
-    seen_chains = set()
-    for idx, (label, sig, chain_name) in enumerate(derivations):
-        offset = (n - 1 - idx) * spacing_uv
-        color = CHAIN_COLORS[chain_names.index(chain_name) % len(CHAIN_COLORS)]
-        show_leg = chain_name not in seen_chains
-        seen_chains.add(chain_name)
-        if sig is not None:
-            seg = sig[i_s:i_e]
+
+    for idx, (label, seg, chain, color) in enumerate(derivs):
+        offset = (n - 1 - idx) * spacing
+        show_leg = chain not in seen; seen.add(chain)
+        if seg is not None:
             fig.add_trace(go.Scatter(
-                x=t, y=seg + offset,
-                mode="lines", name=chain_name,
-                legendgroup=chain_name, showlegend=show_leg,
-                line=dict(width=0.9, color=color),
+                x=t, y=seg + offset, mode="lines",
+                name=chain, legendgroup=chain, showlegend=show_leg,
+                line=dict(width=0.85, color=color),
                 hovertemplate=f"<b>{label}</b>: %{{customdata:.1f}} µV<extra></extra>",
                 customdata=seg,
             ))
         else:
             fig.add_trace(go.Scatter(
-                x=[t[0], t[-1]], y=[offset, offset],
-                mode="lines", line=dict(width=0.5, color="#ccc", dash="dot"),
+                x=[t[0], t[-1]], y=[offset, offset], mode="lines",
+                line=dict(width=0.5, color="#ccc", dash="dot"),
                 showlegend=False, hoverinfo="skip",
             ))
 
     # Kettentrennlinien
-    prev_chain = derivations[0][2]
-    for idx, (_, _, chain_name) in enumerate(derivations[1:], 1):
-        if chain_name != prev_chain:
-            y_sep = ((n - idx) * spacing_uv + (n - idx - 1) * spacing_uv) / 2 + spacing_uv / 2
-            fig.add_hline(y=y_sep, line_dash="dot", line_color="#ddd", line_width=1)
-            prev_chain = chain_name
+    prev_chain = derivs[0][2]
+    for i, (_, _, chain, _) in enumerate(derivs[1:], 1):
+        if chain != prev_chain:
+            sep_y = (n - i) * spacing - spacing * 0.3
+            fig.add_hline(y=sep_y, line_dash="dot", line_color="#ddd", line_width=1)
+        prev_chain = chain
 
     # Annotations
     for ann in annotations:
-        onset = float(ann["onset_s"])
-        if i_s / sfreq <= onset <= i_e / sfreq:
-            fig.add_vline(x=onset, line_dash="dot", line_color="#e67e22", line_width=1,
-                          annotation_text=ann["description"][:20],
+        o = ann["onset_s"]
+        if t_s <= o <= t_e:
+            fig.add_vline(x=o, line_dash="dot", line_color="#e67e22", line_width=1.2,
+                          annotation_text=ann["description"][:22],
                           annotation_font_size=9, annotation_position="top left")
 
     fig.update_layout(
-        xaxis=dict(title="Zeit (s)", range=[t[0], t[-1]], showgrid=True,
-                   gridcolor="#eeeeee", dtick=1),
+        xaxis=dict(title="Zeit (s)", range=[t[0], t[-1]],
+                   showgrid=True, gridcolor="#ebebeb", dtick=1),
         yaxis=dict(
-            tickvals=[(n - 1 - i) * spacing_uv for i in range(n)],
-            ticktext=[label for label, _, _ in derivations],
-            showgrid=False, tickfont=dict(size=11),
+            tickvals=[(n - 1 - i) * spacing for i in range(n)],
+            ticktext=[lbl for lbl, _, _, _ in derivs],
+            showgrid=False, tickfont=dict(size=10),
         ),
-        height=max(500, n * 52),
-        margin=dict(t=10, b=50, l=130, r=10),
-        legend=dict(orientation="h", y=-0.08, x=0),
-        plot_bgcolor="#fafafa",
+        height=max(480, n * 50),
+        margin=dict(t=8, b=48, l=120, r=8),
+        legend=dict(orientation="h", y=-0.07, x=0, font=dict(size=11)),
+        plot_bgcolor="#f9f9f9",
     )
     return fig
 
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.header("📂 Datei laden")
-    edf_path = st.text_input("Pfad zur EDF-Datei",
-                              value=os.path.expanduser("~/Downloads/CA177317.edf"))
-    load_btn = st.button("Laden", type="primary", use_container_width=True)
-    st.divider()
-    st.caption("⚠️ Läuft nur lokal. Keine Datenübertragung.")
+def ecg_figure(t, sig_mv, t_s, t_e, channel_name):
+    # Auto-Scaling: 1. und 99. Perzentil für y-Achse
+    p1, p99 = np.percentile(sig_mv, 1), np.percentile(sig_mv, 99)
+    margin = (p99 - p1) * 0.3
+    y_min, y_max = p1 - margin, p99 + margin
 
-# ── Session State Init ────────────────────────────────────────────────────────
-for key, default in [("raw", None), ("epoch_eeg", 0), ("epoch_ecg", 0)]:
-    if key not in st.session_state:
-        st.session_state[key] = default
-
-if load_btn or (st.session_state.raw is None and os.path.exists(edf_path)):
-    with st.spinner("Lade EDF..."):
-        try:
-            st.session_state.raw = load_edf(edf_path, preload=True)
-            st.session_state.privacy = check_privacy(edf_path)
-            st.session_state.epoch_eeg = 0
-            st.session_state.epoch_ecg = 0
-        except Exception as e:
-            st.error(f"Fehler beim Laden: {e}")
-            st.stop()
-
-if st.session_state.raw is None:
-    st.info("Bitte EDF-Datei über die Sidebar laden.")
-    st.stop()
-
-raw = st.session_state.raw
-privacy = st.session_state.privacy
-groups = get_channel_groups(raw)
-annotations = get_annotations(raw)
-sfreq = raw.info["sfreq"]
-total_duration = raw.times[-1]
-EPOCH_SEC = 10
-n_epochs = int(total_duration // EPOCH_SEC)
-
-if privacy["has_patient_id"] or privacy["has_recording_id"]:
-    st.warning("⚠️ **Patientendaten im Header.** Nur lokal verwenden — nicht weiterleiten.", icon="🔒")
-
-# ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_eeg, tab_ecg, tab_report = st.tabs(["🧠 EEG", "❤️ EKG", "📋 Datei-Report"])
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# TAB EEG — Epoch-Viewer
-# ═══════════════════════════════════════════════════════════════════════════
-with tab_eeg:
-    # Montage + Skalierung
-    col_mont, col_amp = st.columns([3, 1])
-    with col_mont:
-        montage_name = st.selectbox("Montage", list(DGKN_MONTAGES.keys()), index=2,
-                                    help="Bipolare Montagen nach DGKN-Standard")
-        st.caption(f"ℹ️ {DGKN_MONTAGES[montage_name]['beschreibung']}")
-    with col_amp:
-        spacing_uv = st.number_input("Skalierung (µV)", min_value=20, max_value=500,
-                                      value=150, step=10,
-                                      help="Vertikaler Abstand zwischen Spuren in µV")
-
-    # Epoch-Navigation
-    epoch_eeg = st.session_state.epoch_eeg
-    t_s = epoch_eeg * EPOCH_SEC
-    t_e = t_s + EPOCH_SEC
-
-    col_prev, col_info, col_next = st.columns([1, 4, 1])
-    with col_prev:
-        if st.button("◀ Zurück", disabled=(epoch_eeg == 0), use_container_width=True, key="eeg_prev"):
-            st.session_state.epoch_eeg -= 1
-            st.rerun()
-    with col_info:
-        st.markdown(
-            f"<div style='text-align:center; padding:6px; font-size:14px;'>"
-            f"Epoche <b>{epoch_eeg + 1}</b> / {n_epochs} &nbsp;|&nbsp; "
-            f"{t_s:.0f}s – {t_e:.0f}s &nbsp;|&nbsp; "
-            f"Gesamt: {total_duration/60:.1f} min</div>",
-            unsafe_allow_html=True,
-        )
-    with col_next:
-        if st.button("Weiter ▶", disabled=(epoch_eeg >= n_epochs - 1), use_container_width=True, key="eeg_next"):
-            st.session_state.epoch_eeg += 1
-            st.rerun()
-
-    # Sprung zu Epoch
-    jump = st.number_input("Springe zu Epoche", min_value=1, max_value=n_epochs,
-                            value=epoch_eeg + 1, step=1, key="eeg_jump",
-                            label_visibility="collapsed")
-    if jump - 1 != epoch_eeg:
-        st.session_state.epoch_eeg = jump - 1
-        st.rerun()
-
-    # Plot
-    montage_def = DGKN_MONTAGES[montage_name]
-    derivs = bipolar_derivations(raw, montage_def)
-    i_s = int(t_s * sfreq)
-    i_e = int(t_e * sfreq)
-    fig = plot_epoch(derivs, i_s, i_e, sfreq, spacing_uv, annotations)
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Annotations in dieser Epoche
-    epoch_anns = [a for a in annotations if t_s <= float(a["onset_s"]) <= t_e]
-    if epoch_anns:
-        st.caption("Annotations in dieser Epoche: " +
-                   " | ".join(f"{a['onset_s']:.1f}s: {a['description']}" for a in epoch_anns))
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# TAB EKG — Epoch-Viewer (Rohdaten, kein Peak-Overlay)
-# ═══════════════════════════════════════════════════════════════════════════
-with tab_ecg:
-    col_ch, col_filt = st.columns([2, 2])
-    with col_ch:
-        if groups["ecg"]:
-            ecg_ch = st.selectbox("EKG-Kanal", groups["ecg"], index=0)
-        else:
-            st.warning("Kein EKG-Kanal gefunden.")
-            st.stop()
-    with col_filt:
-        apply_filter = st.checkbox("Hochpass 0.5 Hz (Baseline-Drift entfernen)", value=True,
-                                    help="Entfernt DC-Offset und langsame Drifts. Kein Einfluss auf die Herzform.")
-
-    epoch_ecg = st.session_state.epoch_ecg
-    t_s_ecg = epoch_ecg * EPOCH_SEC
-    t_e_ecg = t_s_ecg + EPOCH_SEC
-
-    col_prev2, col_info2, col_next2 = st.columns([1, 4, 1])
-    with col_prev2:
-        if st.button("◀ Zurück", disabled=(epoch_ecg == 0), use_container_width=True, key="ecg_prev"):
-            st.session_state.epoch_ecg -= 1
-            st.rerun()
-    with col_info2:
-        st.markdown(
-            f"<div style='text-align:center; padding:6px; font-size:14px;'>"
-            f"Epoche <b>{epoch_ecg + 1}</b> / {n_epochs} &nbsp;|&nbsp; "
-            f"{t_s_ecg:.0f}s – {t_e_ecg:.0f}s</div>",
-            unsafe_allow_html=True,
-        )
-    with col_next2:
-        if st.button("Weiter ▶", disabled=(epoch_ecg >= n_epochs - 1), use_container_width=True, key="ecg_next"):
-            st.session_state.epoch_ecg += 1
-            st.rerun()
-
-    jump_ecg = st.number_input("Springe zu Epoche", min_value=1, max_value=n_epochs,
-                                value=epoch_ecg + 1, step=1, key="ecg_jump",
-                                label_visibility="collapsed")
-    if jump_ecg - 1 != epoch_ecg:
-        st.session_state.epoch_ecg = jump_ecg - 1
-        st.rerun()
-
-    # Signal laden
-    signal_raw, _ = extract_channel(raw, ecg_ch)
-    i_s_ecg = int(t_s_ecg * sfreq)
-    i_e_ecg = int(t_e_ecg * sfreq)
-    t_ecg = np.arange(i_s_ecg, i_e_ecg) / sfreq
-
-    seg = signal_raw[i_s_ecg:i_e_ecg].copy()
-
-    if apply_filter:
-        from scipy.signal import butter, filtfilt
-        nyq = sfreq / 2
-        b, a = butter(4, [0.5 / nyq, min(40.0 / nyq, 0.99)], btype="band")
-        seg = filtfilt(b, a, seg)
-    else:
-        seg = seg - np.mean(seg)  # nur DC-Offset entfernen
-
-    seg_mv = seg * 1e3  # V → mV
-
-    fig_ecg = go.Figure()
-    fig_ecg.add_trace(go.Scatter(
-        x=t_ecg, y=seg_mv,
-        mode="lines",
-        name=ecg_ch,
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=t, y=sig_mv, mode="lines",
         line=dict(color="#c0392b", width=1.2),
         hovertemplate="%{y:.3f} mV<extra></extra>",
     ))
-
-    # EKG-spezifisches Layout: 1s-Raster (Großkästchen) + 0.2s-Raster (Kleinkästchen)
-    fig_ecg.update_layout(
+    fig.update_layout(
         xaxis=dict(
-            title="Zeit (s)",
-            range=[t_ecg[0], t_ecg[-1]],
-            showgrid=True, gridcolor="#f5a9a9", gridwidth=0.5, dtick=0.2,
-            minor=dict(showgrid=True, gridcolor="#fce4e4", gridwidth=0.3, dtick=0.04),
+            title="Zeit (s)", range=[t[0], t[-1]],
+            showgrid=True, gridcolor="#f5c6c6", gridwidth=0.8, dtick=0.2,
+            minor=dict(showgrid=True, gridcolor="#fce8e8", gridwidth=0.5, dtick=0.04),
         ),
         yaxis=dict(
-            title="Amplitude (mV)",
-            showgrid=True, gridcolor="#f5a9a9", gridwidth=0.5, dtick=0.5,
-            minor=dict(showgrid=True, gridcolor="#fce4e4", gridwidth=0.3, dtick=0.1),
-            zeroline=True, zerolinecolor="#cc0000", zerolinewidth=0.8,
+            title="Amplitude (mV)", range=[y_min, y_max],
+            showgrid=True, gridcolor="#f5c6c6", gridwidth=0.8,
+            zeroline=True, zerolinecolor="#c0392b", zerolinewidth=0.8,
         ),
-        height=420,
-        margin=dict(t=10, b=50, l=70, r=10),
+        height=400,
+        margin=dict(t=8, b=48, l=70, r=8),
         plot_bgcolor="#fff8f8",
         showlegend=False,
     )
-    st.plotly_chart(fig_ecg, use_container_width=True)
-
-    # Rohwert-Info
-    amp_pp = seg_mv.max() - seg_mv.min()
-    st.caption(
-        f"Kanal: **{ecg_ch}** | "
-        f"Amplitude peak-peak: **{amp_pp:.2f} mV** | "
-        f"Filter: {'0.5–40 Hz Bandpass' if apply_filter else 'nur DC-Offset entfernt'}"
-    )
+    return fig
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# TAB REPORT
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Sidebar ────────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.header("📂 Datei")
+    edf_path = st.text_input("Pfad zur EDF-Datei",
+                              value=os.path.expanduser("~/Downloads/CA177317.edf"))
+    st.divider()
+    st.caption("⚠️ Nur lokal. Keine Datenübertragung.")
+
+# ── Daten laden (gecacht — nur einmal pro Datei-Pfad) ──────────────────────────
+if not os.path.exists(edf_path):
+    st.info("Bitte gültigen Pfad zur EDF-Datei eingeben.")
+    st.stop()
+
+edf = load_and_prepare(edf_path)
+
+if edf["has_patient_id"] or edf["has_rec_id"]:
+    st.warning("⚠️ **Patientendaten im Header.** Nur lokal verwenden.", icon="🔒")
+
+# ── Session State für Epoch-Navigation ────────────────────────────────────────
+if "ep_eeg" not in st.session_state: st.session_state.ep_eeg = 0
+if "ep_ecg" not in st.session_state: st.session_state.ep_ecg = 0
+
+sfreq = edf["sfreq"]
+n_epochs = edf["n_epochs"]
+
+
+def epoch_nav(key, label="EEG"):
+    """Rendert Navigationszeile, gibt aktuellen Epochenindex zurück."""
+    ep = st.session_state[key]
+    t_s = ep * EPOCH_SEC
+    t_e = t_s + EPOCH_SEC
+
+    col_p, col_info, col_n = st.columns([1, 5, 1])
+    with col_p:
+        if st.button("◀", key=f"{key}_prev", disabled=(ep == 0),
+                     use_container_width=True):
+            st.session_state[key] -= 1
+            st.rerun()
+    with col_info:
+        st.markdown(
+            f"<div style='text-align:center;padding:5px 0;font-size:13px'>"
+            f"Epoche <b>{ep+1}</b>&nbsp;/&nbsp;{n_epochs}"
+            f"&ensp;|&ensp;{t_s:.0f}s – {t_e:.0f}s"
+            f"&ensp;|&ensp;Gesamt: {edf['duration_s']/60:.1f} min"
+            f"</div>", unsafe_allow_html=True)
+    with col_n:
+        if st.button("▶", key=f"{key}_next", disabled=(ep >= n_epochs - 1),
+                     use_container_width=True):
+            st.session_state[key] += 1
+            st.rerun()
+
+    new_ep = st.slider(f"Epoche auswählen ({label})", 1, n_epochs, ep + 1,
+                       key=f"{key}_slider", label_visibility="collapsed")
+    if new_ep - 1 != ep:
+        st.session_state[key] = new_ep - 1
+        st.rerun()
+
+    return st.session_state[key]
+
+
+# ── Tabs ───────────────────────────────────────────────────────────────────────
+tab_eeg, tab_ecg, tab_report = st.tabs(["🧠 EEG", "❤️ EKG", "📋 Report"])
+
+
+# ═══════════════ EEG ══════════════════════════════════════════════════════════
+with tab_eeg:
+    col_m, col_s = st.columns([3, 1])
+    montage_name = col_m.selectbox("Montage (DGKN)", list(MONTAGES.keys()), index=0)
+    spacing = col_s.number_input("µV / Spur", 20, 600, 150, step=10)
+
+    ep = epoch_nav("ep_eeg", "EEG")
+    t_s = ep * EPOCH_SEC
+    i_s, i_e = int(t_s * sfreq), int((t_s + EPOCH_SEC) * sfreq)
+    t = np.arange(i_s, i_e) / sfreq
+
+    pairs = MONTAGES[montage_name]
+    derivs = get_bipolar_epoch(edf["data"], edf["eeg_map"], pairs, i_s, i_e)
+    fig = eeg_figure(derivs, t, spacing, edf["annotations"], t_s, t_s + EPOCH_SEC)
+    st.plotly_chart(fig, use_container_width=True)
+
+    epoch_anns = [a for a in edf["annotations"] if t_s <= a["onset_s"] <= t_s + EPOCH_SEC]
+    if epoch_anns:
+        st.caption("Annotations: " + " | ".join(
+            f"{a['onset_s']:.1f}s → {a['description']}" for a in epoch_anns))
+
+
+# ═══════════════ EKG ══════════════════════════════════════════════════════════
+with tab_ecg:
+    ecg_channels = edf["ecg_channels"]
+    if not ecg_channels:
+        st.warning("Kein EKG-Kanal gefunden.")
+    else:
+        ecg_ch = st.selectbox("Kanal", ecg_channels, index=0)
+        ep_ecg = epoch_nav("ep_ecg", "EKG")
+        t_s_ecg = ep_ecg * EPOCH_SEC
+        i_s_ecg = int(t_s_ecg * sfreq)
+        i_e_ecg = int((t_s_ecg + EPOCH_SEC) * sfreq)
+        t_ecg = np.arange(i_s_ecg, i_e_ecg) / sfreq
+
+        sig = edf["ecg_filtered"][ecg_ch][i_s_ecg:i_e_ecg]
+        sig_mv = sig * 1000   # V → mV
+
+        fig_ecg = ecg_figure(t_ecg, sig_mv, t_s_ecg, t_s_ecg + EPOCH_SEC, ecg_ch)
+        st.plotly_chart(fig_ecg, use_container_width=True)
+
+        pp = sig_mv.max() - sig_mv.min()
+        p5, p95 = np.percentile(sig_mv, 5), np.percentile(sig_mv, 95)
+        st.caption(
+            f"Kanal: **{ecg_ch}** | peak-peak: **{pp:.2f} mV** | "
+            f"5.–95. Perz.: {p5:.2f} – {p95:.2f} mV | "
+            f"Filter: Bandpass 0.5–40 Hz (auf Gesamtsignal)"
+        )
+
+
+# ═══════════════ REPORT ═══════════════════════════════════════════════════════
 with tab_report:
     st.subheader("Aufnahme-Übersicht")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Dauer", f"{total_duration/60:.1f} min")
+    c1.metric("Dauer", f"{edf['duration_s']/60:.1f} min")
     c2.metric("Sampling", f"{sfreq:.0f} Hz")
-    c3.metric("Kanäle", len(raw.ch_names))
-    c4.metric("Epochen (10s)", n_epochs)
+    c3.metric("Kanäle", len(edf["ch_names"]))
+    c4.metric("Epochen (10 s)", n_epochs)
 
     col_l, col_r = st.columns(2)
     with col_l:
-        st.markdown("**Kanal-Gruppen**")
-        st.dataframe(pd.DataFrame([
-            {"Gruppe": "EEG (10-20)", "Anzahl": len(groups["eeg"]),
-             "Kanäle": ", ".join(c.replace("EEG ","").replace("-Ref","") for c in groups["eeg"])},
-            {"Gruppe": "EKG", "Anzahl": len(groups["ecg"]),
-             "Kanäle": ", ".join(groups["ecg"])},
-            {"Gruppe": "Vitalparameter", "Anzahl": len(groups["vitals"]),
-             "Kanäle": ", ".join(groups["vitals"])},
-            {"Gruppe": "Sonstige", "Anzahl": len(groups["other"]),
-             "Kanäle": ", ".join(groups["other"][:6]) + ("…" if len(groups["other"]) > 6 else "")},
-        ]), hide_index=True, use_container_width=True)
-
         st.markdown("**Datenschutz**")
         st.dataframe(pd.DataFrame([
-            {"Feld": "Patient-ID im Header", "Status": "⚠️ vorhanden" if privacy["has_patient_id"] else "✅ leer"},
-            {"Feld": "Recording-ID im Header", "Status": "⚠️ vorhanden" if privacy["has_recording_id"] else "✅ leer"},
+            {"Feld": "Patient-ID im Header",
+             "Status": "⚠️ vorhanden" if edf["has_patient_id"] else "✅ leer"},
+            {"Feld": "Recording-ID im Header",
+             "Status": "⚠️ vorhanden" if edf["has_rec_id"] else "✅ leer"},
             {"Feld": "Format", "Status": "EDF+D (discontinuous)"},
             {"Feld": "Encoding", "Status": "latin1 (NeuroFax)"},
         ]), hide_index=True, use_container_width=True)
 
     with col_r:
         st.markdown("**Klinische Annotations**")
-        if annotations:
-            df_ann = pd.DataFrame([
-                {"Zeit (s)": f"{a['onset_s']:.1f}", "Ereignis": a["description"]}
-                for a in annotations
-            ])
-            st.dataframe(df_ann, hide_index=True, use_container_width=True, height=420)
+        if edf["annotations"]:
+            st.dataframe(
+                pd.DataFrame([{"Zeit (s)": a["onset_s"], "Ereignis": a["description"]}
+                              for a in edf["annotations"]]),
+                hide_index=True, use_container_width=True, height=380,
+            )
 
-    with st.expander("Alle Kanäle mit Signalqualität"):
-        ch_data = []
-        for i, ch in enumerate(raw.ch_names):
-            d, _ = raw[[i], :]
-            unit_factor = 1e6 if ch.startswith("EEG") else 1e3
+    with st.expander("Alle Kanäle"):
+        rows = []
+        for i, ch in enumerate(edf["ch_names"]):
+            sig = edf["data"][i]
+            sig_d = (sig - sig.mean())
             unit = "µV" if ch.startswith("EEG") else "mV"
-            vals = d[0] * unit_factor
-            vals_demean = vals - vals.mean()
-            ch_data.append({
+            factor = 1e6 if ch.startswith("EEG") else 1e3
+            rows.append({
                 "Nr": i, "Kanal": ch,
-                f"Min ({unit})": f"{vals_demean.min():.1f}",
-                f"Max ({unit})": f"{vals_demean.max():.1f}",
-                f"RMS ({unit})": f"{np.sqrt(np.mean(vals_demean**2)):.1f}",
+                f"Min ({unit})": f"{sig_d.min()*factor:.1f}",
+                f"Max ({unit})": f"{sig_d.max()*factor:.1f}",
+                f"RMS ({unit})": f"{np.sqrt(np.mean(sig_d**2))*factor:.1f}",
             })
-        st.dataframe(pd.DataFrame(ch_data), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
