@@ -105,6 +105,8 @@ Perspektivisch: Webbasiertes Tool für Kollegen.
 | 2026-06-15 | EKG-Kanäle heißen `$A1`/`$A2`, nicht `EKG` | NeuroFax-spezifische Bezeichnung, Kanal-Mapping dokumentiert |
 | 2026-06-15 | EKG-Amplituden ~-12000 mV | DC-Offset aus Kalibrierung — `signal - signal.mean()` vor Analyse |
 | 2026-06-15 | R-Peak-Detektion: HR ~48bpm, pNN50=92% unrealistisch | scipy `find_peaks` mit adaptivem Threshold suboptimal — nächster Schritt: Pan-Tompkins-Algorithmus oder Python-3.10 + neurokit2 |
+| 2026-06-15 | EKG-Kanal $A1/$A2 zeigt nur Nadelspitzen, kein EKG | $A1/$A2 sind gesättigte Kalibrierkanäle (nur 2 Digitalwerte, digital stuck at min). Echtes EKG in **POL X1** (794 unique Werte, ~0.7 mV, plausible HR). Dynamische Kanal-Erkennung via unique-value-count + HR-Plausibilität eingebaut. |
+| 2026-06-15 | POL Pulse/SpO2/EtCO2 alle Null | In dieser EDF-Datei nicht angeschlossen — Vitalparameter-Channels leer. Gerät hat diese Option, war in dieser Aufnahme nicht verwendet. |
 
 ---
 
