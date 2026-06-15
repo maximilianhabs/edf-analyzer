@@ -238,64 +238,194 @@ with tab_ecg:
             st.metric("LF/HF-Ratio", hrv_freq.get("lf_hf_ratio", "–"), help="< 1.0 = parasympathisch dominant, > 2.0 = sympathisch dominant")
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TAB 3 — EEG-ÜBERSICHT
+# TAB 3 — EEG-ÜBERSICHT (DGKN-Montagen)
 # ═══════════════════════════════════════════════════════════════════════════
+
+# DGKN-Montagen: Doppelte Banane (bipolare Längsreihe)
+# Kanalbezeichnungen im EDF: "EEG Fp1-Ref", "EEG T3-Ref" etc.
+# Bipolare Ableitung A-B = Signal(A) - Signal(B)
+
+DGKN_MONTAGES = {
+    "Bipolar Temporal (Temporalreihe)": {
+        "beschreibung": "Temporale Kette links + rechts — Außenreihe der Doppelten Banane",
+        "ketten": {
+            "Temporalreihe links": [
+                ("Fp1", "F7"), ("F7", "T3"), ("T3", "T5"), ("T5", "O1"),
+            ],
+            "Temporalreihe rechts": [
+                ("Fp2", "F8"), ("F8", "T4"), ("T4", "T6"), ("T6", "O2"),
+            ],
+        },
+    },
+    "Bipolar Parasagittal (Parasagittalreihe)": {
+        "beschreibung": "Parasagittale Kette links + rechts — Innenreihe der Doppelten Banane",
+        "ketten": {
+            "Parasagittalreihe links": [
+                ("Fp1", "F3"), ("F3", "C3"), ("C3", "P3"), ("P3", "O1"),
+            ],
+            "Parasagittalreihe rechts": [
+                ("Fp2", "F4"), ("F4", "C4"), ("C4", "P4"), ("P4", "O2"),
+            ],
+        },
+    },
+    "Doppelte Banane (komplett)": {
+        "beschreibung": "Vollständige bipolare Längsreihe nach DGKN — Temporalreihe + Parasagittalreihe + Mittellinie",
+        "ketten": {
+            "Temporalreihe links": [
+                ("Fp1", "F7"), ("F7", "T3"), ("T3", "T5"), ("T5", "O1"),
+            ],
+            "Parasagittalreihe links": [
+                ("Fp1", "F3"), ("F3", "C3"), ("C3", "P3"), ("P3", "O1"),
+            ],
+            "Mittellinie": [
+                ("Fz", "Cz"), ("Cz", "Pz"),
+            ],
+            "Parasagittalreihe rechts": [
+                ("Fp2", "F4"), ("F4", "C4"), ("C4", "P4"), ("P4", "O2"),
+            ],
+            "Temporalreihe rechts": [
+                ("Fp2", "F8"), ("F8", "T4"), ("T4", "T6"), ("T6", "O2"),
+            ],
+        },
+    },
+    "Referenziell Cz": {
+        "beschreibung": "Alle Kanäle gegen Cz — referenzielle Ableitung nach DGKN",
+        "ketten": {
+            "Links temporal": [("Fp1", "Cz"), ("F7", "Cz"), ("T3", "Cz"), ("T5", "Cz"), ("O1", "Cz")],
+            "Links parasagittal": [("F3", "Cz"), ("C3", "Cz"), ("P3", "Cz")],
+            "Rechts parasagittal": [("F4", "Cz"), ("C4", "Cz"), ("P4", "Cz")],
+            "Rechts temporal": [("Fp2", "Cz"), ("F8", "Cz"), ("T4", "Cz"), ("T6", "Cz"), ("O2", "Cz")],
+        },
+    },
+}
+
+
+def get_eeg_signal(raw, electrode_name):
+    """Extract signal by short electrode name (e.g. 'Fp1' from 'EEG Fp1-Ref')."""
+    for ch in raw.ch_names:
+        if ch.startswith("EEG") and electrode_name in ch:
+            idx = raw.ch_names.index(ch)
+            data, _ = raw[[idx], :]
+            return data[0]
+    return None
+
+
+def compute_bipolar(raw, anode, cathode):
+    """Compute bipolar derivation: anode - cathode. Returns (signal, label)."""
+    sig_a = get_eeg_signal(raw, anode)
+    sig_b = get_eeg_signal(raw, cathode)
+    if sig_a is None or sig_b is None:
+        return None, f"{anode}-{cathode} (fehlt)"
+    return (sig_a - sig_b), f"{anode}–{cathode}"
+
+
 with tab_eeg:
-    st.subheader("EEG-Kanäle")
+    st.subheader("EEG-Montagen nach DGKN")
 
-    eeg_channels = st.multiselect(
-        "Kanäle auswählen",
-        groups["eeg"],
-        default=groups["eeg"][:6],
-    )
-    col_t1, col_t2 = st.columns(2)
-    t_start_eeg = col_t1.number_input("Von (s)", min_value=0.0, max_value=raw.times[-1]-5, value=10.0, step=5.0, key="eeg_start")
-    t_end_eeg = col_t2.number_input("Bis (s)", min_value=5.0, max_value=raw.times[-1], value=min(30.0, raw.times[-1]), step=5.0, key="eeg_end")
-    amplitude_scale = st.slider("Amplitude-Skalierung (µV Anzeige-Max)", 50, 500, 150, step=25)
+    col_mont, col_t1, col_t2, col_amp = st.columns([2, 1, 1, 1])
+    montage_name = col_mont.selectbox("Montage", list(DGKN_MONTAGES.keys()), index=0)
+    t_start_eeg = col_t1.number_input("Von (s)", min_value=0.0, max_value=raw.times[-1]-5,
+                                       value=10.0, step=5.0, key="eeg_start")
+    t_end_eeg = col_t2.number_input("Bis (s)", min_value=5.0, max_value=raw.times[-1],
+                                     value=min(30.0, raw.times[-1]), step=5.0, key="eeg_end")
+    amplitude_scale = col_amp.number_input("Skalierung (µV)", min_value=10, max_value=500,
+                                            value=100, step=10)
 
-    if eeg_channels:
-        i_s = int(t_start_eeg * sfreq)
-        i_e = int(t_end_eeg * sfreq)
-        t_eeg = np.arange(i_s, i_e) / sfreq
+    montage = DGKN_MONTAGES[montage_name]
+    st.caption(f"ℹ️ {montage['beschreibung']}")
 
-        fig_eeg = go.Figure()
-        n = len(eeg_channels)
-        spacing = amplitude_scale * 2
+    i_s = int(t_start_eeg * sfreq)
+    i_e = int(t_end_eeg * sfreq)
+    t_eeg = np.arange(i_s, i_e) / sfreq
 
-        for idx, ch in enumerate(eeg_channels):
-            d, _ = raw[[raw.ch_names.index(ch)], :]
-            seg = d[0][i_s:i_e] * 1e6  # µV
-            offset = (n - 1 - idx) * spacing
+    # Alle Ableitungen berechnen, Ketten farblich trennen
+    chain_colors = ["#2c3e50", "#1a5276", "#7b241c", "#1e8449", "#6c3483"]
+    derivations = []  # list of (label, signal, chain_name)
+
+    for chain_name, pairs in montage["ketten"].items():
+        for anode, cathode in pairs:
+            sig, label = compute_bipolar(raw, anode, cathode)
+            derivations.append((label, sig, chain_name))
+
+    n = len(derivations)
+    spacing = amplitude_scale * 2
+    chain_names = list(montage["ketten"].keys())
+
+    fig_eeg = go.Figure()
+
+    for idx, (label, sig, chain_name) in enumerate(derivations):
+        offset = (n - 1 - idx) * spacing
+        color = chain_colors[chain_names.index(chain_name) % len(chain_colors)]
+
+        if sig is not None:
+            seg = sig[i_s:i_e] * 1e6
             fig_eeg.add_trace(go.Scatter(
                 x=t_eeg, y=seg + offset,
-                mode="lines", name=ch,
-                line=dict(width=0.8),
-                hovertemplate=f"{ch}: %{{customdata:.1f}} µV<extra></extra>",
+                mode="lines", name=chain_name,
+                legendgroup=chain_name,
+                showlegend=(idx == next(i for i, (_, _, c) in enumerate(derivations) if c == chain_name)),
+                line=dict(width=0.9, color=color),
+                hovertemplate=f"<b>{label}</b>: %{{customdata:.1f}} µV<extra></extra>",
                 customdata=seg,
             ))
+        else:
+            # Kanal fehlt — leere Linie mit Hinweis
+            fig_eeg.add_trace(go.Scatter(
+                x=[t_eeg[0], t_eeg[-1]], y=[offset, offset],
+                mode="lines", line=dict(width=0.5, color="#cccccc", dash="dot"),
+                showlegend=False, hoverinfo="skip",
+            ))
 
-        # Annotations als vertikale Linien
-        for ann in annotations:
-            onset = ann["onset_s"]
-            if t_start_eeg <= onset <= t_end_eeg:
-                fig_eeg.add_vline(
-                    x=onset, line_dash="dot", line_color="gray", line_width=1,
-                    annotation_text=ann["description"][:20],
-                    annotation_position="top",
-                )
+    # Annotations als vertikale Marker
+    for ann in annotations:
+        onset = float(ann["onset_s"])
+        if t_start_eeg <= onset <= t_end_eeg:
+            fig_eeg.add_vline(
+                x=onset, line_dash="dot", line_color="#e67e22", line_width=1,
+                annotation_text=ann["description"][:18],
+                annotation_font_size=10,
+                annotation_position="top left",
+            )
 
-        fig_eeg.update_layout(
-            xaxis_title="Zeit (s)",
-            yaxis=dict(
-                tickvals=[(n - 1 - i) * spacing for i in range(n)],
-                ticktext=eeg_channels,
-                showgrid=False,
-            ),
-            height=max(400, n * 60),
-            margin=dict(t=20, b=40, l=120),
-            showlegend=False,
-        )
-        st.plotly_chart(fig_eeg, use_container_width=True)
+    # Kettentrennlinien (horizontale Linie zwischen Ketten)
+    chain_boundaries = []
+    current_chain = derivations[0][2]
+    for idx, (_, _, chain_name) in enumerate(derivations):
+        if chain_name != current_chain:
+            chain_boundaries.append(idx)
+            current_chain = chain_name
+
+    for boundary_idx in chain_boundaries:
+        boundary_y = ((n - boundary_idx) * spacing + (n - boundary_idx - 1) * spacing) / 2
+        fig_eeg.add_hline(y=boundary_y, line_dash="dot", line_color="#dddddd", line_width=1)
+
+    fig_eeg.update_layout(
+        xaxis_title="Zeit (s)",
+        yaxis=dict(
+            tickvals=[(n - 1 - i) * spacing for i in range(n)],
+            ticktext=[label for label, _, _ in derivations],
+            showgrid=False,
+            tickfont=dict(size=11),
+        ),
+        height=max(500, n * 55),
+        margin=dict(t=30, b=50, l=130, r=20),
+        legend=dict(orientation="h", y=-0.07, x=0),
+        plot_bgcolor="#fafafa",
+    )
+    st.plotly_chart(fig_eeg, use_container_width=True)
+
+    # Legende der Ketten
+    with st.expander("Ketten-Erklärung"):
+        ketten_info = {
+            "Temporalreihe links": "Fp1→F7→T3→T5→O1 — Außenreihe links, erfasst temporalen und frontopolaren Kortex",
+            "Temporalreihe rechts": "Fp2→F8→T4→T6→O2 — Außenreihe rechts",
+            "Parasagittalreihe links": "Fp1→F3→C3→P3→O1 — Innenreihe links, erfasst parasagittalen Kortex",
+            "Parasagittalreihe rechts": "Fp2→F4→C4→P4→O2 — Innenreihe rechts",
+            "Mittellinie": "Fz→Cz→Pz — Medianer Längsschnitt",
+        }
+        for name, desc in ketten_info.items():
+            if name in montage["ketten"]:
+                st.markdown(f"**{name}**: {desc}")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TAB 4 — VITALPARAMETER
