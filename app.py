@@ -472,20 +472,59 @@ with tab_ecg:
             # Polarität: war der ursprüngliche Peak positiv oder negativ?
             polarities = np.sign(sig_f[peaks])
 
-            # RR-Intervalle + Plausibilitätsfilter (300–2000 ms)
+            # ── Stufe 1: Harte physiologische Grenzen ───────────────────────
             rr = np.diff(peaks) / fs * 1000
-            valid = (rr > 300) & (rr < 2000)
-            rr_valid = rr[valid]
-            peaks_valid = peaks[:-1][valid]
+            mask1 = (rr > 300) & (rr < 2000)
+
+            # ── Stufe 2: Hampel-Filter — lokale Ausreißer ───────────────────
+            # Für jedes RR: Median + MAD der ±5 Nachbarn berechnen.
+            # Abweichung > 3 × MAD → Artefakt / Ausreißer.
+            # MAD-Schätzung des lokalen Sigma: sigma ≈ 1.4826 × MAD
+            def hampel(rr_arr, half_win=5, k=3.0):
+                n = len(rr_arr)
+                outlier = np.zeros(n, dtype=bool)
+                for i in range(n):
+                    lo = max(0, i - half_win)
+                    hi = min(n, i + half_win + 1)
+                    window = rr_arr[lo:hi]
+                    med = np.median(window)
+                    mad = np.median(np.abs(window - med))
+                    sigma = 1.4826 * mad
+                    if sigma > 0 and abs(rr_arr[i] - med) > k * sigma:
+                        outlier[i] = True
+                return ~outlier   # True = behalten
+
+            rr_stage1 = rr[mask1]
+            mask2_local = hampel(rr_stage1, half_win=5, k=3.0)
+
+            # ── Stufe 3: Globaler Kontext-Check ─────────────────────────────
+            # Median-HR der gesamten Aufnahme als Referenz.
+            # RR > 2.5× oder < 0.4× des globalen Medians → Artefakt.
+            if len(rr_stage1) > 10:
+                global_median = np.median(rr_stage1[mask2_local] if mask2_local.any() else rr_stage1)
+                mask3 = (rr_stage1 > global_median * 0.4) & (rr_stage1 < global_median * 2.5)
+            else:
+                mask3 = np.ones(len(rr_stage1), dtype=bool)
+
+            final_mask = mask2_local & mask3
+
+            # Ergebnis zusammenstellen
+            peaks_s1     = peaks[:-1][mask1]
+            rr_clean     = rr_stage1[final_mask]
+            peaks_clean  = peaks_s1[final_mask]
+            n_removed    = int((~final_mask).sum())
 
             return {
-                "peaks": peaks,
-                "peaks_valid": peaks_valid,
+                "peaks": peaks,                        # alle erkannten Peaks (für Overlay)
+                "peaks_valid": peaks_clean,
                 "polarities": polarities,
-                "rr_ms": rr_valid,
-                "times": peaks[:-1][valid] / fs,
+                "rr_ms": rr_clean,
+                "rr_ms_raw": rr_stage1,                # vor Outlier-Filter (für Debug)
+                "times": peaks_clean / fs,
                 "fs": fs,
-                "threshold_mv": threshold * 1000,    # für Anzeige
+                "threshold_mv": threshold * 1000,
+                "n_peaks_total": len(peaks),
+                "n_removed": n_removed,
             }
 
         rr_data = compute_rr(edf_path, ecg_ch)
@@ -495,12 +534,25 @@ with tab_ecg:
         if len(rr_ms) < 5:
             st.warning("Zu wenige R-Peaks erkannt. Kanal oder Filter prüfen.")
         else:
-            # Metriken
+            # Outlier-Info
+            n_total   = rr_data["n_peaks_total"]
+            n_removed = rr_data["n_removed"]
+            n_kept    = len(rr_ms)
+            if n_removed > 0:
+                st.info(
+                    f"🔎 Outlier-Filter: **{n_removed} Schläge** entfernt "
+                    f"({n_removed/(n_kept+n_removed)*100:.1f} %) — "
+                    f"Hampel-Filter (±5 Nachbarn, 3σ) + globaler Kontext-Check (±2.5× Median). "
+                    f"Verbleibend: **{n_kept} Schläge**.",
+                    icon="ℹ️",
+                )
+
+            # HRV-Metriken (nur auf bereinigten RR)
             mean_rr = float(np.mean(rr_ms))
             mean_hr = 60000 / mean_rr
             sdnn    = float(np.std(rr_ms, ddof=1))
-            rmssd   = float(np.sqrt(np.mean(np.diff(rr_ms)**2)))
-            pnn50   = float(np.sum(np.abs(np.diff(rr_ms)) > 50) / len(np.diff(rr_ms)) * 100)
+            rmssd   = float(np.sqrt(np.mean(np.diff(rr_ms)**2))) if len(rr_ms) > 2 else 0.0
+            pnn50   = float(np.sum(np.abs(np.diff(rr_ms)) > 50) / max(len(np.diff(rr_ms)),1) * 100)
 
             c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("Mittlere HR", f"{mean_hr:.1f} bpm")
@@ -512,23 +564,32 @@ with tab_ecg:
             col_tach, col_poin = st.columns(2)
 
             with col_tach:
-                st.markdown("**Tachogramm — RR-Intervalle über Zeit**")
-                fig_rr = go.Figure(go.Scatter(
+                st.markdown("**Tachogramm — bereinigte RR-Intervalle**")
+                fig_rr = go.Figure()
+                # Bereinigte Werte
+                fig_rr.add_trace(go.Scatter(
                     x=r_times, y=rr_ms, mode="lines+markers",
+                    name="RR (bereinigt)",
                     line=dict(color="#2980b9", width=1),
                     marker=dict(size=3, color="#2980b9"),
                     hovertemplate="t=%{x:.1f}s  RR=%{y:.0f}ms<extra></extra>",
                 ))
-                # Annotations einblenden
+                # Median-Linie
+                fig_rr.add_hline(y=mean_rr, line_dash="dot",
+                                 line_color="#27ae60", line_width=1,
+                                 annotation_text=f"Median {mean_rr:.0f}ms",
+                                 annotation_font_size=10)
+                # Annotations
                 for ann in edf["annotations"]:
                     fig_rr.add_vline(x=ann["onset_s"], line_dash="dot",
                                      line_color="#e67e22", line_width=0.8)
                 fig_rr.update_layout(
                     xaxis_title="Zeit (s)", yaxis_title="RR-Intervall (ms)",
+                    yaxis=dict(range=[max(0, mean_rr*0.5), mean_rr*1.8]),
                     height=300, margin=dict(t=8, b=40, l=60, r=8),
-                    plot_bgcolor="#f9f9f9",
+                    plot_bgcolor="#f9f9f9", showlegend=False,
                 )
-                st.plotly_chart(fig_tach := fig_rr, use_container_width=True)
+                st.plotly_chart(fig_rr, use_container_width=True)
 
             with col_poin:
                 st.markdown("**Poincaré-Plot — RR_n vs. RR_(n+1)**")
@@ -537,7 +598,10 @@ with tab_ecg:
                     marker=dict(color="#8e44ad", size=4, opacity=0.55),
                     hovertemplate="RR_n=%{x:.0f}ms  RR_n+1=%{y:.0f}ms<extra></extra>",
                 ))
-                lim = [max(0, rr_ms.min()-50), rr_ms.max()+50]
+                # Achsen auf ±30% um Median — Ausreißer werden abgeschnitten, nicht angezeigt
+                p_lo = max(300, mean_rr * 0.55)
+                p_hi = min(2000, mean_rr * 1.55)
+                lim = [p_lo - 30, p_hi + 30]
                 fig_poin.update_layout(
                     xaxis=dict(title="RR_n (ms)", range=lim),
                     yaxis=dict(title="RR_(n+1) (ms)", range=lim),
