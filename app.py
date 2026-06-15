@@ -11,22 +11,63 @@ warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="EDF Analyzer", layout="wide", page_icon="🧠")
 
-# ── DGKN-Montagen ─────────────────────────────────────────────────────────────
+# ── Farben: Rechts = Rot, Links = Blau, Mittellinie = Grün ────────────────────
+C_RE   = "#c0392b"   # rechts — rot
+C_LI   = "#1a5276"   # links  — blau
+C_MID  = "#1e8449"   # Mitte  — grün
+C_REF  = "#6c3483"   # referenziell — lila
+
+# Kette: (Name, Farbe) pro Elektrodenpaar
+CHAIN_OF = {
+    # Temporal rechts
+    ("Fp2","F8"):("Temporal re", C_RE), ("F8","T4"):("Temporal re", C_RE),
+    ("T4","T6"):("Temporal re", C_RE),  ("T6","O2"):("Temporal re", C_RE),
+    # Temporal links
+    ("Fp1","F7"):("Temporal li", C_LI), ("F7","T3"):("Temporal li", C_LI),
+    ("T3","T5"):("Temporal li", C_LI),  ("T5","O1"):("Temporal li", C_LI),
+    # Parasagittal rechts
+    ("Fp2","F4"):("Parasagittal re", C_RE), ("F4","C4"):("Parasagittal re", C_RE),
+    ("C4","P4"):("Parasagittal re", C_RE),  ("P4","O2"):("Parasagittal re", C_RE),
+    # Parasagittal links
+    ("Fp1","F3"):("Parasagittal li", C_LI), ("F3","C3"):("Parasagittal li", C_LI),
+    ("C3","P3"):("Parasagittal li", C_LI),  ("P3","O1"):("Parasagittal li", C_LI),
+    # Mittellinie
+    ("Fz","Cz"):("Mittellinie", C_MID), ("Cz","Pz"):("Mittellinie", C_MID),
+    # Referenziell Cz (links=blau, rechts=rot)
+    ("Fp1","Cz"):("Links temporal", C_LI), ("F7","Cz"):("Links temporal", C_LI),
+    ("T3","Cz"):("Links temporal", C_LI),  ("T5","Cz"):("Links temporal", C_LI),
+    ("O1","Cz"):("Links temporal", C_LI),
+    ("F3","Cz"):("Links para", C_LI),  ("C3","Cz"):("Links para", C_LI),
+    ("P3","Cz"):("Links para", C_LI),
+    ("Fz","Cz"):("Mittellinie", C_MID),
+    ("F4","Cz"):("Rechts para", C_RE), ("C4","Cz"):("Rechts para", C_RE),
+    ("P4","Cz"):("Rechts para", C_RE),
+    ("Fp2","Cz"):("Rechts temporal", C_RE), ("F8","Cz"):("Rechts temporal", C_RE),
+    ("T4","Cz"):("Rechts temporal", C_RE),  ("T6","Cz"):("Rechts temporal", C_RE),
+    ("O2","Cz"):("Rechts temporal", C_RE),
+}
+
+# ── DGKN-Montagen — Reihenfolge: re oben, li unten, Mitte zentral ─────────────
 MONTAGES = {
     "Doppelte Banane": [
-        ("Fp1","F7"),("F7","T3"),("T3","T5"),("T5","O1"),
-        ("Fp1","F3"),("F3","C3"),("C3","P3"),("P3","O1"),
-        ("Fz","Cz"),("Cz","Pz"),
-        ("Fp2","F4"),("F4","C4"),("C4","P4"),("P4","O2"),
+        # Temporal rechts (oben)
         ("Fp2","F8"),("F8","T4"),("T4","T6"),("T6","O2"),
+        # Temporal links
+        ("Fp1","F7"),("F7","T3"),("T3","T5"),("T5","O1"),
+        # Parasagittal rechts
+        ("Fp2","F4"),("F4","C4"),("C4","P4"),("P4","O2"),
+        # Parasagittal links
+        ("Fp1","F3"),("F3","C3"),("C3","P3"),("P3","O1"),
+        # Mittellinie (unten)
+        ("Fz","Cz"),("Cz","Pz"),
     ],
     "Temporal": [
-        ("Fp1","F7"),("F7","T3"),("T3","T5"),("T5","O1"),
         ("Fp2","F8"),("F8","T4"),("T4","T6"),("T6","O2"),
+        ("Fp1","F7"),("F7","T3"),("T3","T5"),("T5","O1"),
     ],
     "Parasagittal": [
-        ("Fp1","F3"),("F3","C3"),("C3","P3"),("P3","O1"),
         ("Fp2","F4"),("F4","C4"),("C4","P4"),("P4","O2"),
+        ("Fp1","F3"),("F3","C3"),("C3","P3"),("P3","O1"),
     ],
     "Referenziell Cz": [
         ("Fp1","Cz"),("F7","Cz"),("T3","Cz"),("T5","Cz"),("O1","Cz"),
@@ -35,19 +76,6 @@ MONTAGES = {
         ("F4","Cz"),("C4","Cz"),("P4","Cz"),
         ("Fp2","Cz"),("F8","Cz"),("T4","Cz"),("T6","Cz"),("O2","Cz"),
     ],
-}
-
-# Kette pro Ableitungspaar für Farbgebung
-CHAIN_OF = {
-    ("Fp1","F7"):("Temporal li","#1a3a5c"), ("F7","T3"):("Temporal li","#1a3a5c"),
-    ("T3","T5"):("Temporal li","#1a3a5c"),  ("T5","O1"):("Temporal li","#1a3a5c"),
-    ("Fp1","F3"):("Parasagittal li","#7b241c"), ("F3","C3"):("Parasagittal li","#7b241c"),
-    ("C3","P3"):("Parasagittal li","#7b241c"), ("P3","O1"):("Parasagittal li","#7b241c"),
-    ("Fz","Cz"):("Mittellinie","#1e6b3a"),  ("Cz","Pz"):("Mittellinie","#1e6b3a"),
-    ("Fp2","F4"):("Parasagittal re","#6c3483"), ("F4","C4"):("Parasagittal re","#6c3483"),
-    ("C4","P4"):("Parasagittal re","#6c3483"), ("P4","O2"):("Parasagittal re","#6c3483"),
-    ("Fp2","F8"):("Temporal re","#0e6655"),  ("F8","T4"):("Temporal re","#0e6655"),
-    ("T4","T6"):("Temporal re","#0e6655"),   ("T6","O2"):("Temporal re","#0e6655"),
 }
 
 EPOCH_SEC = 10
@@ -403,12 +431,134 @@ with tab_ecg:
         pp = sig_centered.max() - sig_centered.min()
         rms = np.sqrt(np.mean(sig_centered**2))
         st.caption(
-            f"Kanal: **{ecg_ch}** | "
-            f"peak-peak: **{pp:.2f} mV** | "
-            f"RMS: {rms:.2f} mV | "
-            f"Vorfilter: Bandpass 0.5–40 Hz | "
-            f"Anzeige: ±{sensitivity_mv} mV"
+            f"Kanal: **{ecg_ch}** | peak-peak: **{pp:.2f} mV** | "
+            f"RMS: {rms:.2f} mV | Vorfilter: 0.5–40 Hz | Anzeige: ±{sensitivity_mv} mV"
         )
+
+        # ── RR-Analyse ────────────────────────────────────────────────────────
+        st.divider()
+        st.subheader("RR-Analyse (Gesamtaufnahme)")
+
+        from scipy.signal import find_peaks as _fp
+
+        @st.cache_data(show_spinner="Berechne R-Peaks…")
+        def compute_rr(path, channel):
+            """R-Peak-Erkennung auf gefiltertem Gesamtsignal."""
+            from core.loader import load_edf
+            import warnings; warnings.filterwarnings("ignore")
+            _raw = load_edf(path, preload=True)
+            _data, _ = _raw[:]
+            _idx = _raw.ch_names.index(channel)
+            sig = _data[_idx].copy().astype(np.float64)
+            sig -= sig.mean()
+            from scipy.signal import butter, filtfilt
+            nyq = _raw.info["sfreq"] / 2
+            b, a = butter(4, [0.5/nyq, min(40/nyq, 0.99)], btype="band")
+            sig_f = filtfilt(b, a, sig)
+            fs = _raw.info["sfreq"]
+
+            # Adaptive Threshold: 70. Perzentil der positiven Werte
+            pos_thresh = np.percentile(sig_f[sig_f > 0], 70) if np.any(sig_f > 0) else 0.0001
+            min_dist = int(fs * 0.35)   # min. 350 ms zwischen Peaks (max ~170 bpm)
+            peaks, props = _fp(sig_f, height=pos_thresh, distance=min_dist)
+
+            # RR-Intervalle in ms, Plausibilitätsfilter
+            rr = np.diff(peaks) / fs * 1000
+            valid = (rr > 300) & (rr < 2000)
+            rr_valid = rr[valid]
+            peaks_valid = peaks[:-1][valid]
+
+            return {
+                "peaks": peaks,
+                "peaks_valid": peaks_valid,
+                "rr_ms": rr_valid,
+                "times": peaks[:-1][valid] / fs,
+                "fs": fs,
+            }
+
+        rr_data = compute_rr(edf_path, ecg_ch)
+        rr_ms = rr_data["rr_ms"]
+        r_times = rr_data["times"]
+
+        if len(rr_ms) < 5:
+            st.warning("Zu wenige R-Peaks erkannt. Kanal oder Filter prüfen.")
+        else:
+            # Metriken
+            mean_rr = float(np.mean(rr_ms))
+            mean_hr = 60000 / mean_rr
+            sdnn    = float(np.std(rr_ms, ddof=1))
+            rmssd   = float(np.sqrt(np.mean(np.diff(rr_ms)**2)))
+            pnn50   = float(np.sum(np.abs(np.diff(rr_ms)) > 50) / len(np.diff(rr_ms)) * 100)
+
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("Mittlere HR", f"{mean_hr:.1f} bpm")
+            c2.metric("Mittleres RR", f"{mean_rr:.0f} ms")
+            c3.metric("SDNN", f"{sdnn:.1f} ms", help="Gesamtvariabilität — Norm: 20–100 ms")
+            c4.metric("RMSSD", f"{rmssd:.1f} ms", help="Kurzzeit-HRV, parasympathisch — Norm: 15–40 ms")
+            c5.metric("pNN50", f"{pnn50:.1f} %", help="Anteil aufeinanderfolgender RR-Differenzen >50 ms")
+
+            col_tach, col_poin = st.columns(2)
+
+            with col_tach:
+                st.markdown("**Tachogramm — RR-Intervalle über Zeit**")
+                fig_rr = go.Figure(go.Scatter(
+                    x=r_times, y=rr_ms, mode="lines+markers",
+                    line=dict(color="#2980b9", width=1),
+                    marker=dict(size=3, color="#2980b9"),
+                    hovertemplate="t=%{x:.1f}s  RR=%{y:.0f}ms<extra></extra>",
+                ))
+                # Annotations einblenden
+                for ann in edf["annotations"]:
+                    fig_rr.add_vline(x=ann["onset_s"], line_dash="dot",
+                                     line_color="#e67e22", line_width=0.8)
+                fig_rr.update_layout(
+                    xaxis_title="Zeit (s)", yaxis_title="RR-Intervall (ms)",
+                    height=300, margin=dict(t=8, b=40, l=60, r=8),
+                    plot_bgcolor="#f9f9f9",
+                )
+                st.plotly_chart(fig_tach := fig_rr, use_container_width=True)
+
+            with col_poin:
+                st.markdown("**Poincaré-Plot — RR_n vs. RR_(n+1)**")
+                fig_poin = go.Figure(go.Scatter(
+                    x=rr_ms[:-1], y=rr_ms[1:], mode="markers",
+                    marker=dict(color="#8e44ad", size=4, opacity=0.55),
+                    hovertemplate="RR_n=%{x:.0f}ms  RR_n+1=%{y:.0f}ms<extra></extra>",
+                ))
+                lim = [max(0, rr_ms.min()-50), rr_ms.max()+50]
+                fig_poin.update_layout(
+                    xaxis=dict(title="RR_n (ms)", range=lim),
+                    yaxis=dict(title="RR_(n+1) (ms)", range=lim),
+                    height=300, margin=dict(t=8, b=40, l=60, r=8),
+                    plot_bgcolor="#f9f9f9",
+                )
+                st.plotly_chart(fig_poin, use_container_width=True)
+
+            # R-Peak-Overlay in der aktuellen Epoche einblenden
+            r_in_epoch = rr_data["peaks"][(rr_data["peaks"] >= i_s_ecg) &
+                                          (rr_data["peaks"] < i_e_ecg)]
+            if len(r_in_epoch) > 0:
+                r_t = r_in_epoch / sfreq
+                r_v = ecg_filtered_ep = edf["ecg_filtered"][ecg_ch][r_in_epoch] * 1000
+                r_v_centered = r_v - np.median(sig_mv)
+                # Update fig_ecg mit R-Peak-Markierung (neuer Plot mit Peaks)
+                fig_ecg_rr = go.Figure(fig_ecg)
+                fig_ecg_rr.add_trace(go.Scatter(
+                    x=r_t, y=r_v_centered, mode="markers", name="R-Peaks",
+                    marker=dict(symbol="triangle-up", size=10,
+                                color="#27ae60", line=dict(width=1, color="#145a32")),
+                    hovertemplate="R-Peak t=%{x:.3f}s<extra></extra>",
+                ))
+                st.markdown("**Epoche mit R-Peak-Markierung**")
+                st.plotly_chart(fig_ecg_rr, use_container_width=True)
+
+            with st.expander("RR-Tabelle (alle Schläge)"):
+                df_rr = pd.DataFrame({
+                    "Zeit (s)": np.round(r_times, 2),
+                    "RR-Intervall (ms)": np.round(rr_ms, 1),
+                    "HR (bpm)": np.round(60000 / rr_ms, 1),
+                })
+                st.dataframe(df_rr, hide_index=True, use_container_width=True, height=300)
 
 
 # ═══════════════ REPORT ═══════════════════════════════════════════════════════
