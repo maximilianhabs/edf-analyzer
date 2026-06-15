@@ -6,7 +6,10 @@ import warnings
 
 
 # NeuroFax-specific channel mapping
-ECG_CHANNELS = ["POL $A1", "POL $A2"]
+# $A1/$A2 sind gesättigte Hilfskanäle (Kalibrierkanal), KEIN EKG-Signal
+# Echtes EKG in diesem Setup: POL X1 (Extremitätenableitung, ~0.7 mV, korrekte HR)
+ECG_CHANNELS = ["POL X1"]
+ECG_CHANNELS_DEAD = ["POL $A1", "POL $A2"]   # nur zur Dokumentation
 VITAL_CHANNELS = ["POL SpO2", "POL EtCO2", "POL Pulse", "POL CO2Wave"]
 EEG_PREFIX = "EEG"
 

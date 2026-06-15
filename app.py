@@ -77,17 +77,46 @@ def load_and_prepare(path: str):
             short = ch.replace("EEG ", "").replace("-Ref", "").strip()
             eeg_map[short] = ch_idx[ch]
 
-    # ECG-Kanäle — einmalig filtern (Bandpass 0.5–40 Hz)
-    ecg_channels = [c for c in ch_names if "$A" in c]
+    # ECG-Kanal-Erkennung: dynamisch via Signal-Qualitätsprüfung
+    # $A1/$A2 sind in NeuroFax gesättigte Kalibrierkanäle (nur 2 Digitalwerte) — kein EKG
+    # Echtes EKG typisch in POL X1-X7: analog, pp > 0.3 mV, rate 40-150 bpm
+    def _is_ecg_candidate(sig_raw, fs):
+        """Prüft ob ein Kanal EKG-typische Eigenschaften hat."""
+        seg = sig_raw[int(60*fs):int(120*fs)].copy().astype(np.float64)
+        seg -= seg.mean()
+        n_unique = len(np.unique(np.round(seg * 1e5)))
+        if n_unique < 20:
+            return False  # gesättigt/digital
+        pp = (seg.max() - seg.min()) * 1000  # mV
+        if pp < 0.3 or pp > 50:
+            return False
+        from scipy.signal import find_peaks
+        from scipy.signal import butter as _b, filtfilt as _f
+        nyq = fs / 2
+        bb, aa = _b(4, [0.5/nyq, min(40/nyq, 0.99)], btype='band')
+        seg_f = _f(bb, aa, seg)
+        thresh = np.percentile(np.abs(seg_f), 85)
+        peaks, _ = find_peaks(seg_f, height=thresh, distance=int(fs*0.4))
+        rate = len(peaks) / 60.0 * 60
+        return 35 < rate < 160
+
+    ecg_channels = []
+    for ch in ch_names:
+        if ch.startswith("EEG") or ch == "EDF Annotations":
+            continue
+        if _is_ecg_candidate(data[ch_idx[ch]], sfreq):
+            ecg_channels.append(ch)
+
+    # Bandpass-Filter für alle ECG-Kandidaten
     ecg_filtered = {}
     nyq = sfreq / 2
     b, a = butter(4, [0.5 / nyq, min(40.0 / nyq, 0.99)], btype="band")
     for ch in ecg_channels:
         idx = ch_idx[ch]
         sig = data[idx].copy().astype(np.float64)
-        sig -= sig.mean()                     # DC-Offset entfernen
-        sig = filtfilt(b, a, sig)             # Bandpass auf gesamtem Signal
-        ecg_filtered[ch] = sig               # in Volt, nach Filter
+        sig -= sig.mean()
+        sig = filtfilt(b, a, sig)
+        ecg_filtered[ch] = sig
 
     # Privacy
     with open(path, "rb") as f:
@@ -348,9 +377,9 @@ with tab_ecg:
         ecg_ch = col_ch.selectbox("Kanal", ecg_channels, index=0)
         sensitivity_mv = col_sens.select_slider(
             "Sensitivität (±mV Anzeigebereich)",
-            options=[0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0],
-            value=5.0,
-            help="Entspricht mV/Division auf EKG-Papier. Standard: ±5 mV (10 mV/cm)"
+            options=[0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0],
+            value=1.0,
+            help="±1 mV = Standard-EKG (10 mm/mV). Anpassen falls Signal abgeschnitten."
         )
         lp_options = {"Kein Tiefpass (Rohdaten)": None, "25 Hz": 25, "15 Hz": 15, "10 Hz": 10}
         lp_label = col_lp.selectbox("Tiefpass-Filter", list(lp_options.keys()), index=1,
