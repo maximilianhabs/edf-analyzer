@@ -457,12 +457,22 @@ with tab_ecg:
             sig_f = filtfilt(b, a, sig)
             fs = _raw.info["sfreq"]
 
-            # Adaptive Threshold: 70. Perzentil der positiven Werte
-            pos_thresh = np.percentile(sig_f[sig_f > 0], 70) if np.any(sig_f > 0) else 0.0001
-            min_dist = int(fs * 0.35)   # min. 350 ms zwischen Peaks (max ~170 bpm)
-            peaks, props = _fp(sig_f, height=pos_thresh, distance=min_dist)
+            # ── Robuste R-Peak-Erkennung auf Absolutbetrag ──────────────────
+            # Strategie: |Signal| → nur die dominanten Spitzen zählen,
+            # egal ob die Ableitung positiv oder negativ gepoolt ist.
+            # Schwelle = 50 % des 98. Perzentils des |Signals|
+            # → kleine Bumps (<50 % des typischen R-Peaks) werden ignoriert.
+            abs_sig = np.abs(sig_f)
+            peak_ref = np.percentile(abs_sig, 98)    # typische R-Peak-Höhe
+            threshold = peak_ref * 0.50              # 50 % davon als Trigger
+            min_dist = int(fs * 0.35)                # Refraktärzeit 350 ms → max ~170 bpm
 
-            # RR-Intervalle in ms, Plausibilitätsfilter
+            peaks, _ = _fp(abs_sig, height=threshold, distance=min_dist)
+
+            # Polarität: war der ursprüngliche Peak positiv oder negativ?
+            polarities = np.sign(sig_f[peaks])
+
+            # RR-Intervalle + Plausibilitätsfilter (300–2000 ms)
             rr = np.diff(peaks) / fs * 1000
             valid = (rr > 300) & (rr < 2000)
             rr_valid = rr[valid]
@@ -471,9 +481,11 @@ with tab_ecg:
             return {
                 "peaks": peaks,
                 "peaks_valid": peaks_valid,
+                "polarities": polarities,
                 "rr_ms": rr_valid,
                 "times": peaks[:-1][valid] / fs,
                 "fs": fs,
+                "threshold_mv": threshold * 1000,    # für Anzeige
             }
 
         rr_data = compute_rr(edf_path, ecg_ch)
@@ -534,23 +546,35 @@ with tab_ecg:
                 )
                 st.plotly_chart(fig_poin, use_container_width=True)
 
-            # R-Peak-Overlay in der aktuellen Epoche einblenden
-            r_in_epoch = rr_data["peaks"][(rr_data["peaks"] >= i_s_ecg) &
-                                          (rr_data["peaks"] < i_e_ecg)]
+            # R-Peak-Overlay in der aktuellen Epoche
+            all_peaks = rr_data["peaks"]
+            all_pols  = rr_data["polarities"]
+            mask = (all_peaks >= i_s_ecg) & (all_peaks < i_e_ecg)
+            r_in_epoch = all_peaks[mask]
+            r_pols     = all_pols[mask]
+
+            st.markdown(
+                f"**Epoche mit R-Peak-Markierung** — "
+                f"Triggerschwelle: **±{rr_data['threshold_mv']:.2f} mV** "
+                f"(50 % des 98. Perzentils des |Signals|)"
+            )
             if len(r_in_epoch) > 0:
                 r_t = r_in_epoch / sfreq
-                r_v = ecg_filtered_ep = edf["ecg_filtered"][ecg_ch][r_in_epoch] * 1000
+                r_v = edf["ecg_filtered"][ecg_ch][r_in_epoch] * 1000
                 r_v_centered = r_v - np.median(sig_mv)
-                # Update fig_ecg mit R-Peak-Markierung (neuer Plot mit Peaks)
+                # Dreieck oben bei positiven Peaks, unten bei negativen
+                symbols = ["triangle-up" if p > 0 else "triangle-down" for p in r_pols]
+                colors  = ["#27ae60" if p > 0 else "#e67e22" for p in r_pols]
                 fig_ecg_rr = go.Figure(fig_ecg)
                 fig_ecg_rr.add_trace(go.Scatter(
                     x=r_t, y=r_v_centered, mode="markers", name="R-Peaks",
-                    marker=dict(symbol="triangle-up", size=10,
-                                color="#27ae60", line=dict(width=1, color="#145a32")),
-                    hovertemplate="R-Peak t=%{x:.3f}s<extra></extra>",
+                    marker=dict(symbol=symbols, size=11, color=colors,
+                                line=dict(width=1, color="#333")),
+                    hovertemplate="R-Peak t=%{x:.3f}s  %{y:.3f} mV<extra></extra>",
                 ))
-                st.markdown("**Epoche mit R-Peak-Markierung**")
                 st.plotly_chart(fig_ecg_rr, use_container_width=True)
+            else:
+                st.info("Keine R-Peaks in dieser Epoche erkannt.")
 
             with st.expander("RR-Tabelle (alle Schläge)"):
                 df_rr = pd.DataFrame({
