@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# EDF-Dateien — enthalten Patientendaten, NIEMALS committen
+data/
+*.edf
+*.EDF
+*.bdf
+*.BDF
+
+# Outputs — lokal generierte Reports
+reports/output/
+*.pdf
+*.csv
+
+# Umgebung
+.env
+.env.local
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

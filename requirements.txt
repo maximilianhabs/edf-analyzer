@@ -1,0 +1,9 @@
+mne>=1.8.0
+neurokit2>=0.2.0
+scipy>=1.11.0
+numpy>=1.24.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+plotly>=5.18.0
+streamlit>=1.35.0
+pyedflib>=0.1.28
