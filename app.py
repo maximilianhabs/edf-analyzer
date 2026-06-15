@@ -138,18 +138,33 @@ def get_bipolar_epoch(d, eeg_map, pairs, i_s, i_e):
 
 
 def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
-    n = len(derivs)
+    """EEG-Plot mit Kettenspacern zwischen Gruppen."""
+    # Kettenstruktur analysieren: Gruppenübergänge bestimmen
+    GAP = spacing * 1.2   # Leerraum zwischen Ketten (größer als normaler Spurabstand)
+
+    # Offsets vorberechnen: von unten nach oben, Spacer an Kettengrenzen
+    offsets = []
+    y = 0.0
+    prev_chain = derivs[-1][2]
+    for label, seg, chain, color in reversed(derivs):
+        if chain != prev_chain:
+            y += GAP           # Kettenspacer
+        offsets.insert(0, y)
+        y += spacing
+        prev_chain = chain
+    total_height = y
+
     seen = set()
     fig = go.Figure()
 
     for idx, (label, seg, chain, color) in enumerate(derivs):
-        offset = (n - 1 - idx) * spacing
+        offset = offsets[idx]
         show_leg = chain not in seen; seen.add(chain)
         if seg is not None:
             fig.add_trace(go.Scatter(
                 x=t, y=seg + offset, mode="lines",
                 name=chain, legendgroup=chain, showlegend=show_leg,
-                line=dict(width=0.85, color=color),
+                line=dict(width=0.9, color=color),
                 hovertemplate=f"<b>{label}</b>: %{{customdata:.1f}} µV<extra></extra>",
                 customdata=seg,
             ))
@@ -160,12 +175,12 @@ def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
                 showlegend=False, hoverinfo="skip",
             ))
 
-    # Kettentrennlinien
+    # Trennlinie zwischen Ketten (mittig im Spacer)
     prev_chain = derivs[0][2]
     for i, (_, _, chain, _) in enumerate(derivs[1:], 1):
         if chain != prev_chain:
-            sep_y = (n - i) * spacing - spacing * 0.3
-            fig.add_hline(y=sep_y, line_dash="dot", line_color="#ddd", line_width=1)
+            sep_y = (offsets[i - 1] + offsets[i]) / 2
+            fig.add_hline(y=sep_y, line_dash="dot", line_color="#cccccc", line_width=1)
         prev_chain = chain
 
     # Annotations
@@ -180,27 +195,40 @@ def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
         xaxis=dict(title="Zeit (s)", range=[t[0], t[-1]],
                    showgrid=True, gridcolor="#ebebeb", dtick=1),
         yaxis=dict(
-            tickvals=[(n - 1 - i) * spacing for i in range(n)],
+            range=[-spacing * 0.8, total_height + spacing * 0.3],
+            tickvals=offsets,
             ticktext=[lbl for lbl, _, _, _ in derivs],
             showgrid=False, tickfont=dict(size=10),
         ),
-        height=max(480, n * 50),
+        height=max(500, int(total_height / spacing) * 42 + 80),
         margin=dict(t=8, b=48, l=120, r=8),
-        legend=dict(orientation="h", y=-0.07, x=0, font=dict(size=11)),
+        legend=dict(orientation="h", y=-0.06, x=0, font=dict(size=11)),
         plot_bgcolor="#f9f9f9",
     )
     return fig
 
 
-def ecg_figure(t, sig_mv, t_s, t_e, channel_name):
-    # Auto-Scaling: 1. und 99. Perzentil für y-Achse
-    p1, p99 = np.percentile(sig_mv, 1), np.percentile(sig_mv, 99)
-    margin = (p99 - p1) * 0.3
-    y_min, y_max = p1 - margin, p99 + margin
+def ecg_figure(t, sig_mv, sensitivity_mv, lp_hz=None):
+    """EKG-Plot. sensitivity_mv = sichtbarer ±-Bereich der y-Achse in mV."""
+    sig_plot = sig_mv.copy()
+
+    # Optionaler Tiefpass für glattere Darstellung
+    if lp_hz is not None:
+        from scipy.signal import butter, filtfilt
+        sfreq = 1.0 / (t[1] - t[0])
+        nyq = sfreq / 2
+        b, a = butter(4, min(lp_hz / nyq, 0.98), btype="low")
+        sig_plot = filtfilt(b, a, sig_plot)
+
+    # Baseline: Median des Segments als Nulllinie
+    baseline = np.median(sig_plot)
+    sig_centered = sig_plot - baseline
+
+    y_min, y_max = -sensitivity_mv, sensitivity_mv
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=t, y=sig_mv, mode="lines",
+        x=t, y=sig_centered, mode="lines",
         line=dict(color="#c0392b", width=1.2),
         hovertemplate="%{y:.3f} mV<extra></extra>",
     ))
@@ -212,10 +240,10 @@ def ecg_figure(t, sig_mv, t_s, t_e, channel_name):
         ),
         yaxis=dict(
             title="Amplitude (mV)", range=[y_min, y_max],
-            showgrid=True, gridcolor="#f5c6c6", gridwidth=0.8,
-            zeroline=True, zerolinecolor="#c0392b", zerolinewidth=0.8,
+            showgrid=True, gridcolor="#f5c6c6", gridwidth=0.8, dtick=sensitivity_mv / 4,
+            zeroline=True, zerolinecolor="#999999", zerolinewidth=0.8,
         ),
-        height=400,
+        height=420,
         margin=dict(t=8, b=48, l=70, r=8),
         plot_bgcolor="#fff8f8",
         showlegend=False,
@@ -315,7 +343,20 @@ with tab_ecg:
     if not ecg_channels:
         st.warning("Kein EKG-Kanal gefunden.")
     else:
-        ecg_ch = st.selectbox("Kanal", ecg_channels, index=0)
+        # Steuerelemente
+        col_ch, col_sens, col_lp = st.columns([2, 2, 2])
+        ecg_ch = col_ch.selectbox("Kanal", ecg_channels, index=0)
+        sensitivity_mv = col_sens.select_slider(
+            "Sensitivität (±mV Anzeigebereich)",
+            options=[0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0],
+            value=5.0,
+            help="Entspricht mV/Division auf EKG-Papier. Standard: ±5 mV (10 mV/cm)"
+        )
+        lp_options = {"Kein Tiefpass (Rohdaten)": None, "25 Hz": 25, "15 Hz": 15, "10 Hz": 10}
+        lp_label = col_lp.selectbox("Tiefpass-Filter", list(lp_options.keys()), index=1,
+                                     help="Glättet die Kurve — kein Einfluss auf Herzrhythmus")
+        lp_hz = lp_options[lp_label]
+
         ep_ecg = epoch_nav("ep_ecg", "EKG")
         t_s_ecg = ep_ecg * EPOCH_SEC
         i_s_ecg = int(t_s_ecg * sfreq)
@@ -325,15 +366,19 @@ with tab_ecg:
         sig = edf["ecg_filtered"][ecg_ch][i_s_ecg:i_e_ecg]
         sig_mv = sig * 1000   # V → mV
 
-        fig_ecg = ecg_figure(t_ecg, sig_mv, t_s_ecg, t_s_ecg + EPOCH_SEC, ecg_ch)
+        fig_ecg = ecg_figure(t_ecg, sig_mv, sensitivity_mv, lp_hz)
         st.plotly_chart(fig_ecg, use_container_width=True)
 
-        pp = sig_mv.max() - sig_mv.min()
-        p5, p95 = np.percentile(sig_mv, 5), np.percentile(sig_mv, 95)
+        # Signal-Info
+        sig_centered = sig_mv - np.median(sig_mv)
+        pp = sig_centered.max() - sig_centered.min()
+        rms = np.sqrt(np.mean(sig_centered**2))
         st.caption(
-            f"Kanal: **{ecg_ch}** | peak-peak: **{pp:.2f} mV** | "
-            f"5.–95. Perz.: {p5:.2f} – {p95:.2f} mV | "
-            f"Filter: Bandpass 0.5–40 Hz (auf Gesamtsignal)"
+            f"Kanal: **{ecg_ch}** | "
+            f"peak-peak: **{pp:.2f} mV** | "
+            f"RMS: {rms:.2f} mV | "
+            f"Vorfilter: Bandpass 0.5–40 Hz | "
+            f"Anzeige: ±{sensitivity_mv} mV"
         )
 
 
