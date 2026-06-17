@@ -1,0 +1,140 @@
+"""HRV-Frequenzdomänen-Analyse: Welch (FFT) und Burg-Methode (Maximum Entropy)."""
+
+import numpy as np
+from scipy.signal import welch
+from scipy.interpolate import CubicSpline
+
+# Standard-Frequenzbänder für Kurzzeit-HRV (Task Force ESC/NASPE 1996)
+VLF_BAND = (0.0033, 0.04)
+LF_BAND  = (0.04, 0.15)
+HF_BAND  = (0.15, 0.4)
+
+
+def resample_rr(rr_ms: np.ndarray, t_s: np.ndarray, fs_interp: float = 4.0):
+    """
+    Interpoliert die unregelmäßig abgetastete RR-Zeitreihe auf ein
+    gleichmäßiges Zeitraster (kubischer Spline) — Voraussetzung für FFT/Burg.
+    """
+    t_even = np.arange(t_s[0], t_s[-1], 1.0 / fs_interp)
+    cs = CubicSpline(t_s, rr_ms)
+    rr_even = cs(t_even)
+    rr_even -= rr_even.mean()
+    return rr_even, t_even
+
+
+def psd_welch(rr_even: np.ndarray, fs_interp: float = 4.0):
+    """FFT-basierte Power-Spektraldichte via Welch-Methode."""
+    nperseg = min(len(rr_even), 256)
+    freqs, psd = welch(rr_even, fs=fs_interp, nperseg=nperseg, noverlap=nperseg // 2)
+    return freqs, psd
+
+
+def burg_ar(x: np.ndarray, order: int):
+    """
+    Burg-Algorithmus: schätzt AR-Modellkoeffizienten direkt aus den Daten,
+    ohne Fensterung — daher hohe spektrale Auflösung bei kurzen Segmenten
+    (Grundlage der Maximum-Entropy-Spektralschätzung).
+    """
+    x = np.asarray(x, dtype=np.float64)
+    N = len(x)
+    f = x.copy()
+    b = x.copy()
+    a = np.zeros(order + 1)
+    a[0] = 1.0
+    err = np.sum(x ** 2)
+    for m in range(1, order + 1):
+        fm = f[m:N]
+        bm = b[m - 1:N - 1]
+        den = np.dot(fm, fm) + np.dot(bm, bm)
+        k = 0.0 if den == 0 else -2.0 * np.dot(fm, bm) / den
+        a_prev = a.copy()
+        for i in range(1, m):
+            a[i] = a_prev[i] + k * a_prev[m - i]
+        a[m] = k
+        f[m:N] = fm + k * bm
+        b[m - 1:N - 1] = bm + k * fm
+        err *= (1 - k ** 2)
+    return a, err / N
+
+
+def psd_burg(rr_even: np.ndarray, fs_interp: float = 4.0, order: int = 16, n_freq: int = 512):
+    """Maximum-Entropy-PSD über AR-Modell (Burg-Koeffizienten)."""
+    order = min(order, len(rr_even) // 3)
+    a, p_final = burg_ar(rr_even, order)
+    freqs = np.linspace(0.001, fs_interp / 2, n_freq)
+    k_arr = np.arange(order + 1)
+    psd = np.empty(n_freq)
+    for i, fr in enumerate(freqs):
+        z = np.exp(-2j * np.pi * fr / fs_interp * k_arr)
+        A = np.sum(a * z)
+        psd[i] = p_final / (np.abs(A) ** 2)
+    return freqs, psd
+
+
+def band_power(freqs: np.ndarray, psd: np.ndarray, band: tuple) -> float:
+    """Integriert die PSD über ein Frequenzband (Trapezregel) → Power in ms²."""
+    mask = (freqs >= band[0]) & (freqs < band[1])
+    if mask.sum() < 2:
+        return 0.0
+    return float(np.trapz(psd[mask], freqs[mask]))
+
+
+def band_peak(freqs: np.ndarray, psd: np.ndarray, band: tuple):
+    """
+    Gibt Gipfelfrequenz [Hz] und zugehörige PSD [ms²/Hz] im Band zurück.
+    Rückgabe: (peak_freq_hz, peak_psd) oder (nan, nan) wenn zu wenige Punkte.
+    """
+    mask = (freqs >= band[0]) & (freqs < band[1])
+    if mask.sum() < 2:
+        return float("nan"), float("nan")
+    idx = int(np.argmax(psd[mask]))
+    peak_freq = float(freqs[mask][idx])
+    peak_psd  = float(psd[mask][idx])
+    return peak_freq, peak_psd
+
+
+def compute_frequency_domain(rr_ms: np.ndarray, t_s: np.ndarray, method: str = "welch",
+                              fs_interp: float = 4.0, burg_order: int = 16) -> dict:
+    """
+    Vollständige Frequenzdomänen-Analyse einer RR-Zeitreihe.
+
+    method: "welch" (FFT) oder "burg" (Maximum Entropy Method)
+
+    Neue Parameter (NeuroFax-analog):
+      lf_peak_freq   Hz  — Gipfelfrequenz im LF-Band (Mayer-Wellen ~0.1 Hz)
+      lf_peak_psd    ms²/Hz — PSD-Amplitude am LF-Gipfel
+      hf_peak_freq   Hz  — Gipfelfrequenz im HF-Band = respiratorische RSA
+      hf_peak_psd    ms²/Hz — PSD-Amplitude am HF-Gipfel
+      hf_resp_rate   /min — Atemfrequenzschätzung aus HF-Gipfel (hf_peak_freq × 60)
+    """
+    rr_even, t_even = resample_rr(rr_ms, t_s, fs_interp)
+
+    if method == "burg":
+        freqs, psd = psd_burg(rr_even, fs_interp, order=burg_order)
+    else:
+        freqs, psd = psd_welch(rr_even, fs_interp)
+
+    vlf = band_power(freqs, psd, VLF_BAND)
+    lf  = band_power(freqs, psd, LF_BAND)
+    hf  = band_power(freqs, psd, HF_BAND)
+    total = vlf + lf + hf
+    lf_hf_ratio = lf / hf if hf > 0 else float("nan")
+
+    lf_peak_freq, lf_peak_psd = band_peak(freqs, psd, LF_BAND)
+    hf_peak_freq, hf_peak_psd = band_peak(freqs, psd, HF_BAND)
+    hf_resp_rate = hf_peak_freq * 60.0 if hf_peak_freq == hf_peak_freq else float("nan")
+
+    return {
+        "freqs": freqs, "psd": psd, "method": method,
+        "vlf_power": vlf, "lf_power": lf, "hf_power": hf,
+        "total_power": total,
+        "lf_norm": 100 * lf / (lf + hf) if (lf + hf) > 0 else float("nan"),
+        "hf_norm": 100 * hf / (lf + hf) if (lf + hf) > 0 else float("nan"),
+        "lf_hf_ratio": lf_hf_ratio,
+        # Peak-Frequenzen (NeuroFax-analog: LF/NF Hz, Spitze)
+        "lf_peak_freq": lf_peak_freq,
+        "lf_peak_psd":  lf_peak_psd,
+        "hf_peak_freq": hf_peak_freq,
+        "hf_peak_psd":  hf_peak_psd,
+        "hf_resp_rate": hf_resp_rate,
+    }

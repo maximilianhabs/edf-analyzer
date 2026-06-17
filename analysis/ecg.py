@@ -21,16 +21,42 @@ def preprocess_ecg(signal: np.ndarray, sfreq: float) -> np.ndarray:
 
 
 def detect_r_peaks(signal: np.ndarray, sfreq: float) -> np.ndarray:
-    """Detect R-peaks using scipy find_peaks with adaptive threshold. Returns sample indices."""
-    from scipy.signal import find_peaks
+    """
+    Pan-Tompkins QRS-Detektor (vereinfacht): Bandpass 5-15 Hz → Differentiation
+    → Squaring → Moving-Window-Integration → adaptive Threshold.
+    Robuster gegen T-Wellen und Artefakte als einfaches find_peaks.
+    """
+    from scipy.signal import butter, filtfilt, find_peaks
 
-    # Minimum distance: 250ms (max ~240 bpm)
-    min_distance = int(sfreq * 0.25)
-    # Adaptive threshold: 60% of signal range
-    threshold = np.percentile(signal, 95) * 0.5
+    nyq = sfreq / 2
 
-    peaks, _ = find_peaks(signal, distance=min_distance, height=threshold)
-    return peaks
+    # 1) Bandpass 5–15 Hz hebt QRS-Komplex hervor, dämpft T-Wellen und Baseline
+    b, a = butter(2, [5 / nyq, 15 / nyq], btype="band")
+    filtered = filtfilt(b, a, signal)
+
+    # 2) Differentiation (betont Flanken)
+    diff = np.diff(filtered, prepend=filtered[0])
+
+    # 3) Squaring (alle positiv, nichtlinear verstärkt)
+    squared = diff ** 2
+
+    # 4) Moving-Window-Integration (150 ms Fenster)
+    win = max(1, int(sfreq * 0.150))
+    integrated = np.convolve(squared, np.ones(win) / win, mode="same")
+
+    # 5) Adaptive Threshold + Mindestabstand 300 ms (max ~200 bpm)
+    threshold = np.percentile(integrated, 98) * 0.25
+    min_dist = int(sfreq * 0.300)
+    candidates, _ = find_peaks(integrated, distance=min_dist, height=threshold)
+
+    # 6) Rückschieben: tatsächlicher R-Peak im Originalsignal (±40 ms)
+    window = int(sfreq * 0.040)
+    refined = []
+    for p in candidates:
+        lo = max(0, p - window)
+        hi = min(len(signal) - 1, p + window)
+        refined.append(lo + int(np.argmax(signal[lo : hi + 1])))
+    return np.array(refined, dtype=int)
 
 
 def compute_rr_intervals(r_peaks: np.ndarray, sfreq: float) -> np.ndarray:
