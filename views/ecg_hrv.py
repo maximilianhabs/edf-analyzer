@@ -33,9 +33,20 @@ def compute_rr(path, channel):
     fs = _raw.info["sfreq"]
 
     abs_sig = np.abs(sig_f)
-    peak_ref = np.percentile(abs_sig, 98)
-    threshold = peak_ref * 0.50
     min_dist = int(fs * 0.35)
+
+    # Adaptive threshold: 60th-percentile first pass, then median of found peaks
+    # (robust against large artifacts that would inflate a 98th-percentile threshold)
+    _initial_thresh = np.percentile(abs_sig, 60)
+    _init_peaks, _ = _fp(abs_sig, height=_initial_thresh, distance=min_dist)
+    if len(_init_peaks) >= 10:
+        _heights = abs_sig[_init_peaks]
+        _n90 = max(1, int(len(_heights) * 0.90))
+        peak_ref = np.median(np.sort(_heights)[:_n90])
+        threshold = peak_ref * 0.55
+    else:
+        peak_ref = np.percentile(abs_sig, 85)
+        threshold = peak_ref * 0.50
 
     peaks, _ = _fp(abs_sig, height=threshold, distance=min_dist)
     polarities = np.sign(sig_f[peaks])
@@ -94,7 +105,7 @@ def compute_rr(path, channel):
         "rr_ms": rr_clean, "rr_ms_raw": rr_stage1,
         "times": peaks_clean / fs, "times_raw": peaks_s1 / fs,
         "removed_mask": ~final_mask, "fs": fs,
-        "threshold_mv": threshold * 1000,
+        "threshold_mv": threshold * 1000, "peak_ref_mv": peak_ref * 1000,
         "n_peaks_total": len(peaks), "n_removed": n_removed,
     }
 
@@ -237,7 +248,7 @@ def render():
                                        line_width=0)
                 _fig_bal.add_vline(x=0, line_color="#888", line_width=1, line_dash="dot")
                 _fig_bal.add_trace(go.Scatter(
-                    x=[_balance["index"]], y=[0], mode="markers+text",
+                    x=[max(-97, min(97, _balance["index"]))], y=[0], mode="markers+text",
                     marker=dict(symbol="diamond", size=20, color="#2c3e50",
                                 line=dict(width=2, color="white")),
                     text=[f"{_balance['index']:+.0f}"], textposition="top center",
@@ -382,23 +393,22 @@ def render():
                         zones = [(0, cls["scale_max"], "normal")]
                     else:
                         zones = [(0, cls["scale_max"], "info")]
+                elif key == "heart_rate":
+                    zones = [
+                        (0,    40,   "pathologisch"),
+                        (40,   60,   "grenzwertig"),
+                        (60,  100,   "normal"),
+                        (100, 140,   "grenzwertig"),
+                        (140, cls["scale_max"], "pathologisch"),
+                    ]
                 elif key in ("lf_norm", "hf_norm"):
                     ref_lo = cls["ref_lo"] or 0
                     ref_hi = cls["ref_hi"] or cls["scale_max"]
-                    if key == "heart_rate":
-                        zones = [
-                            (0,    40,   "pathologisch"),
-                            (40,   60,   "grenzwertig"),
-                            (60,  100,   "normal"),
-                            (100, 140,   "grenzwertig"),
-                            (140, cls["scale_max"], "pathologisch"),
-                        ]
-                    else:
-                        zones = [
-                            (0,       ref_lo,           "grenzwertig"),
-                            (ref_lo,  ref_hi,            "normal"),
-                            (ref_hi,  cls["scale_max"],  "grenzwertig"),
-                        ]
+                    zones = [
+                        (0,       ref_lo,           "grenzwertig"),
+                        (ref_lo,  ref_hi,            "normal"),
+                        (ref_hi,  cls["scale_max"],  "grenzwertig"),
+                    ]
                 elif key == "hf_resp_rate":
                     zones = [
                         (0,   10,  "grenzwertig"),
@@ -571,7 +581,11 @@ def render():
         ecg_channels = [manual_ch]
         st.info(f"Analysiere Kanal **{manual_ch}** — bitte EKG-Spur visuell prüfen.")
 
-    col_ch, col_sens, col_lp = st.columns([2, 2, 2])
+    _SENS_OPTIONS = [0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0]
+    if "ecg_sens_idx" not in st.session_state:
+        st.session_state.ecg_sens_idx = 3  # default: 1.0 mV
+
+    col_ch, col_lp = st.columns([3, 2])
     ecg_ch = col_ch.selectbox(
         "EKG-Kanal",
         ecg_channels + [ch for ch in all_non_eeg if ch not in ecg_channels],
@@ -590,18 +604,123 @@ def render():
         bb2, aa2 = _b2(4, [0.5/nyq2, min(40/nyq2, 0.99)], btype="band")
         edf["ecg_filtered"][ecg_ch] = _f2(bb2, aa2, sig_raw2)
 
-    sensitivity_mv = col_sens.select_slider(
-        "Sensitivität (±mV Anzeigebereich)",
-        options=[0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0],
-        value=1.0,
-        help="±1 mV = Standard-EKG (10 mm/mV). Anpassen falls Signal abgeschnitten."
-    )
-    lp_options = {"Kein Tiefpass (Rohdaten)": None, "25 Hz": 25, "15 Hz": 15, "10 Hz": 10}
+    lp_options = {"Kein Tiefpass": None, "25 Hz": 25, "15 Hz": 15, "10 Hz": 10}
     lp_label = col_lp.selectbox("Tiefpass-Filter", list(lp_options.keys()), index=1,
                                  help="Glättet die Kurve — kein Einfluss auf Herzrhythmus")
     lp_hz = lp_options[lp_label]
 
-    ep_ecg   = epoch_nav(edf, "ep_ecg", "EKG")
+    # ── Nav-CSS (einmalig pro Render) ─────────────────────────────────────────
+    st.markdown("""
+<style>
+/* EKG-Navigationsleiste */
+[data-testid="baseButton-secondary"] {
+    min-height: 46px !important;
+    font-weight: 700 !important;
+    background-color: #eef2ff !important;
+    color: #1a3a6b !important;
+    border: 1px solid #c3d0f0 !important;
+    border-radius: 8px !important;
+}
+[data-testid="baseButton-secondary"] p {
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+    text-align: center !important;
+    width: 100% !important;
+}
+[data-testid="baseButton-secondary"]:hover:not(:disabled) {
+    background-color: #dce8ff !important;
+    border-color: #8aa4e0 !important;
+    color: #0d2a5a !important;
+}
+[data-testid="baseButton-secondary"]:disabled {
+    background-color: #f5f7ff !important;
+    border-color: #e0e6f8 !important;
+}
+[data-testid="baseButton-secondary"]:disabled p {
+    color: #b0bedd !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+    # ── Wiederverwendbare Navigationsleiste ───────────────────────────────────
+    _n_eps_ecg = max(1, int(edf["duration_s"] // EPOCH_SEC))
+
+    def _ecg_nav_bar(loc: str, include_slider: bool = True):
+        """Epoch-Navigation + Sensitivitäts-Kontrolle. loc='top'|'bottom' für eindeutige Keys."""
+        _n  = _n_eps_ecg
+        _ep = min(st.session_state.get("ep_ecg", 0), _n - 1)
+        _si = st.session_state.ecg_sens_idx
+        _t0 = _ep * EPOCH_SEC
+        _t1 = _t0 + EPOCH_SEC
+        _pct = (_ep + 1) / _n * 100
+
+        # Einzeilige Column-Reihe — keine Verschachtelung, damit alle Buttons sichtbar sind
+        cf, cp, ci, cn, cl, csm, csv, csp = st.columns([1.6, 1.6, 9, 1.6, 1.6, 1.6, 3.2, 1.6])
+
+        with cf:
+            if st.button("⏮", key=f"en_first_{loc}", disabled=(_ep == 0),
+                         help="Erste Epoche", use_container_width=True):
+                st.session_state.ep_ecg = 0; st.rerun()
+        with cp:
+            if st.button("◀", key=f"en_prev_{loc}", disabled=(_ep == 0),
+                         help="−10 s", use_container_width=True):
+                st.session_state.ep_ecg = _ep - 1; st.rerun()
+        with ci:
+            st.markdown(
+                f"<div style='text-align:center;padding:10px 6px 8px;"
+                f"background:#eef2ff;border-radius:8px;border:1px solid #c3d0f0;line-height:1.4'>"
+                f"<span style='font-size:11px;color:#6b80b0;letter-spacing:.5px'>EPOCHE</span>"
+                f"&ensp;<b style='font-size:19px;color:#1a3a6b'>{_ep+1}</b>"
+                f"<span style='font-size:12px;color:#6b80b0'>&thinsp;/&thinsp;{_n}</span>"
+                f"&ensp;<span style='color:#c3d0f0;font-size:14px'>│</span>&ensp;"
+                f"<b style='font-size:13px;color:#2c3e50'>{_t0:.0f}&thinsp;s – {_t1:.0f}&thinsp;s</b>"
+                f"&ensp;<span style='color:#c3d0f0;font-size:14px'>│</span>&ensp;"
+                f"<span style='font-size:11px;color:#8899bb'>{_pct:.0f}% &middot; {edf['duration_s']/60:.1f}&thinsp;min</span>"
+                f"</div>", unsafe_allow_html=True,
+            )
+        with cn:
+            if st.button("▶", key=f"en_next_{loc}", disabled=(_ep >= _n - 1),
+                         help="+10 s", use_container_width=True):
+                st.session_state.ep_ecg = _ep + 1; st.rerun()
+        with cl:
+            if st.button("⏭", key=f"en_last_{loc}", disabled=(_ep >= _n - 1),
+                         help="Letzte Epoche", use_container_width=True):
+                st.session_state.ep_ecg = _n - 1; st.rerun()
+        with csm:
+            _prev_s = f"→ ±{_SENS_OPTIONS[max(0, _si-1)]:.3g} mV" if _si > 0 else ""
+            if st.button("−", key=f"en_sm_{loc}", disabled=(_si == 0),
+                         help=f"Ausschlag vergrößern {_prev_s}",
+                         use_container_width=True):
+                st.session_state.ecg_sens_idx -= 1; st.rerun()
+        with csv:
+            st.markdown(
+                f"<div style='text-align:center;padding:7px 4px 6px;"
+                f"background:#f0faf0;border-radius:8px;border:1px solid #a8d5a8;line-height:1.4'>"
+                f"<span style='font-size:10px;color:#4a7a4a;letter-spacing:.5px'>SENS.</span><br>"
+                f"<b style='font-size:15px;color:#1a5c1a'>±{_SENS_OPTIONS[_si]:.3g}&thinsp;mV</b>"
+                f"</div>", unsafe_allow_html=True,
+            )
+        with csp:
+            _next_s = f"→ ±{_SENS_OPTIONS[min(len(_SENS_OPTIONS)-1, _si+1)]:.3g} mV" if _si < len(_SENS_OPTIONS)-1 else ""
+            if st.button("＋", key=f"en_sp_{loc}", disabled=(_si >= len(_SENS_OPTIONS) - 1),
+                         help=f"Ausschlag verkleinern {_next_s}",
+                         use_container_width=True):
+                st.session_state.ecg_sens_idx += 1; st.rerun()
+
+        if include_slider:
+            _new_ep = st.slider(
+                "Epoche direkt anspringen", 1, _n,
+                min(st.session_state.get("ep_ecg", 0), _n - 1) + 1,
+                key=f"ep_ecg_slider_{EPOCH_SEC}",
+                label_visibility="collapsed",
+            )
+            if _new_ep - 1 != _ep:
+                st.session_state.ep_ecg = _new_ep - 1; st.rerun()
+
+    _ecg_nav_bar("top")
+    sensitivity_mv = _SENS_OPTIONS[st.session_state.ecg_sens_idx]
+    ep_ecg = min(st.session_state.get("ep_ecg", 0), _n_eps_ecg - 1)
     t_s_ecg  = ep_ecg * EPOCH_SEC
     i_s_ecg  = int(t_s_ecg * sfreq)
     i_e_ecg  = int((t_s_ecg + EPOCH_SEC) * sfreq)
@@ -611,8 +730,7 @@ def render():
     sig_mv   = sig * 1000
 
     fig_ecg  = ecg_figure(t_ecg, sig_mv, sensitivity_mv, lp_hz)
-    _ecg_strip_slot = st.empty()  # wird nach R-Peak-Berechnung durch Version mit Dreiecken ersetzt
-    _ecg_strip_slot.plotly_chart(fig_ecg, use_container_width=True)
+    st.plotly_chart(fig_ecg, use_container_width=True)
 
     sig_centered = sig_mv - np.median(sig_mv)
     pp  = sig_centered.max() - sig_centered.min()
@@ -680,84 +798,109 @@ def render():
                                         method="burg", burg_order=BURG_ORDER_DEFAULT)
 
     # ── Steuerelemente (vor Tabs — beeinflussen Figure-Bau) ───────────────────
-    ctrl_c1, ctrl_c2 = st.columns([3, 3])
-    with ctrl_c1:
-        show_raw = st.toggle("Unbereinigte Rohdaten zusätzlich anzeigen", value=True)
-    with ctrl_c2:
-        freq_method = st.radio(
-            "Spektralmethode für HRV-Befund",
-            ["Welch (FFT)", "Burg (Maximum Entropy Method)"],
-            horizontal=True,
-            help="Welch: klassisch, robust. Burg/MEM: schärfere Peaks, kürzer stabil.",
-        )
+    freq_method = st.radio(
+        "Spektralmethode für HRV-Befund",
+        ["Welch (FFT)", "Burg (Maximum Entropy Method)"],
+        horizontal=True,
+        help="Welch: klassisch, robust. Burg/MEM: schärfere Peaks, kürzer stabil.",
+    )
     method_key = "burg" if "Burg" in freq_method else "welch"
     fd = fd_burg if method_key == "burg" else fd_welch
 
     # ── Figures vorab bauen ───────────────────────────────────────────────────
-    # Tachogram
-    fig_rr = go.Figure()
-    if show_raw:
-        fig_rr.add_trace(go.Scatter(
-            x=t_raw[~removed_mask], y=rr_raw[~removed_mask], mode="markers",
-            name="behalten", marker=dict(size=3, color="#bbb"),
-            hovertemplate="t=%{x:.1f}s  RR=%{y:.0f}ms (behalten)<extra></extra>",
-        ))
-        fig_rr.add_trace(go.Scatter(
-            x=t_raw[removed_mask], y=rr_raw[removed_mask], mode="markers",
-            name="entfernt (Ausreißer)", marker=dict(size=7, color="#c0392b", symbol="x"),
-            hovertemplate="t=%{x:.1f}s  RR=%{y:.0f}ms (entfernt)<extra></extra>",
-        ))
-    fig_rr.add_trace(go.Scatter(
+    # Tachogramm roh
+    fig_rr_raw = go.Figure()
+    fig_rr_raw.add_trace(go.Scatter(
+        x=t_raw[~removed_mask], y=rr_raw[~removed_mask], mode="markers",
+        name="behalten", marker=dict(size=3, color="#95a5a6"),
+        hovertemplate="t=%{x:.1f}s  RR=%{y:.0f}ms<extra></extra>",
+    ))
+    fig_rr_raw.add_trace(go.Scatter(
+        x=t_raw[removed_mask], y=rr_raw[removed_mask], mode="markers",
+        name="Ausreißer", marker=dict(size=7, color="#c0392b", symbol="x"),
+        hovertemplate="t=%{x:.1f}s  RR=%{y:.0f}ms (entfernt)<extra></extra>",
+    ))
+    fig_rr_raw.add_hline(y=mean_rr, line_dash="dot", line_color="#27ae60", line_width=1,
+                         annotation_text=f"∅ {mean_rr:.0f}ms", annotation_font_size=10)
+    if has_hv:
+        add_phase_bands(fig_rr_raw, phases, edf["duration_s"])
+    else:
+        for ann in edf["annotations"]:
+            fig_rr_raw.add_vline(x=ann["onset_s"], line_dash="dot", line_color="#e67e22", line_width=0.8)
+    y_lo_raw = max(0, min(mean_rr*0.5, rr_raw.min()*0.9))
+    y_hi_raw = max(mean_rr*1.8, rr_raw.max()*1.05)
+    fig_rr_raw.update_layout(
+        xaxis_title="Zeit (s)", yaxis_title="RR (ms)",
+        title=dict(text="Tachogramm — Rohdaten", font=dict(size=12), x=0.02),
+        yaxis=dict(range=[y_lo_raw, y_hi_raw]),
+        height=300, margin=dict(t=28, b=36, l=54, r=8),
+        plot_bgcolor="#f9f9f9",
+        legend=dict(orientation="h", y=1.18, x=0, font=dict(size=9)),
+    )
+
+    # Tachogramm bereinigt
+    fig_rr_clean = go.Figure()
+    fig_rr_clean.add_trace(go.Scatter(
         x=r_times, y=rr_ms, mode="lines+markers",
-        name="RR (bereinigt)", line=dict(color="#2980b9", width=1),
+        name="bereinigt", line=dict(color="#2980b9", width=1.2),
         marker=dict(size=3, color="#2980b9"),
         hovertemplate="t=%{x:.1f}s  RR=%{y:.0f}ms<extra></extra>",
     ))
-    fig_rr.add_hline(y=mean_rr, line_dash="dot", line_color="#27ae60", line_width=1,
-                     annotation_text=f"Median {mean_rr:.0f}ms", annotation_font_size=10)
+    fig_rr_clean.add_hline(y=mean_rr, line_dash="dot", line_color="#27ae60", line_width=1,
+                           annotation_text=f"∅ {mean_rr:.0f}ms", annotation_font_size=10)
     if has_hv:
-        add_phase_bands(fig_rr, phases, edf["duration_s"])
-    else:
-        for ann in edf["annotations"]:
-            fig_rr.add_vline(x=ann["onset_s"], line_dash="dot",
-                             line_color="#e67e22", line_width=0.8)
-    y_lo = max(0, min(mean_rr*0.5, rr_raw.min()*0.9)) if show_raw else max(0, mean_rr*0.5)
-    y_hi = max(mean_rr*1.8, rr_raw.max()*1.05) if show_raw else mean_rr*1.8
-    fig_rr.update_layout(
-        xaxis_title="Zeit (s)", yaxis_title="RR-Intervall (ms)",
-        yaxis=dict(range=[y_lo, y_hi]),
-        height=320, margin=dict(t=8, b=40, l=60, r=8),
+        add_phase_bands(fig_rr_clean, phases, edf["duration_s"])
+    fig_rr_clean.update_layout(
+        xaxis_title="Zeit (s)", yaxis_title="RR (ms)",
+        title=dict(text="Tachogramm — bereinigt", font=dict(size=12), x=0.02),
+        yaxis=dict(range=[max(0, mean_rr*0.5), mean_rr*1.8]),
+        height=300, margin=dict(t=28, b=36, l=54, r=8),
         plot_bgcolor="#f9f9f9",
-        legend=dict(orientation="h", y=1.12, x=0, font=dict(size=10)),
+        legend=dict(orientation="h", y=1.18, x=0, font=dict(size=9)),
     )
 
-    # Poincaré
-    fig_poin = go.Figure()
-    if show_raw and len(rr_raw) > 1:
+    # Poincaré roh
+    fig_poin_raw = go.Figure()
+    if len(rr_raw) > 1:
         raw_keep_pair = ~(removed_mask[:-1] | removed_mask[1:])
         raw_drop_pair = ~raw_keep_pair
-        fig_poin.add_trace(go.Scatter(
-            x=rr_raw[:-1][raw_drop_pair], y=rr_raw[1:][raw_drop_pair], mode="markers",
-            name="betrifft Ausreißer",
-            marker=dict(color="#c0392b", size=6, symbol="x", opacity=0.7),
-            hovertemplate="RR_n=%{x:.0f}ms  RR_n+1=%{y:.0f}ms<extra></extra>",
+        fig_poin_raw.add_trace(go.Scatter(
+            x=rr_raw[:-1][raw_keep_pair], y=rr_raw[1:][raw_keep_pair], mode="markers",
+            name="behalten", marker=dict(color="#95a5a6", size=4, opacity=0.55),
+            hovertemplate="RRn=%{x:.0f}  RRn+1=%{y:.0f}ms<extra></extra>",
         ))
-    fig_poin.add_trace(go.Scatter(
+        fig_poin_raw.add_trace(go.Scatter(
+            x=rr_raw[:-1][raw_drop_pair], y=rr_raw[1:][raw_drop_pair], mode="markers",
+            name="Ausreißer", marker=dict(color="#c0392b", size=6, symbol="x", opacity=0.7),
+            hovertemplate="RRn=%{x:.0f}  RRn+1=%{y:.0f}ms (entfernt)<extra></extra>",
+        ))
+    lim_raw = [max(0, rr_raw.min()-30), rr_raw.max()+30] if len(rr_raw) else [300, 1200]
+    fig_poin_raw.update_layout(
+        xaxis=dict(title="RRn (ms)", range=lim_raw),
+        yaxis=dict(title="RRn+1 (ms)", range=lim_raw),
+        title=dict(text="Poincaré — Rohdaten", font=dict(size=12), x=0.02),
+        height=300, margin=dict(t=28, b=36, l=54, r=8),
+        plot_bgcolor="#f9f9f9",
+        legend=dict(orientation="h", y=1.18, x=0, font=dict(size=9)),
+    )
+
+    # Poincaré bereinigt
+    fig_poin_clean = go.Figure()
+    fig_poin_clean.add_trace(go.Scatter(
         x=rr_ms[:-1], y=rr_ms[1:], mode="markers",
-        name="bereinigt", marker=dict(color="#8e44ad", size=4, opacity=0.55),
-        hovertemplate="RR_n=%{x:.0f}ms  RR_n+1=%{y:.0f}ms<extra></extra>",
+        name="bereinigt", marker=dict(color="#8e44ad", size=4, opacity=0.6),
+        hovertemplate="RRn=%{x:.0f}  RRn+1=%{y:.0f}ms<extra></extra>",
     ))
     p_lo = max(300, mean_rr * 0.55)
     p_hi = min(2000, mean_rr * 1.55)
-    lim  = [p_lo - 30, p_hi + 30]
-    if show_raw and len(rr_raw):
-        lim = [min(lim[0], rr_raw.min()-30), max(lim[1], rr_raw.max()+30)]
-    fig_poin.update_layout(
-        xaxis=dict(title="RR_n (ms)", range=lim),
-        yaxis=dict(title="RR_(n+1) (ms)", range=lim),
-        height=320, margin=dict(t=8, b=40, l=60, r=8),
+    lim_clean = [p_lo - 30, p_hi + 30]
+    fig_poin_clean.update_layout(
+        xaxis=dict(title="RRn (ms)", range=lim_clean),
+        yaxis=dict(title="RRn+1 (ms)", range=lim_clean),
+        title=dict(text="Poincaré — bereinigt", font=dict(size=12), x=0.02),
+        height=300, margin=dict(t=28, b=36, l=54, r=8),
         plot_bgcolor="#f9f9f9",
-        legend=dict(orientation="h", y=1.12, x=0, font=dict(size=10)),
+        legend=dict(orientation="h", y=1.18, x=0, font=dict(size=9)),
     )
 
     # R-Peak-Overlay
@@ -780,14 +923,6 @@ def render():
                         line=dict(width=1, color="#333")),
             hovertemplate="R-Peak t=%{x:.3f}s  %{y:.3f} mV<extra></extra>",
         ))
-        # Haupt-EKG-Streifen jetzt mit R-Peak-Dreiecken überschreiben
-        _ecg_strip_slot.plotly_chart(fig_ecg_rr, use_container_width=True)
-    _threshold_caption = st.empty()
-    if rr_data.get("threshold_mv"):
-        _threshold_caption.caption(
-            f"R-Peak-Erkennung — Triggerschwelle: **±{rr_data['threshold_mv']:.2f} mV** "
-            f"(50 % des 98. Perzentils des |Signals|)"
-        )
 
     # PSD-Figures
     fig_psd_welch_obj = render_psd_chart(fd_welch, "Welch (FFT)", "#2c3e50")
@@ -802,7 +937,7 @@ def render():
         fig_bal.add_vrect(x0=x0b, x1=x1b, fillcolor=cb, opacity=op, line_width=0)
     fig_bal.add_vline(x=0, line_color="#888", line_width=1, line_dash="dot")
     fig_bal.add_trace(go.Scatter(
-        x=[balance["index"]], y=[0], mode="markers+text",
+        x=[max(-97, min(97, balance["index"]))], y=[0], mode="markers+text",
         marker=dict(symbol="diamond", size=20, color="#2c3e50",
                     line=dict(width=2, color="white")),
         text=[f"{balance['index']:+.0f}"], textposition="top center",
@@ -863,7 +998,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
     # ── Tab 1: RR & Zeitdomäne ────────────────────────────────────────────────
     with tab_rr:
         _section("📈 RR & Zeitdomäne",
-                 "Tachogramm · Poincaré-Plot · SDNN / RMSSD / pNN50")
+                 "QRS-Erkennung · Zeitdomäne-Parameter · Tachogramm · Poincaré-Plot")
         if has_hv:
             hv_dur = ((phases["hvt_end"] or 0) - (phases["hvt_start"] or 0))
             st.info(
@@ -875,6 +1010,60 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                    if phases["has_photo"] else "")
             )
 
+        # ── QRS-Erkennung (R-Peak-Overlay) ──────────────────────────────────
+        st.markdown("**QRS-Erkennung — aktuelle Epoche mit erkannten R-Peaks**")
+        if fig_ecg_rr is not None:
+            st.plotly_chart(fig_ecg_rr, use_container_width=True)
+            thr_mv = rr_data.get("threshold_mv", 0)
+            ref_mv = rr_data.get("peak_ref_mv", 0)
+            st.caption(
+                f"▲ grün = R-Peak aufwärts · ▼ orange = R-Peak abwärts — "
+                f"Schwelle: **±{thr_mv:.2f} mV** (55 % des Median-Peak-Referenzwerts {ref_mv:.2f} mV)"
+            )
+        else:
+            st.info("ℹ️ Keine R-Peaks in dieser Epoche erkannt — andere Epoche wählen oder Kanal prüfen.")
+        _ecg_nav_bar("bottom", include_slider=False)
+
+        st.divider()
+
+        # ── Wesentliche Zeitdomäne-Parameter mit Farbkodierung ─────────────
+        st.markdown("**Wesentliche Zeitdomäne-Parameter (Gesamtaufnahme)**")
+        _zone_bg  = {"normal": "#eafaf1", "grenzwertig": "#fef9e7", "pathologisch": "#fdedec", "info": "#f4f6f7"}
+        _zone_brd = {"normal": "#27ae60", "grenzwertig": "#f39c12", "pathologisch": "#c0392b", "info": "#7f8c8d"}
+        _zone_txt = {"normal": "#1e8449", "grenzwertig": "#d68910", "pathologisch": "#a93226", "info": "#5d6d7e"}
+
+        def _metric_card(col, label, value_str, zone: str, ref_str: str):
+            bg  = _zone_bg.get(zone, "#f4f6f7")
+            brd = _zone_brd.get(zone, "#aaa")
+            txt = _zone_txt.get(zone, "#333")
+            col.markdown(
+                f"<div style='background:{bg};border:1.5px solid {brd};border-radius:10px;"
+                f"padding:10px 12px;text-align:center;min-height:80px'>"
+                f"<div style='font-size:10px;color:#888;font-weight:600;letter-spacing:.5px'>{label}</div>"
+                f"<div style='font-size:20px;font-weight:800;color:{txt};margin:3px 0'>{value_str}</div>"
+                f"<div style='font-size:10px;color:#999'>{ref_str}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        _hr_cls    = _classify("heart_rate", mean_hr,  patient_age, mean_hr)
+        _sdnn_cls  = _classify("sdnn",       sdnn,     patient_age, mean_hr)
+        _rmssd_cls = _classify("rmssd",      rmssd,    patient_age, mean_hr)
+        _pnn50_cls = _classify("pnn50",      pnn50,    patient_age, mean_hr, rmssd=rmssd)
+
+        _mc1, _mc2, _mc3, _mc4, _mc5 = st.columns(5)
+        _metric_card(_mc1, "HERZFREQUENZ",  f"{mean_hr:.1f} bpm",  _hr_cls["zone"],    "Norm: 60–100 bpm")
+        _metric_card(_mc2, "MITTL. RR",     f"{mean_rr:.0f} ms",   "info",             "600–1000 ms")
+        _sdnn_ref  = f">{int(_sdnn_cls.get('p5_threshold') or 40)} ms" if _sdnn_cls.get('p5_threshold') else ">40 ms"
+        _metric_card(_mc3, "SDNN",          f"{sdnn:.1f} ms",      _sdnn_cls["zone"],  f"Norm {_sdnn_ref}")
+        _rmssd_ref = f">{int(_rmssd_cls.get('p5_threshold') or 20)} ms" if _rmssd_cls.get('p5_threshold') else ">20 ms"
+        _metric_card(_mc4, "RMSSD",         f"{rmssd:.1f} ms",     _rmssd_cls["zone"], f"Norm {_rmssd_ref}")
+        _pnn50_ref = f"Erw. {_pnn50_cls.get('pnn50_expected', 0):.1f}%" if _pnn50_cls.get('pnn50_expected') else ">3%"
+        _metric_card(_mc5, "pNN50",         f"{pnn50:.1f} %",      _pnn50_cls["zone"], _pnn50_ref)
+
+        st.divider()
+
+        # ── Datenqualität ────────────────────────────────────────────────────
         with st.container(border=True):
             qc1, qc2 = st.columns([1, 3])
             with qc1:
@@ -912,22 +1101,19 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                 unsafe_allow_html=True,
             )
 
-        c1, c2 = st.columns(2)
-        c1.metric("Mittlere HR", f"{mean_hr:.1f} bpm")
-        c2.metric("Mittleres RR", f"{mean_rr:.0f} ms")
+        st.divider()
 
-        col_tach, col_poin = st.columns(2)
-        with col_tach:
-            st.markdown("**Tachogramm**" +
-                        ("  — Rohdaten + Ausreißer markiert" if show_raw else " — bereinigt"))
-            st.plotly_chart(fig_rr, use_container_width=True)
-        with col_poin:
-            st.markdown("**Poincaré-Plot**" +
-                        ("  — Rohdaten + Ausreißer markiert" if show_raw else " — bereinigt"))
-            st.plotly_chart(fig_poin, use_container_width=True)
-
-        if fig_ecg_rr is None:
-            st.info("Keine R-Peaks in dieser Epoche erkannt.")
+        # ── Tachogramm + Poincaré (je Rohdaten + bereinigt) ────────────────
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.plotly_chart(fig_rr_raw, use_container_width=True)
+        with col_b:
+            st.plotly_chart(fig_poin_raw, use_container_width=True)
+        col_c, col_d = st.columns(2)
+        with col_c:
+            st.plotly_chart(fig_rr_clean, use_container_width=True)
+        with col_d:
+            st.plotly_chart(fig_poin_clean, use_container_width=True)
 
     # ── Tab 2: Frequenzdomäne ─────────────────────────────────────────────────
     with tab_freq:
@@ -1162,7 +1348,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                         pct_removed=pct_removed, quality_label=qlabel,
                         balance_label=balance["label"], balance_index=balance["index"],
                         lab_rows=pdf_lab_rows, method_used=freq_method,
-                        fig_tachogram=fig_rr, fig_poincare=fig_poin,
+                        fig_tachogram=fig_rr_clean, fig_poincare=fig_poin_clean,
                         fig_psd_welch=fig_psd_welch_obj, fig_psd_burg=fig_psd_burg_obj,
                         fig_balance_gauge=fig_bal,
                     )

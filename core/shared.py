@@ -587,7 +587,9 @@ def ecg_figure(t, sig_mv, sensitivity_mv, lp_hz=None):
         sfreq = 1.0 / (t[1] - t[0])
         nyq = sfreq / 2
         b, a = butter(4, min(lp_hz / nyq, 0.98), btype="low")
-        sig_plot = filtfilt(b, a, sig_plot)
+        padlen = 3 * max(len(a), len(b))
+        if len(sig_plot) > padlen:
+            sig_plot = filtfilt(b, a, sig_plot)
 
     baseline = np.median(sig_plot)
     sig_centered = sig_plot - baseline
@@ -647,7 +649,7 @@ def inject_arrow_key_nav():
 
 
 def epoch_nav(edf, key, label="EEG", epoch_sec=None):
-    """Rendert Navigationszeile, gibt aktuellen Epochenindex zurück."""
+    """Rendert prominente Navigationszeile, gibt aktuellen Epochenindex zurück."""
     e_sec = epoch_sec or EPOCH_SEC
     n_eps = max(1, int(edf["duration_s"] // e_sec))
     if key not in st.session_state:
@@ -656,24 +658,50 @@ def epoch_nav(edf, key, label="EEG", epoch_sec=None):
     st.session_state[key] = ep
     t_s = ep * e_sec
     t_e = t_s + e_sec
+    pct = (ep + 1) / n_eps * 100
 
-    col_p, col_info, col_n = st.columns([1, 5, 1])
-    with col_p:
+    st.markdown("""
+<style>
+div[data-testid="stHorizontalBlock"]:has(> div > div > button[kind="secondary"]) button[kind="secondary"] {
+    min-height: 44px !important;
+    font-size: 17px !important;
+    font-weight: 700 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+    c_first, c_prev, c_info, c_next, c_last = st.columns([1, 1, 8, 1, 1])
+    with c_first:
+        if st.button("⏮", key=f"{key}_first", disabled=(ep == 0),
+                     help="Erste Epoche", use_container_width=True):
+            st.session_state[key] = 0
+            st.rerun()
+    with c_prev:
         if st.button("◀", key=f"{key}_prev", disabled=(ep == 0),
-                     use_container_width=True):
+                     help="Vorherige Epoche (−10 s)", use_container_width=True):
             st.session_state[key] -= 1
             st.rerun()
-    with col_info:
+    with c_info:
         st.markdown(
-            f"<div style='text-align:center;padding:5px 0;font-size:13px'>"
-            f"Epoche <b>{ep+1}</b>&nbsp;/&nbsp;{n_eps}"
-            f"&ensp;|&ensp;{t_s:.0f}s – {t_e:.0f}s"
-            f"&ensp;|&ensp;Gesamt: {edf['duration_s']/60:.1f} min"
+            f"<div style='text-align:center;padding:9px 0 6px;"
+            f"background:#f4f6f9;border-radius:8px;border:1px solid #d0d6de'>"
+            f"<span style='font-size:13px;color:#888'>Epoche</span>&ensp;"
+            f"<b style='font-size:18px;color:#2c3e50'>{ep+1}</b>"
+            f"<span style='font-size:13px;color:#888'>&nbsp;/&nbsp;{n_eps}</span>"
+            f"&ensp;<span style='color:#ccc'>|</span>&ensp;"
+            f"<b style='font-size:14px'>{t_s:.0f}s – {t_e:.0f}s</b>"
+            f"&ensp;<span style='color:#ccc'>|</span>&ensp;"
+            f"<span style='font-size:12px;color:#888'>{pct:.0f}% · {edf['duration_s']/60:.1f} min gesamt</span>"
             f"</div>", unsafe_allow_html=True)
-    with col_n:
+    with c_next:
         if st.button("▶", key=f"{key}_next", disabled=(ep >= n_eps - 1),
-                     use_container_width=True):
+                     help="Nächste Epoche (+10 s)", use_container_width=True):
             st.session_state[key] += 1
+            st.rerun()
+    with c_last:
+        if st.button("⏭", key=f"{key}_last", disabled=(ep >= n_eps - 1),
+                     help="Letzte Epoche", use_container_width=True):
+            st.session_state[key] = n_eps - 1
             st.rerun()
 
     new_ep = st.slider(f"Epoche auswählen ({label})", 1, n_eps, ep + 1,
