@@ -220,7 +220,9 @@ def load_and_prepare(path: str):
                 continue
 
             pp = (seg.max() - seg.min()) * 1000  # V → mV
-            if pp < 0.3 or pp > 50:
+            # Untere Grenze 0.05 mV: deckt auch hochverstärkte oder dämpfungsarme Setups ab
+            # Obere Grenze 100 mV: Sicherheit gegen Kalibrierkanäle mit DC-Artefakten
+            if pp < 0.05 or pp > 100:
                 continue
 
             nyq = fs / 2

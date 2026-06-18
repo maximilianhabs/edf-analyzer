@@ -114,12 +114,69 @@ def render():
     sfreq = edf["sfreq"]
     ecg_channels = edf["ecg_channels"]
 
+    # ── EKG-Kanal-Auswahl (automatisch + manueller Fallback) ─────────────────
+    all_non_eeg = [ch for ch in edf["ch_names"]
+                   if not ch.startswith("EEG") and ch != "EDF Annotations"]
+
     if not ecg_channels:
-        st.warning("Kein EKG-Kanal gefunden.")
-        return
+        st.warning(
+            "⚠️ **Kein EKG-Kanal automatisch erkannt.** "
+            "Bitte wähle manuell einen Kanal aus der Liste — das EKG-Signal hat typisch "
+            "0.5–5 mV Peak-to-Peak und zeigt eine regelmäßige Pulsfrequenz (40–160/min)."
+        )
+        with st.expander("🔍 Diagnose — warum wurde kein Kanal erkannt?", expanded=False):
+            st.markdown(
+                "Die automatische Erkennung prüft jeden Nicht-EEG-Kanal auf:\n"
+                "- **Amplitude** 0.1–50 mV Peak-to-Peak (nach DC-Offset-Entfernung)\n"
+                "- **Herzfrequenz** 35–160 bpm (über zwei 60-Sekunden-Fenster)\n"
+                "- **Kurtosis** 1–100 (scharfe R-Zacken = leptokurtisch)\n\n"
+                "Mögliche Ursachen für fehlende Erkennung:\n"
+                "- EKG-Kanal heißt anders als X1/X2/EKG/ECG (z. B. `BIP01`, `POL Y1`)\n"
+                "- Gain so hoch/niedrig dass Amplitude außerhalb des erwarteten Bereichs liegt\n"
+                "- EKG in den ersten 30 Sekunden durch Bewegungsartefakte überlagert\n"
+                "- Kanal heißt `EKG` aber startet nicht mit `EEG` → müsste erkannt werden, "
+                "bitte Kanal manuell prüfen und Feedback geben"
+            )
+            st.markdown("**Verfügbare Nicht-EEG-Kanäle:**")
+            for ch in all_non_eeg:
+                st.code(ch)
+        manual_ch = st.selectbox(
+            "Kanal manuell auswählen",
+            all_non_eeg,
+            index=0,
+            key="ecg_manual_channel",
+        )
+        if manual_ch not in edf["ecg_filtered"]:
+            # Kanal on-demand laden und filtern
+            from scipy.signal import butter as _b, filtfilt as _f
+            _idx = edf["ch_idx"][manual_ch]
+            sig_raw = edf["data"][_idx].copy().astype(float)
+            sig_raw -= sig_raw.mean()
+            nyq = sfreq / 2
+            bb, aa = _b(4, [0.5/nyq, min(40/nyq, 0.99)], btype="band")
+            edf["ecg_filtered"][manual_ch] = _f(bb, aa, sig_raw)
+        ecg_channels = [manual_ch]
+        st.info(f"Analysiere Kanal **{manual_ch}** — bitte EKG-Spur visuell prüfen.")
 
     col_ch, col_sens, col_lp = st.columns([2, 2, 2])
-    ecg_ch = col_ch.selectbox("Kanal", ecg_channels, index=0)
+    ecg_ch = col_ch.selectbox(
+        "EKG-Kanal",
+        ecg_channels + [ch for ch in all_non_eeg if ch not in ecg_channels],
+        index=0,
+        help=(
+            f"Automatisch erkannte Kanäle: {', '.join(ecg_channels) if ecg_channels else '—'}. "
+            "Weitere Kanäle sind manuell wählbar falls das EKG auf einem unbekannten Kanal liegt."
+        ),
+    )
+    # Manuell gewählten Kanal ggf. on-demand filtern
+    if ecg_ch not in edf["ecg_filtered"]:
+        from scipy.signal import butter as _b2, filtfilt as _f2
+        _idx2 = edf["ch_idx"][ecg_ch]
+        sig_raw2 = edf["data"][_idx2].copy().astype(float)
+        sig_raw2 -= sig_raw2.mean()
+        nyq2 = sfreq / 2
+        bb2, aa2 = _b2(4, [0.5/nyq2, min(40/nyq2, 0.99)], btype="band")
+        edf["ecg_filtered"][ecg_ch] = _f2(bb2, aa2, sig_raw2)
     sensitivity_mv = col_sens.select_slider(
         "Sensitivität (±mV Anzeigebereich)",
         options=[0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0],
