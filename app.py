@@ -8,7 +8,7 @@ warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="EDF Analyzer", layout="wide", page_icon="🧠")
 
-from core.shared import apply_global_style, inject_arrow_key_nav
+from core.shared import apply_global_style, inject_arrow_key_nav, render_sidebar_status
 
 apply_global_style()
 inject_arrow_key_nav()
@@ -24,4 +24,5 @@ pages = [
 ]
 
 pg = st.navigation(pages, position="sidebar")
+render_sidebar_status()
 pg.run()

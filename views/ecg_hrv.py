@@ -9,7 +9,10 @@ import plotly.graph_objects as go
 import streamlit as st
 from scipy.signal import find_peaks as _fp
 
-from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info
+from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info, section_header
+
+def _section(title: str, subtitle: str = "") -> None:
+    section_header(title, subtitle)
 
 
 @st.cache_data(show_spinner="Berechne R-Peaks…")
@@ -215,9 +218,8 @@ def render():
     phases = detect_hv_phases(edf["annotations"])
     has_hv = phases["has_hv"]
 
-    st.divider()
+    _section("📈 RR & Zeitdomäne", "Tachogramm · Poincaré-Plot · SDNN / RMSSD / pNN50")
     if has_hv:
-        st.subheader("RR-Analyse — Stimulations-EEG (HV erkannt)")
         hv_dur = ((phases["hvt_end"] or 0) - (phases["hvt_start"] or 0))
         st.info(
             f"⚡ **Hyperventilation automatisch erkannt** · "
@@ -226,8 +228,6 @@ def render():
             f"Post-HV-Fenster: +120 s · "
             + (f"Fotostimulation: {len(phases['photo_events'])} Frequenzschritte" if phases["has_photo"] else "")
         )
-    else:
-        st.subheader("RR-Analyse (Gesamtaufnahme)")
 
     rr_data = compute_rr(edf_path, ecg_ch)
     rr_ms = rr_data["rr_ms"]
@@ -266,6 +266,26 @@ def render():
                 f"+ globaler Kontext-Check (±2.5× Median). Ab 15% entfernter Schläge ist die "
                 f"verbleibende Stichprobe i. d. R. zu stark selektiert für eine belastbare HRV-Aussage."
             )
+
+    # Artefakt-Transparenz-Badge (nutzt RRSeries wenn verfügbar)
+    rr_series = rr_data.get("rr_series")
+    if rr_series is not None:
+        _art_pct = rr_series.artifact_pct
+        _n_clean = rr_series.n_clean
+        _art_col = "#27ae60" if _art_pct < 5 else ("#f39c12" if _art_pct < 15 else "#c0392b")
+        st.markdown(
+            f"<div style='display:inline-flex;align-items:center;gap:8px;"
+            f"padding:4px 12px;border-radius:20px;background:#f8f9fa;"
+            f"border:1px solid #e0e4e8;margin:4px 0 8px 0;font-size:12px'>"
+            f"<span style='color:{_art_col};font-weight:700'>{_art_col and '●'}</span>"
+            f"<span><b>{_n_clean}</b> saubere Schläge</span>"
+            f"<span style='color:#aaa'>·</span>"
+            f"<span style='color:{_art_col}'><b>{_art_pct:.1f}%</b> gefiltert</span>"
+            f"<span style='color:#aaa'>·</span>"
+            f"<span style='color:#888'>{'✓ analysierbar' if rr_series.is_analyzable else '⚠ zu wenige valide Schläge'}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
     mean_rr = float(np.mean(rr_ms))
     mean_hr = 60000 / mean_rr
@@ -400,8 +420,7 @@ def render():
         seg_label = "Gesamtaufnahme"
 
     # ── Frequenzdomäne ────────────────────────────────────────────────────
-    st.divider()
-    st.subheader(f"Frequenzdomäne (HRV) — {seg_label}")
+    _section("🌊 Frequenzdomäne (HRV)", seg_label)
     if has_hv:
         st.caption("PSD-Analyse basiert ausschließlich auf dem Prä-HV-Segment (Ruhebedingung).")
 
@@ -511,8 +530,7 @@ def render():
     )
 
     # ── HRV-Befund im Laborwert-Stil ────────────────────────────────────────
-    st.divider()
-    st.subheader(f"HRV-Befund — {seg_label} — Normwertvergleich")
+    _section("📋 HRV-Befund — Normwertvergleich", seg_label)
 
     from analysis.hrv_reference import (classify_parameter, classify_parameter_pediatric,
         compute_autonomic_balance, MARKER_TYPE, LF_HF_MEAN, LF_HF_SD,
@@ -1145,8 +1163,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
     # ══════════════════════════════════════════════════════════════════════════
     # BLOCK 2 — HVT + Post-HV (automatisch oder manuell)
     # ══════════════════════════════════════════════════════════════════════════
-    st.divider()
-    st.subheader("Block 2 — Hyperventilation & Erholung")
+    _section("💨 Block 2 — Hyperventilation & Erholung", "HRV-Analyse pro Phase · Vagaler Rebound")
 
     dur_s = int(edf["duration_s"])
     _manual_key = f"hvt_manual_{st.session_state.get('edf_display_name','')}"

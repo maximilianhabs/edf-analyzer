@@ -8,7 +8,7 @@ from scipy.signal import spectrogram, welch
 from scipy.signal import butter, filtfilt
 from scipy.signal.windows import dpss
 
-from core.shared import load_and_prepare
+from core.shared import load_and_prepare, section_header
 
 # ── Frequenzbänder ────────────────────────────────────────────────────────────
 BANDS = [
@@ -442,9 +442,8 @@ def render():
     consensus_channels = {"O1", "O2", "F3", "F4"}
     has_consensus = consensus_channels.issubset(set(all_eeg))
 
-    st.markdown("---")
     if has_consensus:
-        st.subheader("Konsensus-Panel — Posterior (O1+O2) vs. Anterior (F3+F4)")
+        section_header("🧠 Konsensus-Panel", "Posterior O1+O2 vs. Anterior F3+F4 · ACNS-Empfehlung")
         st.caption(
             "ACNS-Empfehlung für Vigilanz- und Verlangsamungsmonitoring. "
             "Posterior = okzipitaler Alpha-Grundrhythmus · Anterior = frontales Beta/Delta."
@@ -504,8 +503,7 @@ def render():
         _render_bandpower_and_ratios(bp_all, "cons")
 
         # ── Interne Validierung Konsensus-Panel ────────────────────────────
-        st.markdown("---")
-        st.subheader("🔍 Referenz-Epoch — interne Validierung")
+        section_header("🔍 Referenz-Epoch", "Interne Validierung · 10 s Segment · FFT-Vergleich")
 
         CONS_VAL_DUR = 10
         cons_ch_opts = [c for c in ["O2", "O1", "F4", "F3"] if c in all_eeg]
@@ -661,8 +659,7 @@ def render():
     # ══════════════════════════════════════════════════════════════════════════
     # EINZELKANAL-ANALYSE
     # ══════════════════════════════════════════════════════════════════════════
-    st.markdown("---")
-    st.subheader("Einzelkanal-Analyse")
+    section_header("🔬 Einzelkanal-Analyse", "Bandpower · FFT · Klinische Ratios pro Kanal")
 
     defaults = [c for c in ["O1", "O2"] if c in all_eeg] or all_eeg[:min(2, len(all_eeg))]
     with st.container(border=True):
@@ -687,7 +684,7 @@ def render():
     # ══════════════════════════════════════════════════════════════════════════
     # REFERENZ-EPOCH (einmalig, mit Kanal-Auswahl)
     # ══════════════════════════════════════════════════════════════════════════
-    st.subheader("🔍 Referenz-Epoch — interne Validierung")
+    section_header("🔍 Referenz-Epoch", "Interne Validierung · Kanal wählbar · FFT-Overlay")
     st.caption(
         "Wähle einen Kanal und navigiere mit dem Slider (← → Pfeiltasten) zu einem "
         "visuell qualitätsgeprüften 10-Sekunden-Segment. Das Gesamtfenster-Spektrum (grau) "
@@ -818,8 +815,7 @@ def render():
     asym_chs = [c for c in ["O1", "O2", "F3", "F4"] if c in all_eeg]
     if len(asym_chs) >= 2 and ("O1" in asym_chs and "O2" in asym_chs
                                 or "F3" in asym_chs and "F4" in asym_chs):
-        st.markdown("---")
-        st.subheader("🔁 Hemisphärische Asymmetrie")
+        section_header("🔁 Hemisphärische Asymmetrie", "AI = (L−R)/(L+R) × 100% · nach Frequenzband · Nuwer 1997", color="#2980b9")
         st.markdown(
             "<div style='background:#f0f4ff;border-left:4px solid #2980b9;"
             "padding:12px 16px;border-radius:6px;margin-bottom:12px'>"

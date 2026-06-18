@@ -74,6 +74,132 @@ ELECTRODE_POS = {
 EPOCH_SEC = 10  # Standard-Epochenlänge (EKG-Tab, Fallback)
 
 
+def render_sidebar_status():
+    """Persistente Patientenkontext-Karte in der Sidebar — sichtbar auf jeder Seite."""
+    edf_path  = st.session_state.get("edf_path", "")
+    file_name = st.session_state.get("edf_display_name", "")
+    validated = st.session_state.get("phi_validated", False)
+
+    with st.sidebar:
+        if not edf_path or not file_name:
+            st.markdown(
+                "<div style='"
+                "margin:12px 6px 4px 6px;"
+                "padding:10px 12px;"
+                "border-radius:10px;"
+                "background:#f5f6f8;"
+                "border:1px dashed #ced4da;"
+                "color:#888;"
+                "font-size:12px;"
+                "line-height:1.5;"
+                "'>"
+                "📂 <b>Keine Datei geladen</b><br>"
+                "<span style='font-size:11px'>Bitte auf <i>Datei &amp; Patient</i> starten.</span>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
+            return
+
+        age   = st.session_state.get("patient_age", "?")
+        sex   = st.session_state.get("patient_sex", "X")
+        sex_icon = {"M": "♂", "F": "♀", "X": "—"}.get(sex, "—")
+
+        edf = st.session_state.get("_edf_cache_meta")
+        dur_str = "—"
+        n_ch_str = "—"
+        has_ecg = False
+        has_hv  = False
+        if edf is None:
+            try:
+                from core.shared import load_and_prepare as _lp
+                edf = _lp(edf_path)
+                st.session_state["_edf_cache_meta"] = edf
+            except Exception:
+                edf = {}
+        if edf:
+            dur_s   = edf.get("duration_s", 0)
+            dur_str = f"{int(dur_s)//60}:{int(dur_s)%60:02d} min"
+            n_ch_str = str(len(edf.get("eeg_map", {}))) + " EEG"
+            has_ecg = bool(edf.get("ecg_channels"))
+            anns = edf.get("annotations", [])
+            has_hv = any("HVT" in a.get("description","").upper() for a in anns)
+
+        phi_badge = (
+            "<span style='color:#27ae60;font-size:10px;font-weight:700'>✓ PHI-geprüft</span>"
+            if validated else
+            "<span style='color:#e67e22;font-size:10px;font-weight:700'>⚠ nicht geprüft</span>"
+        )
+
+        st.markdown(
+            f"<div style='"
+            f"margin:10px 6px 4px 6px;"
+            f"padding:12px 14px;"
+            f"border-radius:12px;"
+            f"background:#ffffff;"
+            f"border:1px solid #e0e4e8;"
+            f"box-shadow:0 1px 4px rgba(0,0,0,0.06);"
+            f"'>"
+            # Header
+            f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'>"
+            f"<span style='font-size:11px;font-weight:700;color:#555;text-transform:uppercase;"
+            f"letter-spacing:0.05em'>Aktive Aufnahme</span>"
+            f"{phi_badge}"
+            f"</div>"
+            # Dateiname
+            f"<div style='font-size:12px;font-weight:600;color:#1c2833;"
+            f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+            f"margin-bottom:10px;' title='{file_name}'>"
+            f"📄 {file_name}"
+            f"</div>"
+            # Metriken-Grid
+            f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:6px'>"
+            f"<div style='background:#f8f9fa;border-radius:8px;padding:6px 8px'>"
+            f"<div style='font-size:10px;color:#888'>Alter</div>"
+            f"<div style='font-size:13px;font-weight:700;color:#1c2833'>{age} J. {sex_icon}</div>"
+            f"</div>"
+            f"<div style='background:#f8f9fa;border-radius:8px;padding:6px 8px'>"
+            f"<div style='font-size:10px;color:#888'>Dauer</div>"
+            f"<div style='font-size:13px;font-weight:700;color:#1c2833'>{dur_str}</div>"
+            f"</div>"
+            f"<div style='background:#f8f9fa;border-radius:8px;padding:6px 8px'>"
+            f"<div style='font-size:10px;color:#888'>Kanäle</div>"
+            f"<div style='font-size:13px;font-weight:700;color:#1c2833'>{n_ch_str}</div>"
+            f"</div>"
+            f"<div style='background:#f8f9fa;border-radius:8px;padding:6px 8px'>"
+            f"<div style='font-size:10px;color:#888'>Merkmale</div>"
+            f"<div style='font-size:12px;font-weight:600;color:#1c2833'>"
+            f"{'❤️ ' if has_ecg else ''}{'💨 HV' if has_hv else ''}"
+            f"{'—' if not has_ecg and not has_hv else ''}"
+            f"</div>"
+            f"</div>"
+            f"</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+
+def section_header(title: str, subtitle: str = "", color: str = "#2c3e50") -> None:
+    """Visueller Section-Header — ersetzt st.divider() + st.subheader() überall in der App."""
+    sub_html = (
+        f"<span style='font-size:12px;color:#888;font-weight:400;"
+        f"margin-left:10px'>{subtitle}</span>"
+        if subtitle else ""
+    )
+    st.markdown(
+        f"<div style='"
+        f"margin:22px 0 10px 0;"
+        f"padding:10px 16px;"
+        f"border-left:4px solid {color};"
+        f"background:linear-gradient(90deg,{color}0d 0%,transparent 100%);"
+        f"border-radius:0 8px 8px 0;"
+        f"'>"
+        f"<span style='font-size:15px;font-weight:700;color:{color}'>{title}</span>"
+        f"{sub_html}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def apply_global_style():
     """Neutrale, hochwertige Basis-Optik. Klinische Farben (Rot/Blau/Grün/Ampel) bleiben
     ausschließlich für ihre fachliche Bedeutung reserviert und werden hier nicht verändert."""
