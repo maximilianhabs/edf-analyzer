@@ -404,12 +404,12 @@ def render():
                     "10 min": 600, "Gesamte Aufnahme": None}
     _dur_keys = list(_DUR_OPTIONS.keys())
 
-    # Sinnvolle Voreinstellung: 5 min oder kürzer falls Aufnahme kürzer
-    if "spec_dur_label" not in st.session_state:
-        for lbl, sec in _DUR_OPTIONS.items():
-            if sec is None or sec >= dur_s:
-                st.session_state.spec_dur_label = lbl; break
-            st.session_state.spec_dur_label = "5 min"
+    # Sinnvolle Voreinstellung: größte Dauer die ≤ Aufnahmedauer ist (max 5 min)
+    _default_dur = "5 min"
+    for lbl, sec in _DUR_OPTIONS.items():
+        if sec is not None and sec <= dur_s:
+            _default_dur = lbl
+            break
 
     wc1, wc2, wc3 = st.columns([5, 2, 3])
     with wc1:
@@ -421,13 +421,12 @@ def render():
     with wc2:
         dur_label = st.selectbox(
             "Dauer", _dur_keys,
-            index=_dur_keys.index(st.session_state.spec_dur_label),
-            key="spec_dur_label",
+            index=_dur_keys.index(_default_dur),
+            key="spec_dur_widget",
             help="Analysefensterlänge ab Start",
         )
     _chosen_sec = _DUR_OPTIONS[dur_label]
     t_end = dur_s if _chosen_sec is None else min(dur_s, t_start + _chosen_sec)
-    # sicherstellen dass t_end > t_start
     t_end = max(t_end, t_start + 10)
     with wc3:
         _dur_actual = t_end - t_start
