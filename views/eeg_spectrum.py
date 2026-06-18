@@ -414,9 +414,9 @@ def render():
     wc1, wc2, wc3 = st.columns([5, 2, 3])
     with wc1:
         t_start = st.slider(
-            "Fenster-Start", 0, max(0, dur_s - 10), 0, step=5,
+            "Fenster-Start (s)", 0, max(0, dur_s - 10), 0, step=5,
             key="spec_t_start",
-            format=lambda v: f"{v//60:02d}:{v%60:02d}",
+            format="%d s",
         )
     with wc2:
         dur_label = st.selectbox(
