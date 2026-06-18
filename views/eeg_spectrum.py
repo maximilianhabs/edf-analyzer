@@ -134,6 +134,20 @@ def _spectrogram_trace(f, t, Sxx_log, dur_s):
     return trace, tick_vals, tick_text
 
 
+def _add_selection_overlay(fig, t_start: int, t_end: int, t_max: float) -> None:
+    """Hebt das Analysefenster im Spektrogramm hervor:
+    Außenbereiche abdunkeln + helle Randlinien (besser sichtbar als Semi-Transparenz auf Jet-Colormap)."""
+    if t_start > 0:
+        fig.add_vrect(x0=0, x1=t_start,
+                      fillcolor="rgba(0,0,0,0.48)", line_width=0)
+    if t_end < t_max:
+        fig.add_vrect(x0=t_end, x1=t_max,
+                      fillcolor="rgba(0,0,0,0.48)", line_width=0)
+    # Helle Randlinien an den Selektionskanten
+    fig.add_vline(x=t_start, line_color="white", line_width=3)
+    fig.add_vline(x=t_end,   line_color="white", line_width=3)
+
+
 def _sg_layout_update(fig, tick_vals, tick_text, title, row=1, col=1):
     band_boundaries = sorted({v for _, (lo, hi), _ in BANDS for v in [lo, hi]})
     for bf in band_boundaries:
@@ -310,9 +324,7 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
             x=1.02, y=(lo + hi) / 2, xref="paper", yref="y",
             text=name, showarrow=False, font=dict(size=9, color=color), xanchor="left",
         )
-    fig_sg.add_vrect(x0=t_start, x1=t_end,
-                     fillcolor="rgba(252,211,77,0.13)",
-                     line_color="rgba(252,211,77,0.95)", line_width=2.5)
+    _add_selection_overlay(fig_sg, t_start, t_end, float(t_sg[-1]) if len(t_sg) else dur_s)
     fig_sg.update_layout(
         xaxis=dict(title="Zeit (min:s)", tickvals=tick_vals, ticktext=tick_text,
                    tickfont=dict(size=10), color="white", gridcolor="rgba(255,255,255,0.1)"),
@@ -505,9 +517,7 @@ def render():
                         text=name, showarrow=False,
                         font=dict(size=8, color=color), xanchor="left",
                     )
-                fig_sg.add_vrect(x0=t_start, x1=t_end,
-                                 fillcolor="rgba(255,255,255,0.10)",
-                                 line_color="rgba(255,255,255,0.6)", line_width=1.5)
+                _add_selection_overlay(fig_sg, t_start, t_end, float(t_sg[-1]) if len(t_sg) else dur_s)
                 fig_sg.update_layout(
                     xaxis=dict(title="Zeit (min:s)", tickvals=tick_vals, ticktext=tick_text,
                                tickfont=dict(size=9), color="white",
