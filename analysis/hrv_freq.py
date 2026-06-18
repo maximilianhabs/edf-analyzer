@@ -1,5 +1,7 @@
 """HRV-Frequenzdomänen-Analyse: Welch (FFT) und Burg-Methode (Maximum Entropy)."""
 
+from typing import Optional
+
 import numpy as np
 from scipy.signal import welch
 from scipy.interpolate import CubicSpline
@@ -94,7 +96,7 @@ def band_peak(freqs: np.ndarray, psd: np.ndarray, band: tuple):
 
 
 def compute_frequency_domain(rr_ms: np.ndarray, t_s: np.ndarray, method: str = "welch",
-                              fs_interp: float = 4.0, burg_order: int = 16) -> dict:
+                              fs_interp: float = 4.0, burg_order: int = 16) -> Optional[dict]:
     """
     Vollständige Frequenzdomänen-Analyse einer RR-Zeitreihe.
 
@@ -107,7 +109,18 @@ def compute_frequency_domain(rr_ms: np.ndarray, t_s: np.ndarray, method: str = "
       hf_peak_psd    ms²/Hz — PSD-Amplitude am HF-Gipfel
       hf_resp_rate   /min — Atemfrequenzschätzung aus HF-Gipfel (hf_peak_freq × 60)
     """
+    # Guard: zu wenige oder ungültige Daten → None statt Crash
+    if len(rr_ms) < 20 or len(t_s) < 20:
+        return None
+    if not np.all(np.isfinite(rr_ms)) or not np.all(np.isfinite(t_s)):
+        return None
+    if t_s[-1] <= t_s[0]:
+        return None
+
     rr_even, t_even = resample_rr(rr_ms, t_s, fs_interp)
+
+    if len(rr_even) < 20:
+        return None
 
     if method == "burg":
         freqs, psd = psd_burg(rr_even, fs_interp, order=burg_order)

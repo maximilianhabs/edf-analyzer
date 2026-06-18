@@ -570,6 +570,9 @@ def get_edf_or_stop():
     if not edf_path or not os.path.exists(edf_path):
         st.info("👈 Bitte zuerst auf der Seite **Datei & Patient** eine gültige EDF-Datei wählen.")
         st.stop()
+    if not st.session_state.get("phi_validated"):
+        st.error("🚫 Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.")
+        st.stop()
     edf = load_and_prepare(edf_path)
     return edf, edf_path
 

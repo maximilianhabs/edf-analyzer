@@ -24,8 +24,11 @@ Literaturgrundlage HRV während HV:
 """
 
 import re
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 import numpy as np
+
+if TYPE_CHECKING:
+    from analysis.ecg import RRSeries
 
 
 # ─── Annotations-Parser ──────────────────────────────────────────────────────
@@ -95,6 +98,9 @@ def hrv_for_segment(rr_ms: np.ndarray, r_times: np.ndarray,
     """
     Berechnet Basis-HRV-Metriken für ein Zeitfenster [t0, t1].
     Gibt None zurück wenn zu wenige Schläge vorhanden (< 10).
+
+    Akzeptiert auch eine RRSeries statt roher Arrays:
+        hrv_for_segment(rr_series.clean_rr, rr_series.clean_times, t0, t1)
     """
     mask = (r_times >= t0) & (r_times < t1)
     rr = rr_ms[mask]

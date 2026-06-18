@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from analysis.hrv_reference import PEDIATRIC_AGE_GROUPS
+from core.loader import check_privacy
 from core.shared import load_and_prepare
 
 UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "edf_analyzer_uploads")
@@ -60,8 +61,23 @@ def render():
                 dest_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}_{uploaded.name}")
                 with open(dest_path, "wb") as f:
                     f.write(uploaded.getbuffer())
+
+                # ── PHI-Gate: Datei blockieren wenn Patientendaten im Header ──
+                privacy = check_privacy(dest_path)
+                if privacy["has_patient_id"] or privacy["has_recording_id"]:
+                    os.remove(dest_path)
+                    st.error(
+                        "🚫 **Upload blockiert — Patientendaten im EDF-Header gefunden.**\n\n"
+                        "Diese Datei enthält noch identifizierende Informationen (Name, Fallnummer "
+                        "oder Aufnahmedatum). Bitte zuerst lokal anonymisieren:\n\n"
+                        "```\npython anonymize.py <dateiname.edf>\n```\n\n"
+                        "Danach die anonymisierte Datei hochladen."
+                    )
+                    st.stop()
+
                 st.session_state.edf_path = dest_path
                 st.session_state.edf_display_name = uploaded.name
+                st.session_state.phi_validated = True
                 st.rerun()
 
     edf_path = st.session_state.edf_path

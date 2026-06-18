@@ -1,7 +1,44 @@
 """ECG analysis: R-peak detection, RR intervals, HRV metrics."""
 
+from dataclasses import dataclass
+from typing import Optional
+
 import numpy as np
 import pandas as pd
+
+
+@dataclass
+class RRSeries:
+    """
+    Träger-Objekt für eine RR-Zeitreihe mit Artefakt-Maske.
+    Wird zwischen ecg.py und hrv_freq.py ausgetauscht — niemals rohe Arrays.
+    """
+    rr_ms:         np.ndarray   # alle RR-Intervalle in ms (inkl. Artefakte)
+    rr_times_s:    np.ndarray   # Zeitstempel der R-Peaks (Sekunden)
+    artifact_mask: np.ndarray   # bool-Array, True = Artefakt
+
+    @property
+    def clean_rr(self) -> np.ndarray:
+        """Gefilterte RR-Intervalle (Artefakte ausgeschlossen)."""
+        return self.rr_ms[~self.artifact_mask]
+
+    @property
+    def clean_times(self) -> np.ndarray:
+        """Zeitstempel der sauberen RR-Intervalle."""
+        return self.rr_times_s[~self.artifact_mask]
+
+    @property
+    def artifact_pct(self) -> float:
+        return float(self.artifact_mask.mean() * 100) if len(self.artifact_mask) else 0.0
+
+    @property
+    def n_clean(self) -> int:
+        return int((~self.artifact_mask).sum())
+
+    @property
+    def is_analyzable(self) -> bool:
+        """Mindestanforderungen für valide HRV-Analyse (Task Force 1996: ≥ 5 min / ~300 Schläge)."""
+        return self.n_clean >= 50 and self.artifact_pct < 30.0
 
 
 def preprocess_ecg(signal: np.ndarray, sfreq: float) -> np.ndarray:
@@ -65,6 +102,42 @@ def compute_rr_intervals(r_peaks: np.ndarray, sfreq: float) -> np.ndarray:
     # Remove physiologically implausible values (< 300ms or > 2000ms)
     rr_ms = rr_ms[(rr_ms > 300) & (rr_ms < 2000)]
     return rr_ms
+
+
+def build_rr_series(r_peaks: np.ndarray, sfreq: float) -> Optional[RRSeries]:
+    """
+    Erstellt eine RRSeries mit Artefakt-Maske aus R-Peak-Indizes.
+
+    Artefakt-Kriterien (3-stufig):
+      1. Physiologisch implausibel: RR < 300 ms oder > 2000 ms
+      2. Ektopische Schläge: Abweichung > 20% vom gleitenden Median (Fenster 5)
+      3. Signaldropout: aufeinanderfolgende identische RR-Werte
+    """
+    if len(r_peaks) < 3:
+        return None
+
+    rr_ms     = np.diff(r_peaks).astype(float) / sfreq * 1000
+    times_s   = r_peaks[:-1].astype(float) / sfreq
+    n         = len(rr_ms)
+    mask      = np.zeros(n, dtype=bool)
+
+    # Stufe 1: physiologische Grenzen
+    mask |= (rr_ms < 300) | (rr_ms > 2000)
+
+    # Stufe 2: ektopische Schläge — gleitender Median (Fenster 5)
+    half = 2
+    for i in range(n):
+        lo, hi = max(0, i - half), min(n, i + half + 1)
+        local_median = np.median(rr_ms[lo:hi])
+        if local_median > 0 and abs(rr_ms[i] - local_median) / local_median > 0.20:
+            mask[i] = True
+
+    # Stufe 3: Signal-Dropout (≥ 3 identische aufeinanderfolgende Werte)
+    for i in range(2, n):
+        if rr_ms[i] == rr_ms[i - 1] == rr_ms[i - 2]:
+            mask[i - 2 : i + 1] = True
+
+    return RRSeries(rr_ms=rr_ms, rr_times_s=times_s, artifact_mask=mask)
 
 
 def compute_hrv_time_domain(rr_ms: np.ndarray) -> dict:
@@ -133,6 +206,7 @@ def run_ecg_analysis(signal: np.ndarray, sfreq: float) -> dict:
     signal_clean = preprocess_ecg(signal, sfreq)
     r_peaks = detect_r_peaks(signal_clean, sfreq)
     rr_ms = compute_rr_intervals(r_peaks, sfreq)
+    rr_series = build_rr_series(r_peaks, sfreq)
 
     time_domain = compute_hrv_time_domain(rr_ms)
     freq_domain = compute_hrv_frequency_domain(rr_ms)
@@ -141,6 +215,7 @@ def run_ecg_analysis(signal: np.ndarray, sfreq: float) -> dict:
         "signal_clean": signal_clean,
         "r_peaks": r_peaks,
         "rr_ms": rr_ms,
+        "rr_series": rr_series,   # RRSeries mit Artefakt-Maske
         "hrv_time": time_domain,
         "hrv_freq": freq_domain,
     }

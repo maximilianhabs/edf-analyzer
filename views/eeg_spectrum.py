@@ -377,6 +377,9 @@ def render():
     if not edf_path:
         st.info("👆 Bitte zuerst auf **Datei & Patient** eine EDF-Datei laden.")
         return
+    if not st.session_state.get("phi_validated"):
+        st.error("🚫 Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.")
+        return
 
     edf = load_and_prepare(edf_path)
     fs = edf["sfreq"]
