@@ -75,8 +75,10 @@ def render():
                     f.write(uploaded.getbuffer())
 
                 # ── PHI-Gate: Datei blockieren wenn Patientendaten im Header ──
+                # DEV_MODE: Gate deaktiviert für lokales Testen — VOR DEPLOYMENT wieder aktivieren
+                _phi_gate_active = os.environ.get("EDF_PHI_GATE", "1") != "0"
                 privacy = check_privacy(dest_path)
-                if privacy["has_patient_id"] or privacy["has_recording_id"]:
+                if _phi_gate_active and (privacy["has_patient_id"] or privacy["has_recording_id"]):
                     os.remove(dest_path)
                     st.error(
                         "🚫 **Upload blockiert — Patientendaten im EDF-Header gefunden.**\n\n"
@@ -86,6 +88,8 @@ def render():
                         "Danach die anonymisierte Datei hochladen."
                     )
                     st.stop()
+                elif not _phi_gate_active and (privacy["has_patient_id"] or privacy["has_recording_id"]):
+                    st.warning("⚠️ **DEV-Modus** — PHI-Gate deaktiviert. Datei enthält Patientendaten. Vor Deployment `EDF_PHI_GATE=1` setzen.")
 
                 st.session_state.edf_path = dest_path
                 st.session_state.edf_display_name = uploaded.name

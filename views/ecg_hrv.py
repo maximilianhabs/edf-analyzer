@@ -611,7 +611,8 @@ def render():
     sig_mv   = sig * 1000
 
     fig_ecg  = ecg_figure(t_ecg, sig_mv, sensitivity_mv, lp_hz)
-    st.plotly_chart(fig_ecg, use_container_width=True)
+    _ecg_strip_slot = st.empty()  # wird nach R-Peak-Berechnung durch Version mit Dreiecken ersetzt
+    _ecg_strip_slot.plotly_chart(fig_ecg, use_container_width=True)
 
     sig_centered = sig_mv - np.median(sig_mv)
     pp  = sig_centered.max() - sig_centered.min()
@@ -779,6 +780,8 @@ def render():
                         line=dict(width=1, color="#333")),
             hovertemplate="R-Peak t=%{x:.3f}s  %{y:.3f} mV<extra></extra>",
         ))
+        # Haupt-EKG-Streifen jetzt mit R-Peak-Dreiecken überschreiben
+        _ecg_strip_slot.plotly_chart(fig_ecg_rr, use_container_width=True)
 
     # PSD-Figures
     fig_psd_welch_obj = render_psd_chart(fd_welch, "Welch (FFT)", "#2c3e50")
@@ -811,6 +814,39 @@ def render():
     # ══════════════════════════════════════════════════════════════════════════
     # 4 TABS
     # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("""
+<style>
+/* Prominentere EKG-Tab-Leiste */
+div[data-testid="stTabs"] > div:first-child {
+    gap: 6px;
+    border-bottom: 2px solid #e0e4e8;
+    margin-bottom: 4px;
+}
+div[data-testid="stTabs"] button[role="tab"] {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    padding: 10px 22px !important;
+    border-radius: 10px 10px 0 0 !important;
+    border: 1px solid #d0d6de !important;
+    border-bottom: none !important;
+    background: #f4f6f9 !important;
+    color: #555 !important;
+    transition: background 0.15s, color 0.15s;
+}
+div[data-testid="stTabs"] button[role="tab"]:hover {
+    background: #e8edf5 !important;
+    color: #2c3e50 !important;
+}
+div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+    background: white !important;
+    color: #2980b9 !important;
+    border-color: #2980b9 !important;
+    border-bottom: 2px solid white !important;
+    margin-bottom: -2px;
+}
+</style>
+""", unsafe_allow_html=True)
+
     tab_rr, tab_freq, tab_befund, tab_hv = st.tabs([
         "📈 RR & Zeitdomäne",
         "🌊 Frequenzdomäne",
