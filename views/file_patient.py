@@ -65,36 +65,63 @@ def render():
                     st.session_state.edf_display_name = ""
                     st.rerun()
         else:
-            uploaded = st.file_uploader(
-                "📁 EDF-Datei hinzufügen — öffnet den Datei-Dialog (Finder)",
-                type=["edf"], accept_multiple_files=False,
-            )
-            if uploaded is not None:
-                dest_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}_{uploaded.name}")
-                with open(dest_path, "wb") as f:
-                    f.write(uploaded.getbuffer())
+            # ── Ausstehender PHI-Disclaimer (aus vorherigem Upload) ───────────
+            if st.session_state.get("phi_pending_path"):
+                _pending_name = st.session_state.get("phi_pending_name", "")
+                st.warning(
+                    f"⚠️ **Datei enthält Patientendaten — Bestätigung erforderlich**\n\n"
+                    f"Die Datei **{_pending_name}** enthält identifizierende Informationen "
+                    f"im EDF-Header (Name, Fallnummer oder Aufnahmedatum).\n\n"
+                    f"**Empfehlung:** Verwende `anonymize.py` zur lokalen De-Identifikation "
+                    f"vor dem Upload — besonders für gemeinsam genutzte oder Server-basierte Umgebungen.\n\n"
+                    f"Für lokale Einzelnutzung (Alpha-/Beta-Test) kann die Datei mit Bestätigung "
+                    f"direkt geladen werden. Die Daten werden nicht gespeichert oder übertragen — "
+                    f"Verarbeitung erfolgt ausschließlich im lokalen Arbeitsspeicher dieser Sitzung."
+                )
+                _phi_accepted = st.checkbox(
+                    "Ich bestätige, dass ich zur Verarbeitung dieser Patientendaten berechtigt bin "
+                    "und die geltenden Datenschutzbestimmungen (DSGVO) einhalte.",
+                    key="phi_disclaimer_checkbox",
+                )
+                col_load, col_cancel = st.columns([2, 1])
+                with col_load:
+                    if st.button("✅ Datei trotzdem laden", disabled=not _phi_accepted,
+                                 use_container_width=True, type="primary"):
+                        st.session_state.edf_path = st.session_state.pop("phi_pending_path")
+                        st.session_state.edf_display_name = st.session_state.pop("phi_pending_name", "")
+                        st.session_state.phi_validated = True
+                        st.session_state.phi_has_patient_data = True
+                        st.rerun()
+                with col_cancel:
+                    if st.button("❌ Abbrechen", use_container_width=True):
+                        try:
+                            os.remove(st.session_state.pop("phi_pending_path", ""))
+                        except OSError:
+                            pass
+                        st.session_state.pop("phi_pending_name", None)
+                        st.rerun()
+            else:
+                uploaded = st.file_uploader(
+                    "📁 EDF-Datei hinzufügen — öffnet den Datei-Dialog (Finder)",
+                    type=["edf"], accept_multiple_files=False,
+                )
+                if uploaded is not None:
+                    dest_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}_{uploaded.name}")
+                    with open(dest_path, "wb") as f:
+                        f.write(uploaded.getbuffer())
 
-                # ── PHI-Gate: Datei blockieren wenn Patientendaten im Header ──
-                # DEV_MODE: Gate deaktiviert für lokales Testen — VOR DEPLOYMENT wieder aktivieren
-                _phi_gate_active = os.environ.get("EDF_PHI_GATE", "1") != "0"
-                privacy = check_privacy(dest_path)
-                if _phi_gate_active and (privacy["has_patient_id"] or privacy["has_recording_id"]):
-                    os.remove(dest_path)
-                    st.error(
-                        "🚫 **Upload blockiert — Patientendaten im EDF-Header gefunden.**\n\n"
-                        "Diese Datei enthält noch identifizierende Informationen (Name, Fallnummer "
-                        "oder Aufnahmedatum). Bitte zuerst lokal anonymisieren:\n\n"
-                        "```\npython anonymize.py <dateiname.edf>\n```\n\n"
-                        "Danach die anonymisierte Datei hochladen."
-                    )
-                    st.stop()
-                elif not _phi_gate_active and (privacy["has_patient_id"] or privacy["has_recording_id"]):
-                    st.warning("⚠️ **DEV-Modus** — PHI-Gate deaktiviert. Datei enthält Patientendaten. Vor Deployment `EDF_PHI_GATE=1` setzen.")
-
-                st.session_state.edf_path = dest_path
-                st.session_state.edf_display_name = uploaded.name
-                st.session_state.phi_validated = True
-                st.rerun()
+                    privacy = check_privacy(dest_path)
+                    if privacy["has_patient_id"] or privacy["has_recording_id"]:
+                        # Nicht sofort blockieren — Disclaimer-Flow
+                        st.session_state["phi_pending_path"] = dest_path
+                        st.session_state["phi_pending_name"] = uploaded.name
+                        st.rerun()
+                    else:
+                        st.session_state.edf_path = dest_path
+                        st.session_state.edf_display_name = uploaded.name
+                        st.session_state.phi_validated = True
+                        st.session_state.phi_has_patient_data = False
+                        st.rerun()
 
     edf_path = st.session_state.edf_path
 

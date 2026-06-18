@@ -543,137 +543,30 @@ def render():
         st.markdown("**Bandpower**")
         _render_bandpower_and_ratios(bp_all, "cons")
 
-        # ── Interne Validierung Konsensus-Panel ────────────────────────────
-        section_header("🔍 Referenz-Epoch", "Interne Validierung · 10 s Segment · FFT-Vergleich")
-
-        CONS_VAL_DUR = 10
-        cons_ch_opts = [c for c in ["O2", "O1", "F4", "F3"] if c in all_eeg]
-        if not cons_ch_opts:
-            cons_ch_opts = list(consensus_channels & set(all_eeg))
-        cv_col1, cv_col2 = st.columns([3, 5])
-        with cv_col1:
-            cons_val_ch = st.selectbox(
-                "Referenzkanal",
-                cons_ch_opts,
-                index=0,
-                key="cons_val_ch",
-                help="Standard: O2 (posterior). Wechsel auf O1 oder frontale Kanäle möglich.",
-            )
-        cv_col2.caption("Slider anklicken → ← → Pfeiltasten zum Navigieren")
-        cons_col = "#27ae60" if cons_val_ch in ("O1", "O2") else "#e67e22"
-        cons_val_sig = _get(cons_val_ch)
-
-        # Kanalname-Banner
-        st.markdown(
-            f"<div style='background:{cons_col}22;border-left:5px solid {cons_col};"
-            f"padding:10px 16px;border-radius:6px;margin:6px 0 10px 0'>"
-            f"<span style='font-size:26px;font-weight:900;color:{cons_col}'>{cons_val_ch}</span>"
-            f"<span style='font-size:13px;color:#555;margin-left:14px'>"
-            f"10-Sekunden-Referenzepoche &nbsp;·&nbsp; "
-            f"Gesamtaufnahme: {dur_s//60}:{dur_s%60:02d} min</span>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-        _cdef = max(0, min(dur_s - CONS_VAL_DUR,
-                           (t_start + t_end) // 2 - CONS_VAL_DUR // 2))
-        cref_start = st.slider(
-            "Position im Recording (s)", 0, max(0, dur_s - CONS_VAL_DUR),
-            value=_cdef, step=1, key="cons_val_start",
-        )
-        cref_end = int(cref_start) + CONS_VAL_DUR
-        _position_bar(cref_start, cref_end, dur_s, cons_col, "cons")
-
-        cr0, cr1   = int(cref_start * fs), int(cref_end * fs)
-        ref_single = cons_val_sig[cr0:cr1]
-        # Für FFT-Vergleich: Gesamtfenster des gewählten Kanals
-        f_fp, psd_fp = _compute_psd(cons_val_sig[int(t_start*fs):int(t_end*fs)], fs,
-                                     multitaper=use_multitaper, amp_thresh_uv=float(amp_thresh))
-        f_rp, psd_rp = _compute_psd(ref_single, fs,
-                                     multitaper=use_multitaper, amp_thresh_uv=float(amp_thresh))
-
-        # Rohsignal
-        st.markdown(
-            f"<span style='font-size:15px;font-weight:700;color:{cons_col}'>"
-            f"EEG-Rohsignal &mdash; {cons_val_ch}</span>"
-            f"<span style='font-size:12px;color:#666;margin-left:8px'>"
-            f"{cref_start}&ndash;{cref_end} s &nbsp;&middot;&nbsp; µV (1 Hz HPF)</span>",
-            unsafe_allow_html=True,
-        )
-        t_rp_axis = np.arange(len(ref_single)) / fs + cref_start
-        fig_rraw = go.Figure()
-        fig_rraw.add_trace(go.Scatter(
-            x=t_rp_axis, y=ref_single, mode="lines",
-            line=dict(color=cons_col, width=1.3),
-            hovertemplate="t=%{x:.2f}s  %{y:.1f} µV<extra></extra>",
-        ))
-        fig_rraw.add_hline(y=0, line_color="rgba(0,0,0,0.2)", line_width=1)
-        for amp_c in [50, -50]:
-            fig_rraw.add_hline(y=amp_c, line_color="rgba(100,100,100,0.3)",
-                               line_dash="dot", line_width=1,
-                               annotation_text=f"{amp_c:+d} µV" if amp_c > 0 else None,
-                               annotation_font_size=9)
-        sr = max(80.0, float(np.ptp(ref_single)) * 0.6)
-        fig_rraw.update_layout(
-            xaxis_title="Zeit (s)", yaxis_title="µV",
-            height=180, margin=dict(t=4, b=35, l=60, r=10),
-            plot_bgcolor="#fafafa", showlegend=False,
-        )
-        fig_rraw.update_yaxes(range=[-sr, sr])
-        st.plotly_chart(fig_rraw, use_container_width=True, key="cons_val_raw")
-
-        if f_fp is not None and f_rp is not None:
-            psd_fp_n = psd_fp / (psd_fp.max() or 1)
-            psd_rp_n = psd_rp / (psd_rp.max() or 1)
-            st.markdown(
-                f"<span style='font-size:15px;font-weight:700;color:{cons_col}'>"
-                f"FFT-Vergleich &mdash; {cons_val_ch}</span>"
-                f"<span style='font-size:12px;color:#666;margin-left:8px'>"
-                f"Gesamt {t_start}–{t_end} s (grau) &nbsp;vs.&nbsp; "
-                f"Referenz {cref_start}–{cref_end} s (farbig) &nbsp;&middot;&nbsp; normiert</span>",
-                unsafe_allow_html=True,
-            )
-            fig_cv = go.Figure()
-            fig_cv.add_trace(go.Scatter(x=f_fp, y=psd_fp_n, mode="lines",
-                name=f"Gesamt ({t_start}–{t_end} s)",
-                line=dict(color="rgba(150,150,150,0.65)", width=1.5),
-                hovertemplate="Gesamt: %{y:.3f} @ %{x:.1f} Hz<extra></extra>"))
-            fig_cv.add_trace(go.Scatter(x=f_rp, y=psd_rp_n, mode="lines",
-                name=f"{cons_val_ch} Referenz ({cref_start}–{cref_end} s)",
-                line=dict(color=cons_col, width=2.8),
-                hovertemplate=f"{cons_val_ch}: %{{y:.3f}} @ %{{x:.1f}} Hz<extra></extra>"))
-            for bname, (lo, hi), bcol in BANDS:
-                r2, g2, b2 = int(bcol[1:3],16), int(bcol[3:5],16), int(bcol[5:7],16)
-                fig_cv.add_vrect(x0=lo, x1=hi,
-                    fillcolor=f"rgba({r2},{g2},{b2},0.08)", line_width=0,
-                    annotation_text=bname, annotation_position="top left",
-                    annotation_font_size=9, annotation_font_color=bcol)
-            ap_f = _peak_freq(f_fp, psd_fp, 8, 13)
-            ap_r = _peak_freq(f_rp, psd_rp, 8, 13)
-            for xp, col, lbl in [
-                (ap_f, "rgba(120,120,120,0.8)", f"α {ap_f:.1f} Hz (gesamt)"),
-                (ap_r, cons_col,               f"α {ap_r:.1f} Hz ({cons_val_ch})"),
-            ]:
-                if xp == xp:
-                    fig_cv.add_vline(x=xp, line_color=col, line_dash="dash",
-                                     line_width=1.5, annotation_text=lbl, annotation_font_size=9)
-            fig_cv.update_layout(
-                xaxis_title="Frequenz (Hz)", yaxis_title="PSD (normiert)",
-                height=250, margin=dict(t=8, b=40, l=65, r=10), plot_bgcolor="#fafafa",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)),
-            )
-            st.plotly_chart(fig_cv, use_container_width=True, key="cons_val_fft")
-            if ap_f == ap_f and ap_r == ap_r:
-                d = abs(ap_f - ap_r)
-                if d <= 0.5:
-                    st.success(f"✅ Konsistent: Gesamt {ap_f:.1f} Hz · {cons_val_ch}-Referenz {ap_r:.1f} Hz (Δ {d:.1f} Hz)")
-                elif d <= 1.5:
-                    st.warning(f"⚠️ Leicht abweichend: {ap_f:.1f} Hz vs. {ap_r:.1f} Hz (Δ {d:.1f} Hz)")
-                else:
-                    st.error(f"❌ Inkonsistent: {ap_f:.1f} Hz vs. {ap_r:.1f} Hz (Δ {d:.1f} Hz) — Alpha stark zustandsabhängig.")
-            else:
-                st.info("Kein Alpha-Peak in einem der Segmente detektierbar.")
-        else:
-            st.warning("Referenz-Segment zu kurz.")
+        # Ergebnisse für Report-Seite persistieren
+        _bp_post = bp_all.get("Posterior (O1+O2)", {})
+        _bp_ant  = bp_all.get("Anterior (F3+F4)", {})
+        _total_post = sum(_bp_post.values()) or 1
+        _total_ant  = sum(_bp_ant.values()) or 1
+        _d = _bp_post.get("Delta", 0); _t = _bp_post.get("Theta", 0)
+        _a = _bp_post.get("Alpha", 0) or 1e-9; _b = _bp_post.get("Beta", 0) or 1e-9
+        _ap_post = alpha_peaks.get("Posterior (O1+O2)")
+        _ap_ant  = alpha_peaks.get("Anterior (F3+F4)")
+        st.session_state["eeg_summary"] = {
+            "t_start": t_start, "t_end": t_end,
+            "bp_post": _bp_post, "bp_ant": _bp_ant,
+            "total_post": _total_post, "total_ant": _total_ant,
+            "ratios": {
+                "Delta/Alpha": _d / _a,
+                "Theta/Alpha": _t / _a,
+                "Alpha/Theta": _a / (_t or 1e-9),
+                "Theta/Beta":  _t / (_b or 1e-9),
+                "DTAB":        (_d + _t) / ((_a + _b) or 1e-9),
+            },
+            "alpha_peak_post_hz": _ap_post,
+            "alpha_peak_ant_hz":  _ap_ant,
+            "ap_ratio": _bp_post.get("Alpha", 0) / (_bp_ant.get("Alpha", 0) or 1e-9),
+        }
 
         # Kennzahlen-Kacheln
         bp_p = bp_all.get("Posterior (O1+O2)", {})

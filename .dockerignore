@@ -1,0 +1,16 @@
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+*.edf
+*.EDF
+data/
+reports/
+anonymization_log.json
+.env
+.DS_Store
+README.md
+tests/
+docs/

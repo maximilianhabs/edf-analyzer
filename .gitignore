@@ -20,8 +20,12 @@ data/
 
 # Outputs — lokal generierte Reports
 reports/output/
+reports/
 *.pdf
 *.csv
+
+# Anonymisierungslog (kann PHI-Metadaten enthalten)
+anonymization_log.json
 
 # Umgebung
 .env

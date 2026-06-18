@@ -124,11 +124,13 @@ def render_sidebar_status():
             anns = edf.get("annotations", [])
             has_hv = any("HVT" in a.get("description","").upper() for a in anns)
 
-        phi_badge = (
-            "<span style='color:#27ae60;font-size:10px;font-weight:700'>✓ PHI-geprüft</span>"
-            if validated else
-            "<span style='color:#e67e22;font-size:10px;font-weight:700'>⚠ nicht geprüft</span>"
-        )
+        _has_phi = st.session_state.get("phi_has_patient_data", False)
+        if not validated:
+            phi_badge = "<span style='color:#e67e22;font-size:10px;font-weight:700'>⚠ nicht geprüft</span>"
+        elif _has_phi:
+            phi_badge = "<span style='color:#e67e22;font-size:10px;font-weight:700'>⚠ PHI — DSGVO beachten</span>"
+        else:
+            phi_badge = "<span style='color:#27ae60;font-size:10px;font-weight:700'>✓ anonymisiert</span>"
 
         st.markdown(
             f"<div style='"

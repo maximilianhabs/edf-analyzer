@@ -2,6 +2,7 @@
 
 import io
 import os
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -124,8 +125,9 @@ def render():
         classify_parameter, classify_parameter_pediatric,
         compute_autonomic_balance, MARKER_TYPE, LF_HF_MEAN, LF_HF_SD,
         BADGE_PARA, BADGE_SYMP, BADGE_NONE, PEDIATRIC_AGE_GROUPS,
-        pnn50_expected_from_rmssd,
+        pnn50_expected_from_rmssd, POOLED_REFERENCE, _iqr_sigma,
     )
+    import math as _math
     from analysis.hrv_freq import compute_frequency_domain as _cfd
 
     ZONE_COLOR = {"pathologisch": "#c0392b", "grenzwertig": "#f39c12",
@@ -145,6 +147,240 @@ def render():
         _classify = lambda p, v, a, hr, rmssd=None: classify_parameter(p, v, a, hr, rmssd_ms=rmssd)
 
     # ── Innere Hilfsfunktionen ─────────────────────────────────────────────────
+
+    def _build_ans_state_fig(hr: float, rmssd_val: float, fd_dict: Optional[dict],
+                             sdnn_val: Optional[float] = None,
+                             pnn50_val: Optional[float] = None,
+                             height: int = 500) -> tuple:
+        """
+        2D ANS-Statusdiagramm mit SDNN-Leiste.
+        X = sympathische Aktivierung, Y = vagale Aktivierung (je σ relativ Norm).
+        Rautengröße = globale ANS-Aktivität (SDNN). Gibt (fig, label) zurück.
+        """
+        from plotly.subplots import make_subplots
+
+        def _z(val: float, median: float, iqr_tuple: tuple) -> float:
+            sigma = _iqr_sigma(iqr_tuple)
+            return (val - median) / sigma if sigma > 0 else 0.0
+
+        def _z_log(val: float, median: float, iqr_tuple: tuple) -> float:
+            """Z-Score für log-normalverteilte Parameter (HF/LF Power)."""
+            if val <= 0:
+                return -3.0
+            sigma_log = (_math.log(iqr_tuple[1]) - _math.log(iqr_tuple[0])) / 1.349
+            return (_math.log(val) - _math.log(median)) / sigma_log if sigma_log > 0 else 0.0
+
+        # -- Z-Scores --------------------------------------------------------------
+        z_rmssd = _z(rmssd_val, POOLED_REFERENCE["rmssd"]["median"],
+                     POOLED_REFERENCE["rmssd"]["iqr"])
+        z_hr    = _z(hr, POOLED_REFERENCE["heart_rate"]["median"],
+                     POOLED_REFERENCE["heart_rate"]["iqr"])
+        z_sdnn  = _z(sdnn_val, POOLED_REFERENCE["sdnn"]["median"],
+                     POOLED_REFERENCE["sdnn"]["iqr"]) if sdnn_val is not None else 0.0
+
+        # pNN50: grobe Populationsschätzung (Median ~12%, SD ~12% für Kurzzeit-HRV)
+        z_pnn50 = (pnn50_val - 12.0) / 12.0 if pnn50_val is not None else None
+
+        # HF Power: log-normiert (POOLED_REFERENCE["hf_power"] = median 100, IQR (38,263) ms²)
+        hf_power = fd_dict.get("hf_power") if fd_dict else None
+        z_hf = _z_log(hf_power, POOLED_REFERENCE["hf_power"]["median"],
+                      POOLED_REFERENCE["hf_power"]["iqr"]) if hf_power and hf_power > 0 else None
+
+        lf_hf = fd_dict["lf_hf_ratio"] if fd_dict and not _math.isnan(
+            fd_dict.get("lf_hf_ratio", float("nan"))) else None
+        z_lfhf = (lf_hf - LF_HF_MEAN) / LF_HF_SD if lf_hf is not None else None
+
+        # -- Projektion in 2D-Ereignisraum ----------------------------------------
+        # Vagale Marker → Richtung oben-links  (x = -z*0.3, y = +z)
+        # Balance/Symp.  → Richtung unten-rechts (x = +z,    y = -z*0.25)
+        # HR als Surrogat → kleinere Gewichtung (marker size 10 statt 14)
+        pts: list = []  # (x, y, name, hover_val, color, size, weight)
+
+        pts.append((-z_rmssd * 0.30,  z_rmssd,        "RMSSD",  f"{rmssd_val:.1f} ms", "#1a5276", 14, 1.0))
+
+        if z_pnn50 is not None:
+            pts.append((-z_pnn50 * 0.25, z_pnn50,      "pNN50",  f"{pnn50_val:.1f} %",  "#2e86c1", 14, 1.0))
+
+        if z_hf is not None:
+            pts.append((-z_hf * 0.28,    z_hf * 0.85,  "HF-Power", f"{hf_power:.0f} ms²", "#1abc9c", 13, 0.85))
+
+        if z_lfhf is not None:
+            pts.append((z_lfhf,          -z_lfhf * 0.25, "LF/HF",  f"{lf_hf:.2f}",        "#7d3c98", 14, 1.0))
+
+        # HR: Surrogat mit halber Gewichtung und kleinerem Marker
+        pts.append((z_hr * 0.45,      -z_hr * 0.38,   "HR*",    f"{hr:.0f} bpm",        "#b03a2e", 10, 0.5))
+
+        # -- Schwerpunkt (gewichtet) -----------------------------------------------
+        total_w = sum(p[6] for p in pts)
+        cx = sum(p[0] * p[6] for p in pts) / total_w
+        cy = sum(p[1] * p[6] for p in pts) / total_w
+        dist = _math.sqrt(cx**2 + cy**2)
+
+        if dist < 0.6:
+            label, c_color = "ausgeglichen", "#1e8449"
+        elif cx < 0 and cy > 0:
+            s = "leicht " if dist < 1.4 else ("mäßig " if dist < 2.0 else "stark ")
+            label, c_color = s + "parasympathikoton", "#1a5276"
+        elif cx > 0 and cy < 0:
+            s = "leicht " if dist < 1.4 else ("mäßig " if dist < 2.0 else "stark ")
+            label, c_color = s + "sympathikoton", "#922b21"
+        elif cx < 0 and cy < 0:
+            label, c_color = "ANS-Dämpfung", "#555"
+        else:
+            label, c_color = "gemischt erhöht", "#27ae60"
+
+        # Rautengröße aus SDNN: z=0 → size 20, z=-2 → 12, z=+2 → 28
+        diamond_size = max(10, min(32, int(20 + z_sdnn * 4)))
+
+        # -- Figur aufbauen (Subplots: Scatter oben, SDNN-Leiste unten) -----------
+        LMAX = 3.2
+        fig = make_subplots(
+            rows=2, cols=1,
+            row_heights=[0.84, 0.16],
+            vertical_spacing=0.06,
+        )
+
+        # Quadranten-Hintergrund (row 1)
+        for x0, x1, y0, y1, col in [
+            (-LMAX, 0, 0, LMAX, "rgba(41,128,185,0.07)"),
+            (0, LMAX, -LMAX, 0, "rgba(192,57,43,0.07)"),
+            (-LMAX, 0, -LMAX, 0, "rgba(100,100,100,0.04)"),
+            (0, LMAX, 0, LMAX, "rgba(39,174,96,0.04)"),
+        ]:
+            fig.add_shape(type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
+                          fillcolor=col, line_width=0, row=1, col=1)
+
+        # Referenzkreise ±1σ / ±2σ
+        _th = [i * 2 * _math.pi / 64 for i in range(65)]
+        for r, col, dash in [(1.0, "#27ae60", "dot"), (2.0, "#f39c12", "dot")]:
+            fig.add_trace(go.Scatter(
+                x=[_math.cos(t) * r for t in _th], y=[_math.sin(t) * r for t in _th],
+                mode="lines", line=dict(color=col, width=1.2, dash=dash),
+                showlegend=False, hoverinfo="skip",
+            ), row=1, col=1)
+
+        # Achsenlinien
+        for shape_args in [
+            dict(type="line", x0=-LMAX, x1=LMAX, y0=0, y1=0),
+            dict(type="line", x0=0, x1=0, y0=-LMAX, y1=LMAX),
+        ]:
+            fig.add_shape(**shape_args, line=dict(color="#ddd", width=1), row=1, col=1)
+
+        # Parameter-Punkte
+        for px, py, pn, pv, pc, ps, _ in pts:
+            fig.add_trace(go.Scatter(
+                x=[px], y=[py], mode="markers+text",
+                text=[pn], textposition="top center",
+                textfont=dict(size=9, color=pc),
+                marker=dict(size=ps, color=pc, symbol="circle",
+                            line=dict(width=1.5, color="white")),
+                hovertemplate=f"<b>{pn}</b>: {pv}<extra></extra>",
+                showlegend=False,
+            ), row=1, col=1)
+
+        # Schwerpunkt-Raute (Größe = SDNN)
+        fig.add_trace(go.Scatter(
+            x=[cx], y=[cy], mode="markers+text",
+            text=[label], textposition="bottom center",
+            textfont=dict(size=11, color=c_color),
+            marker=dict(size=diamond_size, color=c_color, symbol="diamond",
+                        line=dict(width=2, color="white")),
+            hovertemplate=(f"<b>ANS-Tendenz: {label}</b>"
+                           f"<br>Rautengröße ~ SDNN: {sdnn_val:.0f} ms (z={z_sdnn:+.1f})"
+                           f"<extra></extra>"),
+            showlegend=False,
+        ), row=1, col=1)
+
+        # Quadranten-Labels
+        for ax, ay, atext, acol, axanchor, ayanchor in [
+            (-LMAX + 0.1, LMAX - 0.15, "Parasympathikoton", "#1a5276", "left", "top"),
+            (0.1, -LMAX + 0.15, "Sympathikoton", "#922b21", "left", "bottom"),
+            (-LMAX + 0.1, -LMAX + 0.15, "ANS-Dämpfung", "#666", "left", "bottom"),
+        ]:
+            fig.add_annotation(x=ax, y=ay, text=atext, showarrow=False,
+                               font=dict(size=9, color=acol), opacity=0.55,
+                               xanchor=axanchor, yanchor=ayanchor, row=1, col=1)
+
+        # σ-Kreisbeschriftungen
+        for r, col_c in [(1.0, "#27ae60"), (2.0, "#f39c12")]:
+            fig.add_annotation(
+                x=_math.cos(_math.pi / 4) * r + 0.08,
+                y=_math.sin(_math.pi / 4) * r,
+                text=f"±{r:.0f}σ", showarrow=False,
+                font=dict(size=8, color=col_c), opacity=0.7,
+                row=1, col=1,
+            )
+
+        # -- SDNN-Leiste (row 2) --------------------------------------------------
+        BMAX = 3.0
+        for bx0, bx1, bc in [
+            (-BMAX, -2.0, "rgba(192,57,43,0.25)"),
+            (-2.0,  -1.0, "rgba(241,196,15,0.25)"),
+            (-1.0,   1.0, "rgba(39,174,96,0.20)"),
+            (1.0,    2.0, "rgba(241,196,15,0.25)"),
+            (2.0,   BMAX, "rgba(192,57,43,0.25)"),
+        ]:
+            fig.add_shape(type="rect", x0=bx0, x1=bx1, y0=-1, y1=1,
+                          fillcolor=bc, line_width=0, row=2, col=1)
+
+        sdnn_z_clamped = max(-BMAX + 0.1, min(BMAX - 0.1, z_sdnn))
+        sdnn_color = "#27ae60" if abs(sdnn_z_clamped) < 1.0 else (
+            "#f39c12" if abs(sdnn_z_clamped) < 2.0 else "#c0392b")
+        sdnn_label = f"SDNN {sdnn_val:.0f} ms" if sdnn_val else "SDNN n/v"
+        fig.add_trace(go.Scatter(
+            x=[sdnn_z_clamped], y=[0], mode="markers+text",
+            text=[sdnn_label], textposition="top center",
+            textfont=dict(size=9, color=sdnn_color),
+            marker=dict(size=12, color=sdnn_color, symbol="diamond",
+                        line=dict(width=1.5, color="white")),
+            hovertemplate=f"SDNN: {sdnn_label} · z={z_sdnn:+.2f}<extra></extra>",
+            showlegend=False,
+        ), row=2, col=1)
+        fig.add_shape(type="line", x0=0, x1=0, y0=-1, y1=1,
+                      line=dict(color="#ddd", width=1), row=2, col=1)
+
+        # -- Layout ---------------------------------------------------------------
+        fig.update_layout(
+            height=height,
+            margin=dict(t=16, b=10, l=60, r=16),
+            plot_bgcolor="white",
+            showlegend=False,
+        )
+        fig.update_xaxes(
+            range=[-LMAX, LMAX], zeroline=False, showgrid=False,
+            tickvals=[-2, -1, 0, 1, 2], ticktext=["−2σ", "−1σ", "0", "+1σ", "+2σ"],
+            title=dict(text="Sympathische Aktivierung →", font=dict(size=10), standoff=4),
+            row=1, col=1,
+        )
+        fig.update_yaxes(
+            range=[-LMAX, LMAX], zeroline=False, showgrid=False,
+            tickvals=[-2, -1, 0, 1, 2], ticktext=["−2σ", "−1σ", "0", "+1σ", "+2σ"],
+            title=dict(text="Vagale Aktivierung →", font=dict(size=10), standoff=4),
+            row=1, col=1,
+        )
+        fig.update_xaxes(
+            range=[-BMAX, BMAX], zeroline=False, showgrid=False,
+            tickvals=[-2, -1, 0, 1, 2], ticktext=["−2σ", "−1σ", "0", "+1σ", "+2σ"],
+            title=dict(text="Globale ANS-Aktivität (SDNN) →", font=dict(size=9), standoff=3),
+            row=2, col=1,
+        )
+        fig.update_yaxes(visible=False, row=2, col=1)
+        return fig, label
+
+    _ANS_LEGEND = (
+        "**Wie lesen Sie das Diagramm?**  \n"
+        "**Punkte** (●) = einzelne HRV-Parameter, normiert auf Bevölkerungsmedian "
+        "(0 = Norm, ±1σ/±2σ = übliche Streuung). "
+        "Vagale Marker (RMSSD, pNN50, HF-Power) zeigen nach **oben-links** = parasympathikoton; "
+        "Balance-Marker (LF/HF, HR\\*) nach **unten-rechts** = sympathikoton.  \n"
+        "**◆ Raute** = gewichteter Schwerpunkt aller Punkte — zeigt die **autonome Gesamttendenz**. "
+        "Die **Größe** der Raute spiegelt die **globale ANS-Aktivität (SDNN)** wider: "
+        "große Raute = kräftiges, aktives ANS; kleine Raute = gedämpfte Gesamtaktivität.  \n"
+        "**Grüner Kreis** = ±1σ Normbereich · **Gelber Kreis** = ±2σ Grenzbereich.  \n"
+        "**SDNN-Leiste** (unten): Gesamtstärke des ANS unabhängig von der Sympathikus/Parasympathikus-Balance — "
+        "ein separat bewertetes Maß für die kardiovaskuläre Regelkapazität.  \n"
+        "\\* HR ist ein indirekter Surrogat-Marker mit halber Gewichtung."
+    )
 
     def render_psd_chart(fd_x, title, line_color):
         from analysis.hrv_freq import VLF_BAND, LF_BAND, HF_BAND
@@ -237,39 +473,19 @@ def render():
         metrics = {"mean_hr": _mean_hr, "sdnn": _sdnn, "rmssd": _rmssd, "pnn50": _pnn50,
                    "lf": _lf, "hf": _hf, "tp": _tp, "lhr": _lhr}
 
-        if _fd and _fd["hf_power"] > 0 and not (float("nan") == _fd["lf_hf_ratio"]):
-            try:
-                _balance = compute_autonomic_balance(_rmssd, _fd["hf_power"], _fd["lf_hf_ratio"])
-                _fig_bal = go.Figure()
-                for x0b, x1b, cb in [(-100,-40,"#f1c40f"),(-40,-15,"#f1c40f"),(-15,15,"#27ae60"),
-                                      (15,40,"#f1c40f"),(40,100,"#f1c40f")]:
-                    _fig_bal.add_vrect(x0=x0b, x1=x1b, fillcolor=cb,
-                                       opacity=0.18 if abs(x0b)==100 else 0.10 if abs(x0b)==40 else 0.18,
-                                       line_width=0)
-                _fig_bal.add_vline(x=0, line_color="#888", line_width=1, line_dash="dot")
-                _fig_bal.add_trace(go.Scatter(
-                    x=[max(-97, min(97, _balance["index"]))], y=[0], mode="markers+text",
-                    marker=dict(symbol="diamond", size=20, color="#2c3e50",
-                                line=dict(width=2, color="white")),
-                    text=[f"{_balance['index']:+.0f}"], textposition="top center",
-                    textfont=dict(size=13, color="#2c3e50"),
-                ))
-                _fig_bal.update_layout(
-                    xaxis=dict(range=[-100,100], tickvals=[-100,-40,0,40,100],
-                               ticktext=["stark vagal","leicht vagal","ausgeglichen",
-                                         "leicht symp.","stark symp."]),
-                    yaxis=dict(visible=False, range=[-1,1]),
-                    height=140, margin=dict(t=10,b=30,l=20,r=20),
-                    plot_bgcolor="white", showlegend=False,
-                )
-                st.plotly_chart(_fig_bal, use_container_width=True)
-                st.markdown(
-                    f"<div style='text-align:center;font-size:15px;margin-top:-15px'>"
-                    f"Autonome Tendenz: <b>{_balance['label']}</b></div>",
-                    unsafe_allow_html=True,
-                )
-            except Exception:
-                pass
+        try:
+            _fig_ans, _ans_lbl = _build_ans_state_fig(
+                _mean_hr, _rmssd, _fd, sdnn_val=_sdnn, pnn50_val=_pnn50)
+            st.plotly_chart(_fig_ans, use_container_width=True)
+            st.markdown(
+                f"<div style='text-align:center;font-size:15px;margin-top:-10px'>"
+                f"ANS-Tendenz: <b>{_ans_lbl}</b></div>",
+                unsafe_allow_html=True,
+            )
+            with st.expander("ℹ️ Diagramm-Erklärung"):
+                st.markdown(_ANS_LEGEND)
+        except Exception:
+            pass
 
         if sdnn_warning:
             st.warning(
@@ -583,7 +799,7 @@ def render():
 
     _SENS_OPTIONS = [0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0]
     if "ecg_sens_idx" not in st.session_state:
-        st.session_state.ecg_sens_idx = 3  # default: 1.0 mV
+        st.session_state.ecg_sens_idx = 6  # default: 3.0 mV
 
     col_ch, col_lp = st.columns([3, 2])
     ecg_ch = col_ch.selectbox(
@@ -928,29 +1144,19 @@ def render():
     fig_psd_welch_obj = render_psd_chart(fd_welch, "Welch (FFT)", "#2c3e50")
     fig_psd_burg_obj  = render_psd_chart(fd_burg,  "Burg (Maximum Entropy Method)", "#6c3483")
 
-    # Balance-Gauge für PDF
-    balance = compute_autonomic_balance(rmssd, fd["hf_power"], fd["lf_hf_ratio"])
-    fig_bal = go.Figure()
-    for x0b, x1b, cb, op in [(-100,-40,"#f1c40f",0.18), (-40,-15,"#f1c40f",0.10),
-                               (-15,15,"#27ae60",0.18), (15,40,"#f1c40f",0.10),
-                               (40,100,"#f1c40f",0.18)]:
-        fig_bal.add_vrect(x0=x0b, x1=x1b, fillcolor=cb, opacity=op, line_width=0)
-    fig_bal.add_vline(x=0, line_color="#888", line_width=1, line_dash="dot")
-    fig_bal.add_trace(go.Scatter(
-        x=[max(-97, min(97, balance["index"]))], y=[0], mode="markers+text",
-        marker=dict(symbol="diamond", size=20, color="#2c3e50",
-                    line=dict(width=2, color="white")),
-        text=[f"{balance['index']:+.0f}"], textposition="top center",
-        textfont=dict(size=13, color="#2c3e50"),
-    ))
-    fig_bal.update_layout(
-        xaxis=dict(range=[-100,100], tickvals=[-100,-40,0,40,100],
-                   ticktext=["stark vagal","leicht vagal","ausgeglichen",
-                             "leicht symp.","stark symp."]),
-        yaxis=dict(visible=False, range=[-1,1]),
-        height=140, margin=dict(t=10,b=30,l=20,r=20),
-        plot_bgcolor="white", showlegend=False,
-    )
+    # ANS-Statusdiagramm für PDF und Tab 3
+    fig_bal, _ans_label = _build_ans_state_fig(
+        mean_hr, rmssd, fd, sdnn_val=sdnn, pnn50_val=pnn50)
+    balance = {"label": _ans_label, "index": 0.0}  # index nur noch für PDF-Kompatibilität
+
+    # Ergebnisse für Report-Seite persistieren
+    st.session_state["hrv_summary"] = {
+        "mean_hr": mean_hr, "sdnn": sdnn, "rmssd": rmssd, "pnn50": pnn50,
+        "pct_removed": pct_removed, "quality_label": qlabel,
+        "ans_label": _ans_label, "seg_label": seg_label,
+        "fd_welch": fd_welch, "fd_burg": fd_burg,
+        "edf_name": os.path.basename(edf_path),
+    }
 
     # ══════════════════════════════════════════════════════════════════════════
     # 4 TABS
@@ -1346,11 +1552,9 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                         duration_min=edf["duration_s"] / 60,
                         mean_hr=mean_hr, sdnn=sdnn, rmssd=rmssd, pnn50=pnn50,
                         pct_removed=pct_removed, quality_label=qlabel,
-                        balance_label=balance["label"], balance_index=balance["index"],
+                        balance_label=balance["label"],
                         lab_rows=pdf_lab_rows, method_used=freq_method,
-                        fig_tachogram=fig_rr_clean, fig_poincare=fig_poin_clean,
-                        fig_psd_welch=fig_psd_welch_obj, fig_psd_burg=fig_psd_burg_obj,
-                        fig_balance_gauge=fig_bal,
+                        fd_welch=fd_welch, fd_burg=fd_burg,
                     )
                 st.session_state["pdf_bytes"] = pdf_bytes
             if "pdf_bytes" in st.session_state:
