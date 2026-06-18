@@ -311,8 +311,8 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
             text=name, showarrow=False, font=dict(size=9, color=color), xanchor="left",
         )
     fig_sg.add_vrect(x0=t_start, x1=t_end,
-                     fillcolor="rgba(255,255,255,0.10)",
-                     line_color="rgba(255,255,255,0.6)", line_width=1.5)
+                     fillcolor="rgba(252,211,77,0.13)",
+                     line_color="rgba(252,211,77,0.95)", line_width=2.5)
     fig_sg.update_layout(
         xaxis=dict(title="Zeit (min:s)", tickvals=tick_vals, ticktext=tick_text,
                    tickfont=dict(size=10), color="white", gridcolor="rgba(255,255,255,0.1)"),
@@ -398,15 +398,47 @@ def render():
         sig = data[0] * 1e6
         return _highpass(sig, fs, cutoff=1.0)
 
-    # ── Zeitfenster-Slider + Analyse-Optionen ────────────────────────────────
+    # ── Analysefenster-Steuerung ──────────────────────────────────────────────
     st.markdown("---")
-    col_sl1, col_sl2 = st.columns(2)
-    with col_sl1:
-        t_start = st.slider("Analysefenster Start (s)", 0, max(0, dur_s - 10),
-                            0, step=5, key="spec_t_start")
-    with col_sl2:
-        t_end = st.slider("Analysefenster Ende (s)", t_start + 10, dur_s,
-                          min(dur_s, t_start + 300), step=5, key="spec_t_end")
+    _DUR_OPTIONS = {"30 s": 30, "1 min": 60, "2 min": 120, "5 min": 300,
+                    "10 min": 600, "Gesamte Aufnahme": None}
+    _dur_keys = list(_DUR_OPTIONS.keys())
+
+    # Sinnvolle Voreinstellung: 5 min oder kürzer falls Aufnahme kürzer
+    if "spec_dur_label" not in st.session_state:
+        for lbl, sec in _DUR_OPTIONS.items():
+            if sec is None or sec >= dur_s:
+                st.session_state.spec_dur_label = lbl; break
+            st.session_state.spec_dur_label = "5 min"
+
+    wc1, wc2, wc3 = st.columns([5, 2, 3])
+    with wc1:
+        t_start = st.slider(
+            "Fenster-Start", 0, max(0, dur_s - 10), 0, step=5,
+            key="spec_t_start",
+            format=lambda v: f"{v//60:02d}:{v%60:02d}",
+        )
+    with wc2:
+        dur_label = st.selectbox(
+            "Dauer", _dur_keys,
+            index=_dur_keys.index(st.session_state.spec_dur_label),
+            key="spec_dur_label",
+            help="Analysefensterlänge ab Start",
+        )
+    _chosen_sec = _DUR_OPTIONS[dur_label]
+    t_end = dur_s if _chosen_sec is None else min(dur_s, t_start + _chosen_sec)
+    # sicherstellen dass t_end > t_start
+    t_end = max(t_end, t_start + 10)
+    with wc3:
+        _dur_actual = t_end - t_start
+        st.markdown(
+            f"<div style='padding:8px 0 4px;font-size:13px;color:#555'>"
+            f"⏱ <b>{t_start//60:02d}:{t_start%60:02d}</b> – "
+            f"<b>{t_end//60:02d}:{t_end%60:02d}</b> &nbsp;·&nbsp; "
+            f"<b>{_dur_actual}s</b> = {_dur_actual/60:.1f} min"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
     with st.expander("⚙️ Analyse-Optionen", expanded=False):
         opt_col1, opt_col2 = st.columns(2)
