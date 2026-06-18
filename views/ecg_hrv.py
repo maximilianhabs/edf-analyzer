@@ -782,6 +782,12 @@ def render():
         ))
         # Haupt-EKG-Streifen jetzt mit R-Peak-Dreiecken überschreiben
         _ecg_strip_slot.plotly_chart(fig_ecg_rr, use_container_width=True)
+    _threshold_caption = st.empty()
+    if rr_data.get("threshold_mv"):
+        _threshold_caption.caption(
+            f"R-Peak-Erkennung — Triggerschwelle: **±{rr_data['threshold_mv']:.2f} mV** "
+            f"(50 % des 98. Perzentils des |Signals|)"
+        )
 
     # PSD-Figures
     fig_psd_welch_obj = render_psd_chart(fd_welch, "Welch (FFT)", "#2c3e50")
@@ -920,14 +926,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                         ("  — Rohdaten + Ausreißer markiert" if show_raw else " — bereinigt"))
             st.plotly_chart(fig_poin, use_container_width=True)
 
-        st.markdown(
-            f"**Epoche mit R-Peak-Markierung** — "
-            f"Triggerschwelle: **±{rr_data['threshold_mv']:.2f} mV** "
-            f"(50 % des 98. Perzentils des |Signals|)"
-        )
-        if fig_ecg_rr is not None:
-            st.plotly_chart(fig_ecg_rr, use_container_width=True)
-        else:
+        if fig_ecg_rr is None:
             st.info("Keine R-Peaks in dieser Epoche erkannt.")
 
     # ── Tab 2: Frequenzdomäne ─────────────────────────────────────────────────
