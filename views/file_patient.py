@@ -11,14 +11,26 @@ from analysis.hrv_reference import PEDIATRIC_AGE_GROUPS
 from core.loader import check_privacy
 from core.shared import load_and_prepare
 
-UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "edf_analyzer_uploads")
+def _session_upload_dir() -> str:
+    """Gibt einen session-eigenen /tmp/-Unterordner zurück (erstellt ihn bei Bedarf).
+
+    Jede Streamlit-Session erhält eine UUID aus session_state — so landen EDF-Dateien
+    verschiedener gleichzeitiger Benutzer in getrennten Ordnern.
+    """
+    import secrets
+    if "session_upload_token" not in st.session_state:
+        st.session_state.session_upload_token = secrets.token_hex(16)
+    path = os.path.join(tempfile.gettempdir(),
+                        "edf_analyzer", st.session_state.session_upload_token)
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def render():
     st.title("📂 Datei & Patient")
     st.caption("Lade die EDF-Datei hoch und trage Alter/Geschlecht ein — gilt für die gesamte Analyse.")
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    UPLOAD_DIR = _session_upload_dir()
 
     # ── Dateiauswahl ──────────────────────────────────────────────────────
     # Wichtig: Wert liegt in einem eigenen, NICHT-Widget-gebundenen Session-State-Key
