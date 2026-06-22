@@ -151,7 +151,8 @@ def render():
     def _build_ans_state_fig(hr: float, rmssd_val: float, fd_dict: Optional[dict],
                              sdnn_val: Optional[float] = None,
                              pnn50_val: Optional[float] = None,
-                             height: int = 500) -> tuple:
+                             height: int = 500,
+                             duration_s: Optional[float] = None) -> tuple:
         """
         2D ANS-Statusdiagramm mit SDNN-Leiste.
         X = sympathische Aktivierung, Y = vagale Aktivierung (je σ relativ Norm).
@@ -312,28 +313,42 @@ def render():
             )
 
         # -- SDNN-Leiste (row 2) --------------------------------------------------
+        # Asymmetrisch: links rot (niedrig = schlecht), rechts blau (hoch = günstig)
         BMAX = 3.0
         for bx0, bx1, bc in [
-            (-BMAX, -2.0, "rgba(192,57,43,0.25)"),
-            (-2.0,  -1.0, "rgba(241,196,15,0.25)"),
-            (-1.0,   1.0, "rgba(39,174,96,0.20)"),
-            (1.0,    2.0, "rgba(241,196,15,0.25)"),
-            (2.0,   BMAX, "rgba(192,57,43,0.25)"),
+            (-BMAX, -2.0, "rgba(192,57,43,0.25)"),   # zu niedrig → rot
+            (-2.0,  -1.0, "rgba(241,196,15,0.25)"),   # grenzwertig niedrig → gelb
+            (-1.0,   1.0, "rgba(39,174,96,0.20)"),    # normal → grün
+            (1.0,    2.0, "rgba(52,152,219,0.15)"),   # erhöht → hellblau (günstig)
+            (2.0,   BMAX, "rgba(52,152,219,0.28)"),   # stark erhöht → blau (günstig, aber Hinweis)
         ]:
             fig.add_shape(type="rect", x0=bx0, x1=bx1, y0=-1, y1=1,
                           fillcolor=bc, line_width=0, row=2, col=1)
 
         sdnn_z_clamped = max(-BMAX + 0.1, min(BMAX - 0.1, z_sdnn))
-        sdnn_color = "#27ae60" if abs(sdnn_z_clamped) < 1.0 else (
-            "#f39c12" if abs(sdnn_z_clamped) < 2.0 else "#c0392b")
+        # Farbe: links = Warnung, rechts = Info (nicht Alarm)
+        if sdnn_z_clamped >= 2.0:
+            sdnn_color = "#2471a3"   # blau: erhöht, aber günstig
+        elif sdnn_z_clamped >= 1.0:
+            sdnn_color = "#5dade2"   # hellblau
+        elif sdnn_z_clamped >= -1.0:
+            sdnn_color = "#27ae60"   # grün: normal
+        elif sdnn_z_clamped >= -2.0:
+            sdnn_color = "#f39c12"   # gelb: grenzwertig niedrig
+        else:
+            sdnn_color = "#c0392b"   # rot: zu niedrig
         sdnn_label = f"SDNN {sdnn_val:.0f} ms" if sdnn_val else "SDNN n/v"
+        # Hinweis bei langer Aufnahme (>10 min → Normwerte nur bedingt vergleichbar)
+        long_rec = duration_s is not None and duration_s > 600
+        hover_suffix = " · Norm für 5-min-EEG — bei Langzeitableitung erwartet erhöht" if long_rec and z_sdnn > 1.0 else ""
+        display_label = f"{sdnn_label}{'*' if long_rec and z_sdnn > 1.0 else ''}"
         fig.add_trace(go.Scatter(
             x=[sdnn_z_clamped], y=[0], mode="markers+text",
-            text=[sdnn_label], textposition="top center",
+            text=[display_label], textposition="top center",
             textfont=dict(size=9, color=sdnn_color),
             marker=dict(size=12, color=sdnn_color, symbol="diamond",
                         line=dict(width=1.5, color="white")),
-            hovertemplate=f"SDNN: {sdnn_label} · z={z_sdnn:+.2f}<extra></extra>",
+            hovertemplate=f"SDNN: {sdnn_label} · z={z_sdnn:+.2f}{hover_suffix}<extra></extra>",
             showlegend=False,
         ), row=2, col=1)
         fig.add_shape(type="line", x0=0, x1=0, y0=-1, y1=1,
@@ -475,7 +490,8 @@ def render():
 
         try:
             _fig_ans, _ans_lbl = _build_ans_state_fig(
-                _mean_hr, _rmssd, _fd, sdnn_val=_sdnn, pnn50_val=_pnn50)
+                _mean_hr, _rmssd, _fd, sdnn_val=_sdnn, pnn50_val=_pnn50,
+                duration_s=edf["duration_s"])
             st.plotly_chart(_fig_ans, use_container_width=True)
             st.markdown(
                 f"<div style='text-align:center;font-size:15px;margin-top:-10px'>"
@@ -1151,7 +1167,8 @@ def render():
 
     # ANS-Statusdiagramm für PDF und Tab 3
     fig_bal, _ans_label = _build_ans_state_fig(
-        mean_hr, rmssd, fd, sdnn_val=sdnn, pnn50_val=pnn50)
+        mean_hr, rmssd, fd, sdnn_val=sdnn, pnn50_val=pnn50,
+        duration_s=edf["duration_s"])
     balance = {"label": _ans_label, "index": 0.0}  # index nur noch für PDF-Kompatibilität
 
     # Ergebnisse für Report-Seite persistieren
