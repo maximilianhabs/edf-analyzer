@@ -1409,19 +1409,26 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
 Mittlere Herzrate aus dem RR-Intervall-Mittelwert. Bradykardie <60 bpm, Tachykardie >100 bpm.
 Normbereich (Hansen 2024, Ruhe): Median 67 bpm [IQR 61–74].
 
-**SDNN** · globaler Marker (Sympathikus + Parasympathikus)
-Standardabweichung aller RR-Intervalle. Spiegelt die gesamte autonome Variabilität wider —
-aus beiden Ästen des ANS gespeist. Analog zur Wurzel aus Total Power im Frequenzbereich:
-**SDNN ≈ √Total Power** (bei vollständiger Frequenzabdeckung annähernd identisch).
-Referenz P5 alters-/HF-adjustiert (Hansen 2024).
+---
 
 **RMSSD** · Parasympathikus-Marker (vagal)
+🏆 **Evidenz: ★★★★★** — Robustester Einzelparameter der HRV-Messung
 Wurzel der mittleren quadrierten aufeinanderfolgenden RR-Differenzen. Misst die schnelle,
 vagal vermittelte Schlag-zu-Schlag-Variabilität (RSA). **Zeitbereich-Synonym für HF Power:**
 RMSSD ≈ √HF Power (beide messen denselben physiologischen Prozess, nur in verschiedenen
-Domänen). Referenz P5 alters-/HF-adjustiert (Hansen 2024).
+Domänen). Hervorragende Reproduzierbarkeit, stabil bei Kurz- und Langzeitmessungen,
+gut validiert bei kardiovaskulären und psychiatrischen Erkrankungen. Referenz P5 alters-/HF-adjustiert (Hansen 2024).
+
+**SDNN** · globaler Marker (Sympathikus + Parasympathikus)
+🏆 **Evidenz: ★★★★★** — Stärkster prognostischer Langzeitmarker
+Standardabweichung aller RR-Intervalle. Spiegelt die gesamte autonome Variabilität wider —
+aus beiden Ästen des ANS gespeist. **Beste klinische Evidenz** bei post-Myokardinfarkt und
+Herzinsuffizienz (ATRAMI, Kleiger 1987). Analog zur Wurzel aus Total Power im Frequenzbereich:
+**SDNN ≈ √Total Power** (bei vollständiger Frequenzabdeckung annähernd identisch).
+Referenz P5 alters-/HF-adjustiert (Hansen 2024).
 
 **pNN50** · Parasympathikus-Marker (vagal)
+⚠️ **Evidenz: ★★★☆☆** — Weitgehend redundant mit RMSSD
 Anteil aufeinanderfolgender RR-Differenzen >50 ms. Eng mit RMSSD verwandt (r > 0.92),
 stark altersabhängig. Kein altersadjustierter Populationscutoff verfügbar — Bewertung
 daher über **RMSSD-Konkordanz** (Mietus et al. 2002):
@@ -1447,13 +1454,8 @@ rate variability measure.* Heart 88(4):378–380.
 ---
 #### Frequenzbereich — Bandleistung
 
-**LF Power (0.04–0.15 Hz)** · gemischter Marker (Baroreflex)
-Integrierte spektrale Leistung im Low-Frequency-Band. Historisch als "Sympathikus-Marker"
-bezeichnet, heute als Maß der Baroreflex-Aktivität verstanden — kein reiner
-Sympathikus-Indikator (Billman 2013). Referenz P5 alters-/HF-adjustiert (Hansen 2024).
-NeuroFax-Bezeichnung: **LFA** (LF Area).
-
 **HF Power (0.15–0.40 Hz)** · Parasympathikus-Marker (vagal)
+✅ **Evidenz: ★★★★☆** — Gut validiert, atemfrequenzabhängig
 Spektrale Leistung im High-Frequency-Band — entspricht der respiratorischen Sinusarrhythmie (RSA).
 **Frequenzbereich-Synonym für RMSSD:** beide messen vagale Modulation, HF Power im
 Spektralraum. Referenz P5 alters-/HF-adjustiert (Hansen 2024).
@@ -1466,28 +1468,48 @@ spiegeln keine autonome Dysfunktion wider, sondern nur die Bandgrenzen-Überschr
 In diesen Fällen ausschließlich RMSSD (Zeitbereich) zur Vagusbeurteilung heranziehen.
 
 **Total Power** · globaler Marker
+✅ **Evidenz: ★★★★☆** — Solider Breitband-Marker, methodenanfällig
 Summe VLF + LF + HF. Analog zur Aussage von SDNN: **Total Power ≈ SDNN²** bei
-vollständiger Spektralabdeckung. Referenz P5 alters-/HF-adjustiert (Hansen 2024).
+vollständiger Spektralabdeckung. Achtung: Wert variiert je nach Schätzverfahren (Welch vs. Burg)
+stärker als der zeitdomänenäquivalente SDNN. Referenz P5 alters-/HF-adjustiert (Hansen 2024).
 NeuroFax-Bezeichnung: **T.Wert** (Achtung: NeuroFax-T.Wert ist unnormiert, nicht direkt
 vergleichbar mit unseren ms²-Werten).
 
-**LF/HF-Ratio** · gemischter Marker (sympathovagale Balance)
-Verhältnis LF-Leistung zu HF-Leistung. Klassisch als Maß der sympathovagalen Balance
-interpretiert — die physiologische Validität ist in der Literatur umstritten (Billman 2013).
-Als Trendmarker verwendbar, nicht als isolierter Diagnosewert.
+**LF Power (0.04–0.15 Hz)** · gemischter Marker (Baroreflex)
+⚠️ **Evidenz: ★★★★☆** — Gut reproduzierbar, aber physiologisch fehlinterpretiert
+Integrierte spektrale Leistung im Low-Frequency-Band. Historisch als "Sympathikus-Marker"
+bezeichnet — diese Interpretation ist **durch die Literatur widerlegt** (Billman 2013):
+LF Power wird hauptsächlich durch Baroreflex-Aktivität (sowohl sympathisch als auch vagal)
+bestimmt, nicht durch den Sympathikus allein. Als Amplitudenmaß der LF-Oszillation ist er
+reproduzierbar und klinisch nutzbar, solange er nicht als reiner Sympathikus-Indikator
+missverstanden wird. Referenz P5 alters-/HF-adjustiert (Hansen 2024).
+NeuroFax-Bezeichnung: **LFA** (LF Area).
+
+**LF/HF-Ratio** · umstrittener Balance-Marker
+🚫 **Evidenz: ★☆☆☆☆** — Physiologisch weitgehend diskreditiert
+Verhältnis LF-Leistung zu HF-Leistung. Klassisch als Maß der "sympathovagalen Balance"
+bezeichnet — dies ist aus mehreren Gründen problematisch: (1) LF ist kein reiner
+Sympathikus-Marker (s.o.), daher ist LF/HF kein Sympatho-Vagal-Index. (2) Die Ratio
+ist mathematisch instabil bei kleinen HF-Werten (Hyperventilation, Tachypnoe).
+(3) Aktuelle Metaanalysen zeigen schlechte klinische Vorhersagekraft. Als Trendmarker
+im Verlauf oder unter Provokation (Kipptisch) noch vertretbar, als Absolutwert nicht.
 NeuroFax-Bezeichnung: **LFA/HFA (%)** = LF/HF × 100.
 
 ---
 #### Frequenzbereich — Normiert & Balance
 
 **LF normalisiert (%)** · gemischter Marker
+⚠️ **Evidenz: ★★☆☆☆** — Methodisch problematisch, für Verlauf bedingt nutzbar
 LF Power als prozentualer Anteil an LF+HF. Reduziert den Einfluss von Gesamtpower-
-Schwankungen auf den Balance-Index. Task Force 1996 Normbereich: **40–70 %** (Ruhe, liegend).
-Hohe LF norm deutet auf sympathikotone Balance hin.
+Schwankungen auf den Balance-Index. Das Problem: LF ist kein reiner Sympathikus-Marker —
+daher misst LF norm keine verlässliche sympathikotone Dominanz. Bei kontrollierter Atmung
+und Verlaufsuntersuchungen bedingt verwertbar. Task Force 1996 Normbereich: **40–70 %** (Ruhe, liegend).
 NeuroFax-Bezeichnung: **LF/NF (%)** (in der FFT-Analyse).
 
 **HF normalisiert (%)** · Parasympathikus-Marker (vagal)
+⚠️ **Evidenz: ★★☆☆☆** — Atemabhängig, nur bei kontrollierter Atmung sinnvoll
 HF Power als prozentualer Anteil an LF+HF. Komplement zu LF norm: LF norm + HF norm ≈ 100 %.
+Bei unkontrollierter Atmung (wie in EEG-EKG-Ableitungen) stark durch Atemfrequenz beeinflusst.
 Task Force 1996 Normbereich: **20–50 %** (Ruhe, liegend). Hohe HF norm = vagal dominant.
 
 ---
@@ -1504,6 +1526,24 @@ Frequenz des dominanten Peaks im LF-Band. Mayer-Wellen, typisch **0.07–0.12 Hz
 NeuroFax-Bezeichnung: **LF (Hz)**.
 
 ---
+
+#### Evidenz-Ranking im Überblick
+
+| Parameter | Evidenz | Stärke |
+|-----------|---------|--------|
+| RMSSD | ★★★★★ | Robustester Einzelparameter; kurz- wie langzeitstabil |
+| SDNN | ★★★★★ | Beste Prognosedaten (post-MI, HI); Breitband-Marker |
+| HF Power | ★★★★☆ | Gut validiert, aber atemfrequenzabhängig |
+| Total Power | ★★★★☆ | SDNN-Analog im Frequenzraum; Methodenanfälligkeit beachten |
+| LF Power | ★★★★☆ | Reproduzierbar, aber ≠ Sympathikus-Marker |
+| pNN50 | ★★★☆☆ | RMSSD-Redundanz (r>0.92); kein altersadjustierter Cutoff |
+| HF normiert | ★★☆☆☆ | Nur bei kontrollierter Atmung sinnvoll |
+| LF normiert | ★★☆☆☆ | Methodisch schwach; basiert auf fehlerhafter LF-Interpretation |
+| LF/HF-Ratio | ★☆☆☆☆ | Physiologisch diskreditiert; kein verlässlicher Sympatho-Vagal-Index |
+
+*Ranking nach: Reproduzierbarkeit · physiologischer Validität · klinischer Evidenz (Billman 2013, Shaffer & Ginsberg 2017)*
+
+---
 **Quellen:**
 1. **Task Force ESC/NASPE** (1996). Circulation 93(5):1043–1065.
 2. **Hansen CS et al.** (2024). Clin Auton Res 35:101–113.
@@ -1512,6 +1552,7 @@ NeuroFax-Bezeichnung: **LF (Hz)**.
 5. **Eckberg DL** (1997). Circulation 96(9):3224–3232.
 6. **Gąsior JS et al.** (2018). Front Physiol 9:1495.
 7. **Mietus JE et al.** (2002). Heart 88(4):378–380.
+8. **Shaffer F & Ginsberg JP** (2017). Front Public Health 5:258.
 
 **Zonen-Logik (Erwachsene):**
 - 🔴 Pathologisch: unter P5 alters-/HF-adjustiert (Hansen-Formel)
