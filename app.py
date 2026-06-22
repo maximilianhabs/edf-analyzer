@@ -8,10 +8,16 @@ warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="EDF Analyzer", layout="wide", page_icon="🧠")
 
+from core.auth import require_login, logout_button
+
+if not require_login():
+    st.stop()
+
 from core.shared import apply_global_style, inject_arrow_key_nav, render_sidebar_status
 
 apply_global_style()
 inject_arrow_key_nav()
+logout_button()
 
 from views import file_patient, eeg_viewer, ecg_hrv, eeg_spectrum, report
 

@@ -9,3 +9,4 @@ streamlit>=1.35.0
 pyedflib>=0.1.28
 reportlab>=4.0.0
 openpyxl>=3.1.0
+extra-streamlit-components>=0.1.60

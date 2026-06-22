@@ -66,9 +66,13 @@ def render():
     if show_ecg_lane and ecg_channels_avail:
         ecg_ch_lane = ecg_channels_avail[0]
         ecg_sig_mv = edf["ecg_filtered"][ecg_ch_lane][i_s:i_e] * 1000
-        ecg_sens_mv = max(np.abs(ecg_sig_mv - np.median(ecg_sig_mv)).max() * 1.15, 0.3)
+        ecg_centered = ecg_sig_mv - np.median(ecg_sig_mv)
+        # Auto-Flip: R-Zacke soll positiv oben sein
+        if abs(ecg_centered.min()) > abs(ecg_centered.max()):
+            ecg_centered = -ecg_centered
+        ecg_sens_mv = max(np.abs(ecg_centered).max() * 1.15, 0.3)
         scale_factor = (spacing / 2) / ecg_sens_mv
-        ecg_scaled = (ecg_sig_mv - np.median(ecg_sig_mv)) * scale_factor
+        ecg_scaled = ecg_centered * scale_factor
         derivs = derivs + [(
             f"EKG ({ecg_ch_lane}, ±{ecg_sens_mv:.1f}mV)", ecg_scaled, "EKG", "#c0392b",
             ecg_sig_mv - np.median(ecg_sig_mv), "mV",

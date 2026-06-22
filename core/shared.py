@@ -534,8 +534,10 @@ def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
         offset = offsets[idx]
         show_leg = chain not in seen; seen.add(chain)
         if seg is not None:
+            # EEG-Konvention: negativ oben → Signal negieren außer bei EKG-Lane
+            plot_seg = seg if chain == "EKG" else -seg
             fig.add_trace(go.Scatter(
-                x=t, y=seg + offset, mode="lines",
+                x=t, y=plot_seg + offset, mode="lines",
                 name=chain, legendgroup=chain, showlegend=show_leg,
                 line=dict(width=0.9, color=color),
                 hovertemplate=f"<b>{label}</b>: %{{customdata:.3f}} {hover_unit}<extra></extra>",

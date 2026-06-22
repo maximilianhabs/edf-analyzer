@@ -945,6 +945,11 @@ def render():
     sig      = edf["ecg_filtered"][ecg_ch][i_s_ecg:i_e_ecg]
     sig_mv   = sig * 1000
 
+    # Auto-Flip: R-Zacke soll positiv oben sein
+    sig_centered_check = sig_mv - np.median(sig_mv)
+    if abs(sig_centered_check.min()) > abs(sig_centered_check.max()):
+        sig_mv = -sig_mv
+
     fig_ecg  = ecg_figure(t_ecg, sig_mv, sensitivity_mv, lp_hz)
     st.plotly_chart(fig_ecg, use_container_width=True)
 
