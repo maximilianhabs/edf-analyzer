@@ -6,7 +6,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 \
         libopenblas-dev \
         libfreetype6 \
-        git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -27,5 +26,4 @@ CMD ["streamlit", "run", "app.py", \
      "--server.port=8501", \
      "--server.address=0.0.0.0", \
      "--server.headless=true", \
-     "--browser.gatherUsageStats=false", \
-     "--server.maxUploadSize=200"]
+     "--browser.gatherUsageStats=false"]

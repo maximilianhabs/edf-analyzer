@@ -11,7 +11,7 @@ import time
 import streamlit as st
 
 # ── Konfiguration ──────────────────────────────────────────────────────────────
-_PASSWORD   = os.environ.get("EDF_PASSWORD", "edf2024!")
+_PASSWORD   = os.environ.get("EDF_PASSWORD", "eegedf")
 _COOKIE_KEY = "edf_auth_v1"
 _COOKIE_EXP = 30  # Tage
 

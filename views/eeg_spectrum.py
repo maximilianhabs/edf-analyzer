@@ -134,6 +134,44 @@ def _spectrogram_trace(f, t, Sxx_log, dur_s):
     return trace, tick_vals, tick_text
 
 
+def _bandpower_trend(f_sg, t_sg, Sxx_log, dur_s):
+    """Liniendiagramm: relative Bandpower über die Zeit (aus Spektrogramm-Daten)."""
+    Sxx_lin = 10 ** (Sxx_log / 10)
+    trend = {}
+    for name, (lo, hi), color in BANDS:
+        mask = (f_sg >= lo) & (f_sg < hi)
+        trend[name] = (Sxx_lin[mask, :].sum(axis=0), color)
+
+    total = sum(v for v, _ in trend.values()) + 1e-30
+    tick_vals = list(range(0, int(t_sg[-1]) + 1, 60))
+    tick_text  = [f"{v//60}:{v%60:02d}" for v in tick_vals]
+
+    fig = go.Figure()
+    for name, (power, color) in trend.items():
+        rel = power / total * 100
+        # gleitender Mittelwert über ~4 s für ruhigere Kurve
+        k = max(1, len(rel) // (int(t_sg[-1]) // 4 + 1))
+        smooth = np.convolve(rel, np.ones(k)/k, mode="same")
+        fig.add_trace(go.Scatter(
+            x=t_sg, y=smooth, mode="lines", name=name,
+            line=dict(color=color, width=1.8),
+            hovertemplate=f"{name}: %{{y:.1f}}%  t=%{{x:.0f}}s<extra></extra>",
+        ))
+
+    fig.update_layout(
+        xaxis=dict(title="Zeit (min:s)", tickvals=tick_vals, ticktext=tick_text,
+                   tickfont=dict(size=10), gridcolor="rgba(200,200,200,0.2)"),
+        yaxis=dict(title="Rel. Power (%)", range=[0, 100],
+                   gridcolor="rgba(200,200,200,0.2)"),
+        height=200, margin=dict(t=4, b=40, l=55, r=10),
+        plot_bgcolor="#111", paper_bgcolor="#111",
+        font=dict(color="white"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                    font=dict(size=10, color="white")),
+    )
+    return fig
+
+
 def _add_selection_overlay(fig, t_start: int, t_end: int, t_max: float) -> None:
     """Hebt das Analysefenster im Spektrogramm hervor:
     Außenbereiche abdunkeln + helle Randlinien (besser sichtbar als Semi-Transparenz auf Jet-Colormap)."""
@@ -334,6 +372,15 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
         plot_bgcolor="black", paper_bgcolor="black", font=dict(color="white"),
     )
     st.plotly_chart(fig_sg, use_container_width=True, key=f"sg_{panel_id}")
+
+    # Bandpower-Trend
+    st.markdown(
+        "<span style='font-size:13px;font-weight:700;color:#ccc'>Bandpower-Trend</span>"
+        "<span style='font-size:11px;color:#888;margin-left:8px'>Relative Power je Frequenzband über die Zeit</span>",
+        unsafe_allow_html=True,
+    )
+    fig_trend = _bandpower_trend(f_sg, t_sg, Sxx_log, dur_s)
+    st.plotly_chart(fig_trend, use_container_width=True, key=f"trend_{panel_id}")
 
     # FFT + Bandpower
     fig_fft, alpha_peaks, bp_all = _fft_figure(

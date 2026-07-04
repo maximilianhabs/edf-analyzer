@@ -22,15 +22,24 @@ def load_edf(path: str, preload: bool = True) -> mne.io.Raw:
     return raw
 
 
+_ANON_TOKENS = {"x", "x x x x", "unknown", "anonymous", "anonym", "", "none"}
+
+
 def check_privacy(path: str) -> dict:
-    """Read only header bytes to check for patient data presence."""
+    """Read only header bytes to check for patient data presence.
+
+    Anonymised EDF files typically contain 'X X X X' or 'X' placeholders —
+    these are not considered PHI.
+    """
     with open(path, "rb") as f:
         header = f.read(256)
     patient_id = header[8:88].decode("latin1").strip()
     recording_id = header[88:168].decode("latin1").strip()
+    has_patient_id = bool(patient_id) and patient_id.lower() not in _ANON_TOKENS
+    has_recording_id = bool(recording_id) and recording_id.lower() not in _ANON_TOKENS
     return {
-        "has_patient_id": bool(patient_id),
-        "has_recording_id": bool(recording_id),
+        "has_patient_id": has_patient_id,
+        "has_recording_id": has_recording_id,
         "patient_id_length": len(patient_id),
         "recording_id_length": len(recording_id),
     }
