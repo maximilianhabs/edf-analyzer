@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+import time
 import uuid
 
 import pandas as pd
@@ -10,6 +11,9 @@ import streamlit as st
 from analysis.hrv_reference import PEDIATRIC_AGE_GROUPS
 from core.loader import check_privacy
 from core.shared import load_and_prepare
+
+_UPLOAD_MAX_AGE_H = 4  # Dateien älter als 4 Stunden werden gelöscht
+
 
 def _session_upload_dir() -> str:
     """Gibt einen session-eigenen /tmp/-Unterordner zurück (erstellt ihn bei Bedarf).
@@ -20,10 +24,26 @@ def _session_upload_dir() -> str:
     import secrets
     if "session_upload_token" not in st.session_state:
         st.session_state.session_upload_token = secrets.token_hex(16)
+        _cleanup_old_uploads()  # einmalig beim Session-Start aufräumen
     path = os.path.join(tempfile.gettempdir(),
                         "edf_analyzer", st.session_state.session_upload_token)
     os.makedirs(path, exist_ok=True)
     return path
+
+
+def _cleanup_old_uploads() -> None:
+    """Löscht session-Ordner die älter als _UPLOAD_MAX_AGE_H Stunden sind."""
+    base = os.path.join(tempfile.gettempdir(), "edf_analyzer")
+    if not os.path.isdir(base):
+        return
+    cutoff = time.time() - _UPLOAD_MAX_AGE_H * 3600
+    for entry in os.scandir(base):
+        if entry.is_dir() and entry.stat().st_mtime < cutoff:
+            try:
+                import shutil
+                shutil.rmtree(entry.path, ignore_errors=True)
+            except OSError:
+                pass
 
 
 def render():
@@ -106,7 +126,7 @@ def render():
                     type=["edf"], accept_multiple_files=False,
                 )
                 if uploaded is not None:
-                    dest_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}_{uploaded.name}")
+                    dest_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}_{os.path.basename(uploaded.name)}")
                     with open(dest_path, "wb") as f:
                         f.write(uploaded.getbuffer())
 

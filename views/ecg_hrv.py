@@ -473,6 +473,9 @@ def render():
         _rmssd   = float(np.sqrt(np.mean(_diff**2))) if len(_diff) > 0 else 0.0
         _pnn50   = float(np.sum(np.abs(_diff) > 50) / max(len(_diff), 1) * 100)
 
+        # Task Force 1996: Frequenzdomäne valide ab ≥300 Schlägen (~5 min Ruhe-EKG)
+        _FREQ_MIN_BEATS = 300
+        _freq_too_short = len(rr_seg) < _FREQ_MIN_BEATS
         _fd = None
         if len(rr_seg) >= 30 and len(r_times_seg) >= 30:
             try:
@@ -509,7 +512,13 @@ def render():
                 "respiratorische Sinusarrhythmie aus dem HF-Band. SDNN steigt mechanisch. "
                 "Wert wird angezeigt, ist aber **nicht mit Ruhewerten vergleichbar**."
             )
-        if freq_warning:
+        if _freq_too_short:
+            st.warning(
+                f"⚠️ **Frequenzdomäne eingeschränkt** — nur {len(rr_seg)} Schläge analysiert. "
+                f"Task Force 1996 fordert ≥ 300 Schläge (~5 min) für valide LF/HF-Werte. "
+                f"LF, HF und LF/HF sind orientierend — **nicht für klinische Entscheidungen geeignet**."
+            )
+        elif freq_warning:
             st.info(
                 "ℹ️ Frequenzdomäne (LF/HF/Total) in diesem Segment methodisch eingeschränkt: "
                 "kurze Segmentdauer und/oder respiratorische Artefakte. Werte orientierend."
@@ -1354,6 +1363,20 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
             if has_hv:
                 st.caption("Prä-HV-Phase ggf. zu kurz für Frequenzanalyse.")
         else:
+            _n_beats = len(rr_ms_analysis)
+            _dur_min = edf["duration_s"] / 60
+            if _n_beats < 300:
+                st.warning(
+                    f"⚠️ **LF/HF orientierend** — {_n_beats} Schläge analysiert "
+                    f"({_dur_min:.1f} min). Task Force 1996 fordert ≥ 300 Schläge (~5 min) "
+                    f"für statistisch valide Frequenzdomäne-Werte."
+                )
+            if _dur_min < 5:
+                st.info(
+                    f"ℹ️ **VLF-Band nicht interpretierbar** — Aufnahmedauer {_dur_min:.1f} min. "
+                    f"VLF (0.003–0.04 Hz, Periode 25–300 s) benötigt mindestens 5 min für "
+                    f"≥ 1 vollständigen Zyklus. VLF-Zone im Diagramm ist rein orientierend."
+                )
             col_psd_w, col_psd_b = st.columns(2)
             with col_psd_w:
                 st.plotly_chart(fig_psd_welch_obj, use_container_width=True)
