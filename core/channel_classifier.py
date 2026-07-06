@@ -65,7 +65,10 @@ _EEG_ELECTRODES = (
 # Channels that are never ECG regardless of signal — common non-ECG names
 _ANTI_ECG = ("DC", "SPO2", "ETCO2", "CO2", "$A", "PG", "ANNOT", "STIM",
              "PIEZO", "RESP", "AIRFLOW", "SNORE", "PHOTIC", "TRIGGER",
-             "THORAX", "ABDOM", "EFFORT", "POSITION", "ACTI")
+             "THORAX", "ABDOM", "EFFORT", "POSITION", "ACTI",
+             # Wearable EEG electrode types (BTE, nape, crown, ear)
+             "BTE", "CROSS", "CROWN", "NAPE", "FOREHEAD", "MASTOID",
+             "SENSORDOT", " SD")
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
@@ -87,6 +90,7 @@ def classify_channels(
     ch_names: List[str],
     sfreq: float,
     max_analysis_sec: float = 120.0,
+    filename: str = "",
 ) -> Dict[str, ChannelResult]:
     """Classify every channel in an EDF recording.
 
@@ -107,6 +111,11 @@ def classify_channels(
     seg = data[:, :n_use].copy().astype(np.float64)
     seg -= seg.mean(axis=1, keepdims=True)
 
+    # Context flags derived from filename / recording type
+    fn_up = filename.upper()
+    # BIDS _eeg.edf / _eeg.bdf → all channels are EEG (no dedicated ECG lead)
+    is_bids_eeg_file = fn_up.endswith("_EEG.EDF") or fn_up.endswith("_EEG.BDF")
+
     # Per-channel features
     feats = [_compute_features(seg[i], sfreq) for i in range(n_ch)]
 
@@ -122,7 +131,7 @@ def classify_channels(
     # Classify
     results: Dict[str, ChannelResult] = {}
     for i, ch in enumerate(ch_names):
-        results[ch] = _classify_one(feats[i], ch)
+        results[ch] = _classify_one(feats[i], ch, is_bids_eeg_file=is_bids_eeg_file)
 
     # Post-process: demote surplus ECG candidates
     ecg_list = [(ch, r) for ch, r in results.items() if r.channel_type == ECG]
@@ -132,6 +141,16 @@ def classify_channels(
             if r.confidence < 80:
                 r.reasons.append("zurückgestuft: zu viele ECG-Kandidaten")
                 r.channel_type = UNKN
+
+    # BIDS _eeg.edf: all non-flat channels are EEG by file-format convention.
+    # Ambiguous classifications (< 80% confidence) default to EEG.
+    # High-confidence EMG/EOG (≥ 80%) survive — they represent contamination,
+    # but the user should know about it.
+    if is_bids_eeg_file:
+        for r in results.values():
+            if r.channel_type not in (UNKN, VITAL, EEG) and r.confidence < 80:
+                r.reasons.insert(0, "BIDS _eeg.edf: EEG per Dateikennzeichnung")
+                r.channel_type = EEG
 
     return results
 
@@ -149,8 +168,9 @@ def make_short_name(ch: str) -> str:
     """
     import re
     s = ch.strip()
-    # Strip common prefixes
-    for prefix in ("EEG ", "EEG:", "POL ", "BIP ", "REF ", "MON "):
+    # Strip common prefixes (standard clinical + wearable device prefixes)
+    for prefix in ("EEG ", "EEG:", "POL ", "BIP ", "REF ", "MON ",
+                   "BTE ", "SD ", "CHAN ", "CHANNEL ", "CH ", "EL "):
         if s.upper().startswith(prefix.upper()):
             s = s[len(prefix):].strip()
             break
@@ -270,7 +290,7 @@ def _correlation_matrix(seg: np.ndarray) -> np.ndarray:
 
 # ── Classification rules ───────────────────────────────────────────────────────
 
-def _classify_one(f: dict, ch_name: str) -> ChannelResult:
+def _classify_one(f: dict, ch_name: str, is_bids_eeg_file: bool = False) -> ChannelResult:
     # Normalise name for substring matching
     ch_up = (ch_name.upper()
              .replace(" ", "").replace("-", "").replace("_", "")
@@ -326,46 +346,64 @@ def _classify_one(f: dict, ch_name: str) -> ChannelResult:
     mac    = f.get("mean_abs_corr", 0.0)
 
     # ── ECG ───────────────────────────────────────────────────────────────────
-    if not is_anti_ecg:
-        # QRS rate — only strong evidence when ALSO rhythmic (avoids noise false positives)
+    # Key calibration insight (from wearable EEG analysis):
+    # Wearable/BTE EEG electrodes pick up ECG artifact → periodic peaks at 80-120 bpm
+    # with rhythmicity 0.50-0.70 and kurtosis 2-4. Real ECG leads have:
+    #   - p2p > 0.3 mV (wearable artifact: 0.1-0.25 mV)
+    #   - rhythmicity > 0.75 (artifact: 0.50-0.70)
+    #   - kurtosis > 4 (artifact: 2-4)
+    # BIDS _eeg.edf files contain no dedicated ECG lead — override to EEG.
+    if not is_anti_ecg and not is_bids_eeg_file:
+        # QRS rate — requires HIGH rhythmicity to avoid wearable-EEG false positives
         if 40 <= qrs <= 160:
-            rate_score = 35 if rhyth > 0.5 else 18
+            rate_score = 35 if rhyth > 0.70 else (18 if rhyth > 0.55 else 8)
             scores[ECG] += rate_score
             reasons[ECG].append(f"QRS-Rate {qrs:.0f} bpm (physiologisch)")
         elif 30 < qrs < 40 or 160 < qrs <= 200:
-            rate_score = 18 if rhyth > 0.5 else 8
+            rate_score = 15 if rhyth > 0.70 else 5
             scores[ECG] += rate_score
             reasons[ECG].append(f"QRS-Rate {qrs:.0f} bpm (Grenzbereich)")
 
-        # Rhythmicity
-        if rhyth > 0.65:
+        # Rhythmicity — only meaningful at > 0.70 for ECG
+        if rhyth > 0.75:
             scores[ECG] += 22 * rhyth
             reasons[ECG].append(f"Rhythmizität {rhyth:.2f} (regelmäßig)")
-        elif rhyth > 0.4:
-            scores[ECG] += 10 * rhyth
+        elif rhyth > 0.65:
+            scores[ECG] += 12 * rhyth
             reasons[ECG].append(f"Rhythmizität {rhyth:.2f}")
 
-        # Kurtosis (QRS complexes create sharp peaks → leptokurtic)
-        if 2.0 <= kurt <= 80:
-            scores[ECG] += min(18, kurt)
-            reasons[ECG].append(f"Kurtosis {kurt:.1f} (leptokurtisch/QRS)")
-        elif 1.0 <= kurt < 2.0:
+        # Kurtosis — raised to > 4 to exclude wearable ECG-contaminated EEG (kurt ~2-4)
+        if 4.0 <= kurt <= 80:
+            scores[ECG] += min(20, kurt * 1.5)
+            reasons[ECG].append(f"Kurtosis {kurt:.1f} (leptokurtisch/QRS-Spitzen)")
+        elif 2.5 <= kurt < 4.0:
             scores[ECG] += 6
             reasons[ECG].append(f"Kurtosis {kurt:.1f} (leicht leptokurtisch)")
 
-        # Amplitude plausibility
-        if 0.05 < p2p_mv < 30:
-            scores[ECG] += 8
+        # Amplitude — real ECG p2p > 0.3 mV; wearable artifact typically < 0.25 mV
+        if p2p_mv > 0.5:
+            scores[ECG] += 12
             reasons[ECG].append(f"Peak-to-Peak {p2p_mv:.2f} mV (ECG-Bereich)")
+        elif p2p_mv > 0.3:
+            scores[ECG] += 6
+            reasons[ECG].append(f"Peak-to-Peak {p2p_mv:.2f} mV (ECG-Bereich)")
+        elif p2p_mv < 0.3 and qrs > 0:
+            # Low p2p with detected periodicity → likely ECG artifact, not real ECG
+            scores[ECG] -= 10
+            reasons[ECG].append(f"Peak-to-Peak {p2p_mv:.2f} mV (ECG-Artefakt-Verdacht)")
 
         # Name hints
         if any(n in ch_up for n in _ECG_HINTS):
-            scores[ECG] += 18
+            scores[ECG] += 20
             reasons[ECG].append("Kanalname: EKG-Bezeichnung erkannt")
 
         # Penalise: ECG should NOT look like pure EEG spectrum
         if s_ent > 0.92 and qrs == 0.0:
             scores[ECG] -= 20
+
+    elif is_bids_eeg_file:
+        # BIDS _eeg.edf: file convention guarantees no dedicated ECG lead
+        reasons[ECG].append("BIDS _eeg.edf: kein dedizierter EKG-Kanal erwartet")
 
     # ── EEG ───────────────────────────────────────────────────────────────────
     # Amplitude in scalp EEG range: std typically 5–200 µV (0.005–0.2 mV)

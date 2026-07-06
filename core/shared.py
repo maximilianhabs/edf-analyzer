@@ -312,7 +312,11 @@ def load_and_prepare(path: str):
     ch_idx = {ch: i for i, ch in enumerate(ch_names)}
 
     # ── Signal-based channel classification (manufacturer-independent) ─────────
-    classifications = classify_channels(data, ch_names, sfreq, max_analysis_sec=120.0)
+    classifications = classify_channels(
+        data, ch_names, sfreq,
+        max_analysis_sec=120.0,
+        filename=os.path.basename(path),
+    )
 
     # EEG map: use signal-detected EEG channels; fall back to name prefix for
     # files where the classifier has low confidence (e.g. very short recordings)
@@ -329,12 +333,13 @@ def load_and_prepare(path: str):
                 short = make_short_name(ch)
                 eeg_map[short] = ch_idx[ch]
 
-    # ECG channels sorted by confidence (highest first)
+    # ECG channels: require minimum confidence of 60% to avoid wearable-EEG artifacts
+    _ECG_MIN_CONF = 60.0
     ecg_channels = [
         ch for ch, r in sorted(
             classifications.items(), key=lambda x: -x[1].confidence
         )
-        if r.channel_type == ECG
+        if r.channel_type == ECG and r.confidence >= _ECG_MIN_CONF
     ]
 
     # EOG and EMG channels
