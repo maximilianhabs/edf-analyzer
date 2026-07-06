@@ -300,6 +300,7 @@ def load_and_prepare(path: str):
     """Lädt EDF, extrahiert alle Kanäle als numpy-Matrix, filtert ECG vorab."""
     import mne
     from scipy.signal import butter, filtfilt
+    from core.channel_classifier import classify_channels, make_short_name, ECG, EEG
 
     raw = mne.io.read_raw_edf(path, preload=True, verbose=False, encoding="latin1")
     sfreq = raw.info["sfreq"]
@@ -310,97 +311,38 @@ def load_and_prepare(path: str):
 
     ch_idx = {ch: i for i, ch in enumerate(ch_names)}
 
-    eeg_map = {}
-    for ch in ch_names:
-        if ch.startswith("EEG"):
-            short = ch.replace("EEG ", "").replace("-Ref", "").strip()
+    # ── Signal-based channel classification (manufacturer-independent) ─────────
+    classifications = classify_channels(data, ch_names, sfreq, max_analysis_sec=120.0)
+
+    # EEG map: use signal-detected EEG channels; fall back to name prefix for
+    # files where the classifier has low confidence (e.g. very short recordings)
+    eeg_map: dict = {}
+    for ch, result in classifications.items():
+        if result.channel_type == EEG:
+            short = make_short_name(ch)
             eeg_map[short] = ch_idx[ch]
 
-    # Kanäle, die nie EKG sind — Namen-Blacklist
-    _NON_ECG_PATTERNS = ("DC", "SpO2", "EtCO2", "CO2", "Pulse", "$A", "PG", " E")
-    # Kanäle, die bevorzugt als EKG gelten (NeuroFax-Konvention: X1, X2 = EKG)
-    _ECG_PRIO = ("X1", "X2", "EKG", "ECG", "EKG1", "EKG2")
+    # Fallback for NeuroFax files or recordings where classifier found 0 EEG channels
+    if not eeg_map:
+        for ch in ch_names:
+            if ch.upper().startswith("EEG"):
+                short = make_short_name(ch)
+                eeg_map[short] = ch_idx[ch]
 
-    def _is_ecg_candidate(sig_raw, fs):
-        from scipy.signal import find_peaks
-        from scipy.signal import butter as _b, filtfilt as _f
-        from scipy.stats import kurtosis as _kurt
+    # ECG channels sorted by confidence (highest first)
+    ecg_channels = [
+        ch for ch, r in sorted(
+            classifications.items(), key=lambda x: -x[1].confidence
+        )
+        if r.channel_type == ECG
+    ]
 
-        # Mehrere Fenster prüfen (60–120s und 180–240s) — robuster gegen Artefaktfenster
-        n = len(sig_raw)
-        windows = []
-        for t0 in (60, 180, 30):
-            t1 = t0 + 60
-            if int(t1 * fs) <= n:
-                windows.append((int(t0 * fs), int(t1 * fs)))
-                if len(windows) == 2:
-                    break
+    # EOG and EMG channels
+    from core.channel_classifier import EOG, EMG, REF
+    eog_channels = [ch for ch, r in classifications.items() if r.channel_type == EOG]
+    emg_channels = [ch for ch, r in classifications.items() if r.channel_type == EMG]
 
-        best_rate = 0.0
-        best_kurt = -99.0
-
-        for lo, hi in windows:
-            seg = sig_raw[lo:hi].copy().astype(np.float64)
-            seg -= seg.mean()
-
-            n_unique = len(np.unique(np.round(seg * 1e5)))
-            if n_unique < 20:
-                continue
-
-            pp = (seg.max() - seg.min()) * 1000  # V → mV
-            # Untere Grenze 0.05 mV: deckt auch hochverstärkte oder dämpfungsarme Setups ab
-            # Obere Grenze 100 mV: Sicherheit gegen Kalibrierkanäle mit DC-Artefakten
-            if pp < 0.05 or pp > 100:
-                continue
-
-            nyq = fs / 2
-            bb, aa = _b(4, [0.5/nyq, min(40/nyq, 0.99)], btype='band')
-            seg_f = _f(bb, aa, seg)
-
-            # Beide Polaritäten prüfen — invertiertes EKG (negative QRS) wird sonst übersehen
-            best_r = 0.0
-            for polarity in (seg_f, -seg_f):
-                thresh = np.percentile(np.abs(polarity), 85)
-                peaks, _ = find_peaks(polarity, height=thresh, distance=int(fs * 0.4))
-                r = len(peaks) / 60.0 * 60
-                best_r = max(best_r, r)
-
-            if best_r > best_rate:
-                best_rate = best_r
-                best_kurt = float(_kurt(seg_f))
-
-        if not (35 < best_rate < 160):
-            return False
-
-        # Kurtosis-Filter: EKG ist leptokurtisch (scharfe R-Zacken) → > 1.0.
-        # Rauschen/DC-Drift liegt nahe 0 oder negativ.
-        # Kurtosis > 100 bedeutet extreme Einzelspikes (Artefakt), kein kontinuierliches EKG.
-        if not (1.0 <= best_kurt <= 100.0):
-            return False
-
-        return True
-
-    ecg_channels = []
-    for ch in ch_names:
-        if ch.startswith("EEG") or ch == "EDF Annotations":
-            continue
-        # Bekannte Nicht-EKG-Kanäle ausschließen
-        ch_upper = ch.upper()
-        if any(p.upper() in ch_upper for p in _NON_ECG_PATTERNS):
-            continue
-        if _is_ecg_candidate(data[ch_idx[ch]], sfreq):
-            ecg_channels.append(ch)
-
-    # Prioritäts-Sortierung: X1/X2/EKG-benannte Kanäle nach vorne
-    def _ecg_priority(ch):
-        ch_upper = ch.upper()
-        for i, pat in enumerate(_ECG_PRIO):
-            if pat.upper() in ch_upper:
-                return i
-        return len(_ECG_PRIO)
-
-    ecg_channels.sort(key=_ecg_priority)
-
+    # Bandpass-filtered ECG signals for display (0.5–40 Hz)
     ecg_filtered = {}
     nyq = sfreq / 2
     b, a = butter(4, [0.5 / nyq, min(40.0 / nyq, 0.99)], btype="band")
@@ -466,6 +408,9 @@ def load_and_prepare(path: str):
         "eeg_map": eeg_map,
         "ecg_filtered": ecg_filtered,
         "ecg_channels": ecg_channels,
+        "eog_channels": eog_channels,
+        "emg_channels": emg_channels,
+        "channel_classifications": classifications,
         "sfreq": sfreq,
         "n_samples": n_samples,
         "duration_s": duration_s,
