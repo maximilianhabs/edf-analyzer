@@ -2,6 +2,7 @@
 
 import streamlit as st
 import numpy as np
+import plotly.graph_objects as go
 
 from core.shared import get_edf_or_stop, section_header, apply_global_style
 from core.channel_classifier import ECG, EEG, EOG, EMG, REF, VITAL, UNKN
@@ -269,6 +270,55 @@ def render():
                         )
                     bar_html += "</div>"
                     st.markdown(bar_html, unsafe_allow_html=True)
+
+                    # ── Signal-Vorschau (10 s) ──────────────────────────────
+                    sfreq    = edf_raw["sfreq"]
+                    ch_idx_v = edf_raw["ch_idx"].get(ch)
+                    dur_s    = edf_raw["duration_s"]
+                    if ch_idx_v is not None:
+                        # Start bei 30 s (Elektroden-Settling überspringen),
+                        # aber nicht über Aufnahmelänge hinaus
+                        prev_start = min(30.0, max(0.0, dur_s - 10.0))
+                        prev_end   = min(prev_start + 10.0, dur_s)
+                        i_s = int(prev_start * sfreq)
+                        i_e = int(prev_end   * sfreq)
+                        raw_seg = edf_raw["data"][ch_idx_v, i_s:i_e].copy()
+                        raw_seg -= raw_seg.mean()
+                        t_vec = np.arange(len(raw_seg)) / sfreq + prev_start
+
+                        # Einheit und Polarität je Kanaltyp
+                        if eff_type == ECG:
+                            y_vals = raw_seg * 1000  # → mV
+                            y_label = "mV"
+                            negate  = False
+                        else:
+                            y_vals = raw_seg * 1e6   # → µV
+                            y_label = "µV"
+                            negate  = (eff_type == EEG)  # EEG-Konvention: neg. oben
+
+                        if negate:
+                            y_vals = -y_vals
+
+                        st.markdown("**Signal-Vorschau (10 s):**")
+                        fig_prev = go.Figure()
+                        fig_prev.add_trace(go.Scatter(
+                            x=t_vec, y=y_vals, mode="lines",
+                            line=dict(width=1.0, color=meta["color"]),
+                            hovertemplate=f"%{{y:.3f}} {y_label}<extra></extra>",
+                        ))
+                        fig_prev.update_layout(
+                            height=160,
+                            margin=dict(t=4, b=32, l=55, r=6),
+                            xaxis=dict(title="Zeit (s)", showgrid=True,
+                                       gridcolor="#ebebeb", dtick=1),
+                            yaxis=dict(title=y_label, showgrid=False,
+                                       zeroline=True, zerolinecolor="#ccc",
+                                       zerolinewidth=0.8),
+                            plot_bgcolor="#fafafa",
+                            showlegend=False,
+                        )
+                        st.plotly_chart(fig_prev, use_container_width=True,
+                                        config={"displayModeBar": False})
 
                 elif f.get("is_flat"):
                     st.warning("Flacher/toter Kanal — kein Signal.")
