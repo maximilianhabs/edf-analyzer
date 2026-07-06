@@ -50,16 +50,35 @@ _VITAL_HINTS = ("SPO2", "SAO2", "ETCO2", "CO2WAVE", "RESPIRATION", "AIRFLOW",
                 "ACTIVITY", "PLETH", "TIDAL", "OXYGEN", "LIGHT", "PHOTIC",
                 "STIM", "TRIGGER", "PULSE_OX", "NASAL", "ORAL", "ABDO",
                 "THOR", "EFFORT", "BELT")
-# Standard 10-20 electrode labels — used to boost EEG confidence
+# Standard 10-20 / 10-10 electrode labels — used to boost EEG confidence.
+# Includes extended high-density systems (64/128/256 ch) used by BCI2000,
+# Biosemi ActiveTwo, EGI/Geodesic, and research HDEEG setups.
 _EEG_ELECTRODES = (
+    # Core 10-20
     "FP1","FP2","F3","F4","C3","C4","P3","P4","O1","O2",
     "F7","F8","T3","T4","T5","T6","T7","T8","P7","P8",
-    "FZ","CZ","PZ","OZ","AFZ","FCZ","CPZ","POZ",
-    "AF3","AF4","FC3","FC4","CP3","CP4","PO3","PO4",
-    "FC1","FC2","FC5","FC6","CP1","CP2","CP5","CP6",
-    "AF7","AF8","PO7","PO8","FT9","FT10","TP9","TP10",
-    "F1","F2","F5","F6","C1","C2","C5","C6",
+    "FZ","CZ","PZ","OZ",
+    # 10-10 intermediates
+    "AFZ","FCZ","CPZ","POZ","FPZ","TPZ","IZ",
+    "AF3","AF4","AF7","AF8",
+    "FC1","FC2","FC3","FC4","FC5","FC6",
+    "CP1","CP2","CP3","CP4","CP5","CP6",
+    "PO3","PO4","PO7","PO8",
+    "FT7","FT8","FT9","FT10","TP7","TP8","TP9","TP10",
+    "T9","T10",
+    "F1","F2","F5","F6",
+    "C1","C2","C5","C6",
     "P1","P2","P5","P6",
+    # 10-5 / high-density extensions (Biosemi, EGI)
+    "AF1","AF2","AF5","AF6",
+    "AFF1","AFF2","AFF5","AFF6","AFFZ",
+    "FC1H","FC2H",
+    "FCC1","FCC2","FCC3","FCC4","FCC5","FCC6",
+    "CCP1","CCP2","CCP3","CCP4","CCP5","CCP6",
+    "CPP1","CPP2","CPP3","CPP4","CPP5","CPP6",
+    "PPO1","PPO2","PPO3","PPO4","PPO5","PPO6",
+    "POO1","POO2","POO3","POO4","POO9","POO10",
+    "OI1","OI2",
 )
 
 # Channels that are never ECG regardless of signal — common non-ECG names
@@ -142,6 +161,19 @@ def classify_channels(
                 r.reasons.append("zurückgestuft: zu viele ECG-Kandidaten")
                 r.channel_type = UNKN
 
+    # Post-process: limit EOG to at most 4 channels.
+    # Real EEG setups have 1–4 dedicated EOG electrodes. If more channels score
+    # as EOG, the likely cause is a high-density EEG recording with large frontal
+    # or peripheral amplitude (Fp1/Fp2, T7/T9, etc.). Demote low-confidence
+    # extras back to EEG.
+    eog_list = [(ch, r) for ch, r in results.items() if r.channel_type == EOG]
+    if len(eog_list) > 4:
+        eog_list.sort(key=lambda x: -x[1].confidence)
+        for ch, r in eog_list[4:]:
+            if r.confidence < 80:
+                r.reasons.append("zurückgestuft: zu viele EOG-Kandidaten (max. 4)")
+                r.channel_type = EEG
+
     # BIDS _eeg.edf: all non-flat channels are EEG by file-format convention.
     # Ambiguous classifications (< 80% confidence) default to EEG.
     # High-confidence EMG/EOG (≥ 80%) survive — they represent contamination,
@@ -166,7 +198,6 @@ def make_short_name(ch: str) -> str:
     "Fp1"          → "Fp1"
     "Chan 3"       → "Chan 3"
     """
-    import re
     s = ch.strip()
     # Strip common prefixes (standard clinical + wearable device prefixes)
     for prefix in ("EEG ", "EEG:", "POL ", "BIP ", "REF ", "MON ",
@@ -174,10 +205,12 @@ def make_short_name(ch: str) -> str:
         if s.upper().startswith(prefix.upper()):
             s = s[len(prefix):].strip()
             break
-    # Strip common suffixes
+    # Strip common suffixes (reference markers)
     for suffix in ("-Ref", "-REF", "-ref", "-A1", "-A2", "-M1", "-M2", "-LE"):
         if s.endswith(suffix):
             s = s[: -len(suffix)].strip()
+    # Strip BCI2000-style trailing dot-padding: "Fp1." → "Fp1", "C3.." → "C3"
+    s = s.rstrip("._")
     return s or ch
 
 
@@ -452,23 +485,28 @@ def _classify_one(f: dict, ch_name: str, is_bids_eeg_file: bool = False) -> Chan
         scores[EEG] -= 25
 
     # ── EOG ───────────────────────────────────────────────────────────────────
-    # Large amplitude, energy concentrated in very slow waves
-    if p2p_mv > 0.3:
-        scores[EOG] += 12
-        reasons[EOG].append(f"Peak-to-Peak {p2p_mv:.2f} mV (groß)")
-    if p2p_mv > 1.0:
-        scores[EOG] += 10
+    # Named 10-20 electrodes are NEVER EOG — they may have slow/large signals
+    # (especially frontopolar Fp1/Fp2 or temporal channels) but they are EEG.
+    _is_named_eeg = make_short_name(ch_name).upper().replace(" ", "") in _EEG_ELECTRODES
 
-    if slow > 0.55:
-        scores[EOG] += 22
-        reasons[EOG].append(f"Slow-Band-Anteil {slow:.0%} (EOG-typisch)")
+    if not _is_named_eeg:
+        # Large amplitude, energy concentrated in very slow waves
+        if p2p_mv > 0.3:
+            scores[EOG] += 12
+            reasons[EOG].append(f"Peak-to-Peak {p2p_mv:.2f} mV (groß)")
+        if p2p_mv > 1.0:
+            scores[EOG] += 10
 
-    if dom > 0 and dom < 4.0:
-        scores[EOG] += 14
-        reasons[EOG].append(f"Dominante Frequenz {dom:.1f} Hz (< 4 Hz)")
+        if slow > 0.55:
+            scores[EOG] += 22
+            reasons[EOG].append(f"Slow-Band-Anteil {slow:.0%} (EOG-typisch)")
+
+        if dom > 0 and dom < 4.0:
+            scores[EOG] += 14
+            reasons[EOG].append(f"Dominante Frequenz {dom:.1f} Hz (< 4 Hz)")
 
     if any(n in ch_up for n in _EOG_HINTS):
-        scores[EOG] += 22
+        scores[EOG] += 25  # name hint always applies — explicitly named EOG channel
         reasons[EOG].append("Kanalname: EOG-Bezeichnung erkannt")
 
     # ── EMG ───────────────────────────────────────────────────────────────────
