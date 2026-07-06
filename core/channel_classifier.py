@@ -274,36 +274,59 @@ def _compute_features(sig: np.ndarray, sfreq: float) -> dict:
         -np.sum(p_n * np.log2(p_n)) / (np.log2(len(p_n) + 1) + 1e-30)
     )
 
-    # ── QRS / periodicity detection (bandpass 0.5–40 Hz) ─────────────────────
+    # ── QRS / periodicity detection ───────────────────────────────────────────
+    # Two filter variants:
+    # 1. Narrow 8-20 Hz: isolates QRS complex, strongly attenuates T-waves
+    #    (T-waves are 0.5-5 Hz) → high rhythmicity for real ECG with natural HRV
+    # 2. Broad 1-40 Hz: fallback for other periodic signals
+    # Best rhythmicity across all attempts is kept.
     nyq = sfreq / 2.0
-    try:
-        b, a = butter(4, [0.5 / nyq, min(40.0 / nyq, 0.98)], btype="band")
-        sig_bp = filtfilt(b, a, sig)
-    except Exception:
-        sig_bp = sig.copy()
+    _filter_configs = [
+        (8.0, 20.0, 0.40),   # narrow QRS band, 0.4 s min distance (suppresses T-wave)
+        (1.0, 40.0, 0.30),   # broad band fallback
+    ]
+    _sig_variants: list = []
+    for lo, hi, min_d in _filter_configs:
+        try:
+            f_lo = max(lo / nyq, 0.01)
+            f_hi = min(hi / nyq, 0.98)
+            if 0 < f_lo < f_hi:
+                b, a = butter(4, [f_lo, f_hi], btype="band")
+                _sig_variants.append((filtfilt(b, a, sig), min_d))
+        except Exception:
+            pass
+    if not _sig_variants:
+        _sig_variants = [(sig.copy(), 0.30)]
 
     best_rate     = 0.0
     best_rhythmic = 0.0
 
-    for polarity in (sig_bp, -sig_bp):
-        thresh = np.percentile(np.abs(polarity), 85)
-        if thresh < 1e-10:
-            continue
-        # min_distance: 0.3 s → max ~200 bpm
-        peaks, _ = find_peaks(polarity, height=thresh, distance=max(1, int(sfreq * 0.3)))
-        if len(peaks) < 4:
-            continue
-        rr = np.diff(peaks) / sfreq
-        mean_rr = rr.mean()
-        if mean_rr < 0.01:
-            continue
-        rate = 60.0 / mean_rr
-        cv   = rr.std() / (mean_rr + 1e-6)
-        if 30 <= rate <= 210:
-            rhythmicity = max(0.0, 1.0 - cv)
-            if rate > best_rate:
-                best_rate     = rate
-                best_rhythmic = rhythmicity
+    for sig_bp, min_dist_s in _sig_variants:
+        for polarity in (sig_bp, -sig_bp):
+            thresh = np.percentile(np.abs(polarity), 88)
+            if thresh < 1e-10:
+                continue
+            peaks, _ = find_peaks(polarity, height=thresh,
+                                   distance=max(1, int(sfreq * min_dist_s)))
+            if len(peaks) < 4:
+                continue
+            rr = np.diff(peaks) / sfreq
+            # Robust pass: discard outlier RR intervals (missed beats, T-wave hits)
+            if len(rr) >= 5:
+                rr_med = np.median(rr)
+                rr_filt = rr[(rr > rr_med * 0.5) & (rr < rr_med * 1.7)]
+                if len(rr_filt) >= 4:
+                    rr = rr_filt
+            mean_rr = rr.mean()
+            if mean_rr < 0.01:
+                continue
+            rate = 60.0 / mean_rr
+            cv   = rr.std() / (mean_rr + 1e-6)
+            if 30 <= rate <= 210:
+                rhythmicity = max(0.0, 1.0 - cv)
+                if rhythmicity > best_rhythmic:
+                    best_rate     = rate
+                    best_rhythmic = rhythmicity
 
     f["qrs_rate"]    = best_rate
     f["rhythmicity"] = best_rhythmic
@@ -356,8 +379,10 @@ def _classify_one(f: dict, ch_name: str, is_bids_eeg_file: bool = False) -> Chan
             features=f,
         )
 
-    # Anti-ECG name guard (certain channels can never be ECG)
-    is_anti_ecg = any(p in ch_up for p in _ANTI_ECG)
+    # Anti-ECG name guard: certain channel names + named 10-20 EEG electrodes
+    # Named 10-20 electrodes (Fp1, C3, O2 …) are EEG by definition — never ECG.
+    _is_named_eeg_ch = make_short_name(ch_name).upper().replace(" ", "") in _EEG_ELECTRODES
+    is_anti_ecg = any(p in ch_up for p in _ANTI_ECG) or _is_named_eeg_ch
 
     scores: Dict[str, float] = {ECG: 0.0, EEG: 0.0, EOG: 0.0, EMG: 0.0, REF: 0.0}
     reasons: Dict[str, List[str]] = {t: [] for t in scores}
@@ -387,9 +412,12 @@ def _classify_one(f: dict, ch_name: str, is_bids_eeg_file: bool = False) -> Chan
     #   - kurtosis > 4 (artifact: 2-4)
     # BIDS _eeg.edf files contain no dedicated ECG lead — override to EEG.
     if not is_anti_ecg and not is_bids_eeg_file:
-        # QRS rate — requires HIGH rhythmicity to avoid wearable-EEG false positives
+        # QRS rate — base periodicity score.
+        # Note: real ECG with HRV or arrhythmia (AF) can have rhythmicity 0.3-0.6.
+        # Wearable EEG artifact has similar rhythmicity but much smaller p2p amplitude.
+        # Primary discrimination is p2p amplitude + kurtosis, not rhythmicity alone.
         if 40 <= qrs <= 160:
-            rate_score = 35 if rhyth > 0.70 else (18 if rhyth > 0.55 else 8)
+            rate_score = 35 if rhyth > 0.70 else (22 if rhyth > 0.50 else (12 if rhyth > 0.30 else 5))
             scores[ECG] += rate_score
             reasons[ECG].append(f"QRS-Rate {qrs:.0f} bpm (physiologisch)")
         elif 30 < qrs < 40 or 160 < qrs <= 200:
@@ -397,7 +425,21 @@ def _classify_one(f: dict, ch_name: str, is_bids_eeg_file: bool = False) -> Chan
             scores[ECG] += rate_score
             reasons[ECG].append(f"QRS-Rate {qrs:.0f} bpm (Grenzbereich)")
 
-        # Rhythmicity — only meaningful at > 0.70 for ECG
+        # Clinical ECG morphology bonus: large amplitude + leptokurtosis + periodic rate.
+        # This combination is near-diagnostic for a real ECG lead, even with irregular rhythm
+        # (HRV, AF, sinus arrhythmia). Wearable EEG artifact has p2p < 0.3 mV and is blocked
+        # by the p2p gate below; EEG channels have kurtosis < 3.5.
+        # Kurt cap at 80: extreme kurtosis (>80) indicates artifact spikes, not QRS complexes.
+        if p2p_mv > 0.5 and 3.5 < kurt <= 80 and 40 <= qrs <= 160:
+            scores[ECG] += 28
+            reasons[ECG].append(f"EKG-Morphologie: p2p {p2p_mv:.2f} mV, Kurtosis {kurt:.1f}")
+
+        # Extreme kurtosis (>100): non-physiological — artifact spikes, pacemaker, electrode pop
+        if kurt > 100:
+            scores[ECG] -= 20
+            reasons[ECG].append(f"Kurtosis {kurt:.0f} (Artefaktspike, kein QRS)")
+
+        # Rhythmicity bonus — additional evidence on top of rate score
         if rhyth > 0.75:
             scores[ECG] += 22 * rhyth
             reasons[ECG].append(f"Rhythmizität {rhyth:.2f} (regelmäßig)")
@@ -405,7 +447,7 @@ def _classify_one(f: dict, ch_name: str, is_bids_eeg_file: bool = False) -> Chan
             scores[ECG] += 12 * rhyth
             reasons[ECG].append(f"Rhythmizität {rhyth:.2f}")
 
-        # Kurtosis — raised to > 4 to exclude wearable ECG-contaminated EEG (kurt ~2-4)
+        # Kurtosis — raised threshold to exclude wearable ECG-contaminated EEG (kurt ~2-4)
         if 4.0 <= kurt <= 80:
             scores[ECG] += min(20, kurt * 1.5)
             reasons[ECG].append(f"Kurtosis {kurt:.1f} (leptokurtisch/QRS-Spitzen)")
@@ -413,17 +455,16 @@ def _classify_one(f: dict, ch_name: str, is_bids_eeg_file: bool = False) -> Chan
             scores[ECG] += 6
             reasons[ECG].append(f"Kurtosis {kurt:.1f} (leicht leptokurtisch)")
 
-        # Amplitude — real ECG p2p > 0.3 mV; wearable artifact typically < 0.25 mV
+        # Amplitude gate — real ECG p2p > 0.3 mV; wearable artifact typically < 0.25 mV
         if p2p_mv > 0.5:
             scores[ECG] += 12
-            reasons[ECG].append(f"Peak-to-Peak {p2p_mv:.2f} mV (ECG-Bereich)")
+            reasons[ECG].append(f"Peak-to-Peak {p2p_mv:.2f} mV (EKG-Bereich)")
         elif p2p_mv > 0.3:
             scores[ECG] += 6
-            reasons[ECG].append(f"Peak-to-Peak {p2p_mv:.2f} mV (ECG-Bereich)")
+            reasons[ECG].append(f"Peak-to-Peak {p2p_mv:.2f} mV (EKG-Bereich)")
         elif p2p_mv < 0.3 and qrs > 0:
-            # Low p2p with detected periodicity → likely ECG artifact, not real ECG
             scores[ECG] -= 10
-            reasons[ECG].append(f"Peak-to-Peak {p2p_mv:.2f} mV (ECG-Artefakt-Verdacht)")
+            reasons[ECG].append(f"Peak-to-Peak {p2p_mv:.2f} mV (EKG-Artefakt-Verdacht)")
 
         # Name hints
         if any(n in ch_up for n in _ECG_HINTS):
@@ -479,9 +520,10 @@ def _classify_one(f: dict, ch_name: str, is_bids_eeg_file: bool = False) -> Chan
         scores[EEG] += 10
         reasons[EEG].append("Kanalname enthält 'EEG'")
 
-    # Penalise: real ECG (not noise) bleeding into EEG score —
-    # requires BOTH rhythmicity AND leptokurtosis (noise has kurtosis ~0)
-    if qrs > 40 and rhyth > 0.6 and kurt > 1.5:
+    # Penalise: channel looks like dedicated ECG lead (large amplitude + rhythmic)
+    # Requires p2p > 0.4 mV to spare EEG channels that merely carry ECG artifact
+    # (EEG artifact from heart has p2p 0.1-0.35 mV; real ECG lead has p2p > 0.5 mV)
+    if qrs > 40 and rhyth > 0.6 and kurt > 1.5 and p2p_mv > 0.4:
         scores[EEG] -= 25
 
     # ── EOG ───────────────────────────────────────────────────────────────────

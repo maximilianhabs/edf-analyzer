@@ -674,6 +674,70 @@ def get_edf_path():
     return st.session_state.get("edf_path", "")
 
 
+def apply_channel_overrides(edf: dict) -> dict:
+    """Wendet manuelle Kanal-Typ-Korrekturen aus dem Session-State an.
+
+    Overrides werden in st.session_state["channel_overrides"] gespeichert als
+    dict[channel_name → new_type_string].  Die Funktion gibt eine modifizierte
+    Kopie des edf-Dicts zurück (shallow copy, nur betroffene Listen neu gebaut).
+    """
+    overrides: dict = st.session_state.get("channel_overrides", {})
+    if not overrides:
+        return edf
+
+    from core.channel_classifier import (ChannelResult, ECG, EEG, EOG, EMG,
+                                          REF, VITAL, UNKN, make_short_name)
+
+    edf = dict(edf)
+    classifications = dict(edf.get("channel_classifications", {}))
+
+    for ch, new_type in overrides.items():
+        if ch in classifications:
+            old = classifications[ch]
+            classifications[ch] = ChannelResult(
+                channel_type=new_type,
+                confidence=100.0,
+                reasons=[f"Manuell geändert von {old.channel_type} auf {new_type}"],
+                features=old.features,
+            )
+
+    edf["channel_classifications"] = classifications
+
+    # Derived channel lists
+    edf["ecg_channels"] = [ch for ch, r in classifications.items() if r.channel_type == ECG]
+    edf["eog_channels"] = [ch for ch, r in classifications.items() if r.channel_type == EOG]
+    edf["emg_channels"] = [ch for ch, r in classifications.items() if r.channel_type == EMG]
+
+    # Rebuild eeg_map from overridden classifications
+    ch_idx = edf["ch_idx"]
+    eeg_map: dict = {}
+    for ch, r in classifications.items():
+        if r.channel_type == EEG:
+            short = make_short_name(ch)
+            eeg_map[short] = ch_idx[ch]
+    if eeg_map:
+        edf["eeg_map"] = eeg_map
+
+    # Add bandpass-filtered ECG for newly added ECG channels
+    ecg_filtered = dict(edf.get("ecg_filtered", {}))
+    new_ecg = set(edf["ecg_channels"]) - set(ecg_filtered.keys())
+    if new_ecg:
+        from scipy.signal import butter, filtfilt as _filtfilt
+        data = edf["data"]
+        sfreq = edf["sfreq"]
+        nyq = sfreq / 2
+        b, a = butter(4, [0.5 / nyq, min(40.0 / nyq, 0.99)], btype="band")
+        for ch in new_ecg:
+            idx = ch_idx.get(ch)
+            if idx is not None:
+                sig = data[idx].copy().astype(float)
+                sig -= sig.mean()
+                ecg_filtered[ch] = _filtfilt(b, a, sig)
+    edf["ecg_filtered"] = ecg_filtered
+
+    return edf
+
+
 def get_edf_or_stop():
     """Lädt die EDF-Datei oder stoppt die Seite mit Hinweis, falls keine gültige Datei gewählt ist."""
     edf_path = get_edf_path()
@@ -684,6 +748,7 @@ def get_edf_or_stop():
         st.error("🚫 Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.")
         st.stop()
     edf = load_and_prepare(edf_path)
+    edf = apply_channel_overrides(edf)
     return edf, edf_path
 
 
