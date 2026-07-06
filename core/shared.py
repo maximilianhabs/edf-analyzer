@@ -306,6 +306,18 @@ def load_and_prepare(path: str):
     sfreq = raw.info["sfreq"]
     data, _ = raw[:]
     ch_names = raw.ch_names
+
+    # ── Unit-Skalierungs-Korrektur ────────────────────────────────────────────
+    # Manche EDF-Dateien lassen das Physical-Dimension-Feld leer oder auf 'n/a'.
+    # MNE hat dann keine Unit-Information und behandelt die physikalischen Werte
+    # als Volt, obwohl sie in µV gespeichert sind → Amplitude 10⁶ zu groß.
+    # Heuristik: wenn _orig_units nur 'n/a' enthält UND der Median-Std aller
+    # Kanäle > 1 mV ist, liegt µV-als-V-Skalierung vor → durch 1e6 dividieren.
+    _orig_units = getattr(raw, "_orig_units", {})
+    if _orig_units and all(u.strip().lower() in ("n/a", "", "na") for u in _orig_units.values()):
+        _med_std = float(np.median(np.std(data, axis=1)))
+        if _med_std > 1e-3:  # > 1 mV median std → µV ohne Unit-Label
+            data = data / 1e6
     n_samples = data.shape[1]
     duration_s = n_samples / sfreq
 
