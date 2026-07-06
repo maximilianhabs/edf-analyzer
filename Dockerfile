@@ -19,8 +19,9 @@ COPY . .
 
 EXPOSE 8501
 
+# Healthcheck über Python (curl ist im slim-Image nicht vorhanden)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
-    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8501/_stcore/health').read()==b'ok' else 1)" || exit 1
 
 CMD ["streamlit", "run", "app.py", \
      "--server.port=8501", \
