@@ -152,13 +152,30 @@ def classify_channels(
     for i, ch in enumerate(ch_names):
         results[ch] = _classify_one(feats[i], ch, is_bids_eeg_file=is_bids_eeg_file)
 
-    # Post-process: demote surplus ECG candidates
+    # Post-process: keep at most the best 2 ECG candidates.
+    # Quality score = confidence × amplitude, so a weak crosstalk channel (low p2p)
+    # loses to a dedicated lead even at equal confidence.
+    # A second channel is only kept if it also has strong ECG evidence (p2p > 0.5 mV
+    # and confidence > 75 %) — this preserves dual-lead setups (e.g. NeuroFax X + T)
+    # while removing low-amplitude ECG-artifact channels.
     ecg_list = [(ch, r) for ch, r in results.items() if r.channel_type == ECG]
-    if len(ecg_list) > 2:
-        ecg_list.sort(key=lambda x: -x[1].confidence)
-        for ch, r in ecg_list[2:]:
-            if r.confidence < 80:
-                r.reasons.append("zurückgestuft: zu viele ECG-Kandidaten")
+    if len(ecg_list) > 1:
+        def _ecg_quality(item):
+            _, r = item
+            p2p = r.features.get("p2p_mv", 0)
+            return r.confidence * min(p2p, 3.0)  # cap at 3 mV
+
+        ecg_list.sort(key=lambda x: -_ecg_quality(x))
+        for ch, r in ecg_list[1:]:
+            p2p = r.features.get("p2p_mv", 0)
+            if r.confidence < 75 or p2p < 0.5:
+                r.reasons.append("zurückgestuft: kein dedizierter EKG-Kanal (p2p oder Confidence zu niedrig)")
+                r.channel_type = UNKN
+        # Hard cap at 2
+        still_ecg = [(ch, r) for ch, r in ecg_list if r.channel_type == ECG]
+        if len(still_ecg) > 2:
+            for ch, r in still_ecg[2:]:
+                r.reasons.append("zurückgestuft: maximal 2 EKG-Kanäle")
                 r.channel_type = UNKN
 
     # Post-process: limit EOG to at most 4 channels.
