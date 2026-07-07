@@ -17,6 +17,33 @@ def _section(title: str, subtitle: str = "") -> None:
     section_header(title, subtitle)
 
 
+def _select_stablest_window(r_times: np.ndarray, rr_ms: np.ndarray,
+                            win_s: float = 180.0) -> float:
+    """Finde den Startzeitpunkt des stationärsten win_s-Fensters.
+
+    Stationarität = geringster linearer Trend der RR-Intervalle innerhalb des
+    Fensters (kleinste |Steigung|). Bestraft driftende Herzfrequenz (Bewegung,
+    Weckreaktion), nicht die kurzfristige Variabilität selbst — daher besser als
+    ein reiner Varianz-Vergleich, der echte HRV fälschlich abwerten würde.
+    Kandidaten-Starts werden in 15-s-Schritten geprüft.
+    """
+    t0, t_end = float(r_times[0]), float(r_times[-1])
+    if t_end - t0 <= win_s:
+        return t0
+    best_start, best_slope = t0, np.inf
+    for start in np.arange(t0, t_end - win_s + 1e-6, 15.0):
+        m = (r_times >= start) & (r_times <= start + win_s)
+        if int(np.sum(m)) < 10:
+            continue
+        tt = r_times[m] - r_times[m][0]
+        rr = rr_ms[m]
+        # Lineare Regressionssteigung (ms pro s), normiert auf mittleres RR
+        slope = abs(np.polyfit(tt, rr, 1)[0]) / (np.mean(rr) + 1e-9)
+        if slope < best_slope:
+            best_slope, best_start = slope, float(start)
+    return best_start
+
+
 @st.cache_data(show_spinner="Berechne R-Peaks…")
 def compute_rr(path, channel):
     """R-Peak-Erkennung auf gefiltertem Gesamtsignal."""
@@ -1013,11 +1040,39 @@ def render():
     else:
         qcolor, qicon, qlabel = "#c0392b", "🔴", "Schlechte Datenqualität — HRV-Werte wahrscheinlich nicht valide"
 
+    # ── Analysefenster-Auswahl (nur ohne HV-Protokoll) ────────────────────────
+    # Zeitbereichsparameter (v.a. SDNN) und Spektralwerte skalieren mit der
+    # Fensterlänge. Für Vergleiche mit NeuroFax-Kurzzeit-HRV (typ. 3 min) kann der
+    # User auf ein 3-min-Subfenster einschränken. Das Widget selbst wird weiter unten
+    # (bei den Parametern) gerendert; hier wird nur der gespeicherte Wert gelesen,
+    # damit die Metriken bereits gefenstert berechnet werden.
+    _total_dur_min = float(np.sum(rr_ms) / 60000.0)
+    _window_choice = st.session_state.get("hrv_window_choice", "Gesamtaufnahme")
+    _window_active = None  # (start_s, end_s) oder None
+    if (not has_hv) and _total_dur_min >= 4.5 and _window_choice != "Gesamtaufnahme":
+        _t0 = float(r_times[0])
+        if _window_choice == "Erste 3 min":
+            _w_start = _t0
+        else:  # "Stabilste 3 min" — Fenster mit geringstem RR-Trend (Stationarität)
+            _w_start = _select_stablest_window(r_times, rr_ms, win_s=180.0)
+        _w_end = _w_start + 180.0
+        _mask_win = (r_times >= _w_start) & (r_times <= _w_end)
+        if int(np.sum(_mask_win)) >= 10:
+            rr_ms   = rr_ms[_mask_win]
+            r_times = r_times[_mask_win]
+            _window_active = (_w_start, _w_end)
+
     mean_rr = float(np.mean(rr_ms))
     mean_hr = 60000 / mean_rr
     sdnn    = float(np.std(rr_ms, ddof=1))
     rmssd   = float(np.sqrt(np.mean(np.diff(rr_ms)**2))) if len(rr_ms) > 2 else 0.0
-    pnn50   = float(np.sum(np.abs(np.diff(rr_ms)) > 50) / max(len(np.diff(rr_ms)), 1) * 100)
+    _n_diff = max(len(np.diff(rr_ms)), 1)
+    _nn50   = int(np.sum(np.abs(np.diff(rr_ms)) > 50))
+    pnn50   = float(_nn50 / _n_diff * 100)
+    # CV% direkt aus der RR-Zeitreihe (SDNN/mean_RR × 100) — entkoppelt SDNN von der
+    # absoluten Herzfrequenz und vermeidet Rundungsfehler aus den Anzeigewerten.
+    cv_pct  = (sdnn / mean_rr * 100.0) if mean_rr > 0 else 0.0
+    nn50    = _nn50
 
     rr_raw       = rr_data["rr_ms_raw"]
     t_raw        = rr_data["times_raw"]
@@ -1033,7 +1088,8 @@ def render():
     else:
         rr_ms_analysis   = rr_ms
         r_times_analysis = r_times
-        seg_label        = "Gesamtaufnahme"
+        seg_label        = (f"Subfenster {_window_active[0]:.0f}–{_window_active[1]:.0f} s"
+                            if _window_active is not None else "Gesamtaufnahme")
 
     # ── Frequenzdomäne (Berechnung) ───────────────────────────────────────────
     from analysis.hrv_freq import compute_frequency_domain, VLF_BAND, LF_BAND, HF_BAND
@@ -1182,7 +1238,8 @@ def render():
 
     # Ergebnisse für Report-Seite persistieren
     st.session_state["hrv_summary"] = {
-        "mean_hr": mean_hr, "sdnn": sdnn, "rmssd": rmssd, "pnn50": pnn50,
+        "mean_hr": mean_hr, "sdnn": sdnn, "cv_pct": cv_pct,
+        "rmssd": rmssd, "pnn50": pnn50, "nn50": nn50,
         "pct_removed": pct_removed, "quality_label": qlabel,
         "ans_label": _ans_label, "seg_label": seg_label,
         "fd_welch": fd_welch, "fd_burg": fd_burg,
@@ -1263,8 +1320,29 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
 
         st.divider()
 
+        # ── Analysefenster-Auswahl (nur relevant ohne HV & bei langer Aufnahme) ──
+        if (not has_hv) and _total_dur_min >= 4.5:
+            _wc1, _wc2 = st.columns([2, 3])
+            with _wc1:
+                st.selectbox(
+                    "Analysefenster für Zeitbereichsparameter",
+                    options=["Gesamtaufnahme", "Erste 3 min", "Stabilste 3 min"],
+                    key="hrv_window_choice",
+                    help="SDNN & Spektralwerte skalieren mit der Fensterlänge. "
+                         "Für Vergleiche mit NeuroFax-Kurzzeit-HRV (3 min) auf ein "
+                         "3-min-Subfenster einschränken.",
+                )
+            with _wc2:
+                if _window_active is not None:
+                    st.caption(
+                        f"🎯 Aktives Fenster: **{_window_active[0]:.0f} – {_window_active[1]:.0f} s** "
+                        f"({(_window_active[1]-_window_active[0])/60:.1f} min, {len(rr_ms)+1} Schläge)"
+                    )
+
         # ── Wesentliche Zeitdomäne-Parameter mit Farbkodierung ─────────────
-        st.markdown("**Wesentliche Zeitdomäne-Parameter (Gesamtaufnahme)**")
+        _win_hdr = (f"Fenster {_window_active[0]:.0f}–{_window_active[1]:.0f} s"
+                    if _window_active is not None else "Gesamtaufnahme")
+        st.markdown(f"**Wesentliche Zeitdomäne-Parameter ({_win_hdr})**")
         _zone_bg  = {"normal": "#eafaf1", "grenzwertig": "#fef9e7", "pathologisch": "#fdedec", "info": "#f4f6f7"}
         _zone_brd = {"normal": "#27ae60", "grenzwertig": "#f39c12", "pathologisch": "#c0392b", "info": "#7f8c8d"}
         _zone_txt = {"normal": "#1e8449", "grenzwertig": "#d68910", "pathologisch": "#a93226", "info": "#5d6d7e"}
@@ -1288,15 +1366,40 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
         _rmssd_cls = _classify("rmssd",      rmssd,    patient_age, mean_hr)
         _pnn50_cls = _classify("pnn50",      pnn50,    patient_age, mean_hr, rmssd=rmssd)
 
-        _mc1, _mc2, _mc3, _mc4, _mc5 = st.columns(5)
+        _mc1, _mc2, _mc3, _mc4, _mc5, _mc6, _mc7 = st.columns(7)
         _metric_card(_mc1, "HERZFREQUENZ",  f"{mean_hr:.1f} bpm",  _hr_cls["zone"],    "Norm: 60–100 bpm")
         _metric_card(_mc2, "MITTL. RR",     f"{mean_rr:.0f} ms",   "info",             "600–1000 ms")
         _sdnn_ref  = f">{int(_sdnn_cls.get('p5_threshold') or 40)} ms" if _sdnn_cls.get('p5_threshold') else ">40 ms"
         _metric_card(_mc3, "SDNN",          f"{sdnn:.1f} ms",      _sdnn_cls["zone"],  f"Norm {_sdnn_ref}")
+        # CV% = SDNN/mean_RR × 100 — HF-unabhängiger Streuungsmarker
+        _metric_card(_mc4, "CV",            f"{cv_pct:.1f} %",     "info",             "HF-unabhängig")
         _rmssd_ref = f">{int(_rmssd_cls.get('p5_threshold') or 20)} ms" if _rmssd_cls.get('p5_threshold') else ">20 ms"
-        _metric_card(_mc4, "RMSSD",         f"{rmssd:.1f} ms",     _rmssd_cls["zone"], f"Norm {_rmssd_ref}")
+        _metric_card(_mc5, "RMSSD",         f"{rmssd:.1f} ms",     _rmssd_cls["zone"], f"Norm {_rmssd_ref}")
         _pnn50_ref = f"Erw. {_pnn50_cls.get('pnn50_expected', 0):.1f}%" if _pnn50_cls.get('pnn50_expected') else ">3%"
-        _metric_card(_mc5, "pNN50",         f"{pnn50:.1f} %",      _pnn50_cls["zone"], _pnn50_ref)
+        _metric_card(_mc6, "pNN50",         f"{pnn50:.1f} %",      _pnn50_cls["zone"], _pnn50_ref)
+        # NN50 = Absolutzahl (NeuroFax gibt RR50-Anzahl zusätzlich zum Prozent aus)
+        _metric_card(_mc7, "NN50",          f"{nn50}",             "info",             "Anzahl > 50 ms")
+
+        # ── Dauer-Confounder-Hinweis ──────────────────────────────────────────
+        # SDNN und die Spektralwerte (Total Power, LF) steigen systematisch mit der
+        # Aufnahmedauer, weil längere Fenster mehr niederfrequente Schwankungen einfangen.
+        # Bei Vergleich mit NeuroFax-Reflextests (typisch 3 min) ist das ein bekannter
+        # Confounder — hier explizit vermerkt.
+        _dur_min = float(np.sum(rr_ms) / 60000.0)
+        if _window_active is not None:
+            st.caption(
+                f"⏱️ Analyse auf **{_dur_min:.1f}-min-Subfenster** eingeschränkt — "
+                f"für Vergleiche mit NeuroFax-Kurzzeit-HRV (3 min) methodisch angeglichen. "
+                f"RMSSD/pNN50/CV sind ohnehin kaum dauerabhängig."
+            )
+        elif _total_dur_min >= 4.5:
+            st.caption(
+                f"⏱️ **Gesamtaufnahme: {_dur_min:.1f} min.** **Confounder:** SDNN und die "
+                f"Spektralwerte (Total/LF Power) steigen systematisch mit der Fensterlänge — "
+                f"ein Vergleich mit NeuroFax-Kurzzeit-HRV (typ. 3 min) überschätzt daher SDNN/Power. "
+                f"Oben auf ein 3-min-Subfenster einschränken oder die Diskrepanz als bekannten "
+                f"Effekt vermerken. RMSSD/pNN50/CV sind weit weniger dauerabhängig."
+            )
 
         st.divider()
 
@@ -1603,8 +1706,11 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
             {"Parameter": "Herzfrequenz (Mittel)",         "Wert": round(mean_hr, 1),            "Einheit": "bpm"},
             {"Parameter": "Mittleres RR",                   "Wert": round(mean_rr, 1),            "Einheit": "ms"},
             {"Parameter": "SDNN",                           "Wert": round(sdnn, 1),               "Einheit": "ms"},
+            {"Parameter": "CV (Variationskoeffizient)",     "Wert": round(cv_pct, 2),             "Einheit": "%"},
             {"Parameter": "RMSSD",                          "Wert": round(rmssd, 1),              "Einheit": "ms"},
             {"Parameter": "pNN50",                          "Wert": round(pnn50, 1),              "Einheit": "%"},
+            {"Parameter": "NN50 (Absolutzahl)",             "Wert": nn50,                          "Einheit": "Anzahl"},
+            {"Parameter": "Aufnahmedauer (Analyse)",        "Wert": round(len(rr_ms_analysis) and float(np.sum(rr_ms_analysis)/1000) or 0.0, 1), "Einheit": "s"},
             {"Parameter": "Schläge entfernt (Outlier-Filter)", "Wert": round(pct_removed, 1),   "Einheit": "%"},
             {"Parameter": "LF Power",                       "Wert": round(fd["lf_power"], 1),     "Einheit": "ms²"},
             {"Parameter": "HF Power",                       "Wert": round(fd["hf_power"], 1),     "Einheit": "ms²"},

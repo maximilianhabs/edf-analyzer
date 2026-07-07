@@ -147,12 +147,24 @@ def compute_hrv_time_domain(rr_ms: np.ndarray) -> dict:
 
     successive_diff = np.diff(rr_ms)
 
+    mean_rr = float(np.mean(rr_ms))
+    sdnn    = float(np.std(rr_ms, ddof=1))
+    # NN50: Absolutzahl aufeinanderfolgender NN-Intervalle mit Differenz > 50 ms.
+    # NeuroFax gibt sowohl Absolutzahl (RR50) als auch Prozent (pNN50) aus.
+    nn50    = int(np.sum(np.abs(successive_diff) > 50))
+    # CV% = Variationskoeffizient direkt aus der RR-Zeitreihe (SDNN/mean_RR × 100).
+    # Direkt aus float-Werten gerechnet, damit sich keine Rundungsfehler aus den
+    # bereits gerundeten Anzeigewerten SDNN und mean_RR aufsummieren.
+    cv_pct  = (sdnn / mean_rr * 100.0) if mean_rr > 0 else 0.0
+
     return {
-        "mean_rr_ms": round(float(np.mean(rr_ms)), 1),
-        "mean_hr_bpm": round(60000 / float(np.mean(rr_ms)), 1),
-        "sdnn_ms": round(float(np.std(rr_ms, ddof=1)), 1),
+        "mean_rr_ms": round(mean_rr, 1),
+        "mean_hr_bpm": round(60000 / mean_rr, 1),
+        "sdnn_ms": round(sdnn, 1),
+        "cv_pct": round(cv_pct, 2),
         "rmssd_ms": round(float(np.sqrt(np.mean(successive_diff**2))), 1),
-        "pnn50_pct": round(float(np.sum(np.abs(successive_diff) > 50) / len(successive_diff) * 100), 1),
+        "pnn50_pct": round(float(nn50 / len(successive_diff) * 100), 1),
+        "nn50_count": nn50,
         "min_rr_ms": round(float(np.min(rr_ms)), 1),
         "max_rr_ms": round(float(np.max(rr_ms)), 1),
         "n_beats": len(rr_ms) + 1,
