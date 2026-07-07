@@ -4,24 +4,51 @@ from typing import Optional
 
 import numpy as np
 from scipy.signal import welch
-from scipy.interpolate import CubicSpline
+from scipy.interpolate import PchipInterpolator
 
 # Standard-Frequenzbänder für Kurzzeit-HRV (Task Force ESC/NASPE 1996)
 VLF_BAND = (0.0033, 0.04)
 LF_BAND  = (0.04, 0.15)
 HF_BAND  = (0.15, 0.4)
 
+# Ab dieser Lückenlänge gilt ein Interpolationssegment als "erfunden" und wird
+# als spektraler Confounder gemeldet (entfernte Schläge / Signal-Dropout).
+GAP_WARN_S = 3.0
+
 
 def resample_rr(rr_ms: np.ndarray, t_s: np.ndarray, fs_interp: float = 4.0):
     """
-    Interpoliert die unregelmäßig abgetastete RR-Zeitreihe auf ein
-    gleichmäßiges Zeitraster (kubischer Spline) — Voraussetzung für FFT/Burg.
+    Interpoliert die unregelmäßig abgetastete RR-Zeitreihe auf ein gleichmäßiges
+    Zeitraster als Voraussetzung für FFT/Burg.
+
+    Verwendet einen **formerhaltenden PCHIP-Interpolator** statt eines kubischen
+    Splines: PCHIP überschwingt zwischen Stützstellen nicht (monoton), erfindet
+    also über entfernten Schlägen / langen Lücken keine künstlichen Oszillationen,
+    die LF/HF verfälschen würden. Genau dort ist ein kubischer Spline gefährlich.
     """
     t_even = np.arange(t_s[0], t_s[-1], 1.0 / fs_interp)
-    cs = CubicSpline(t_s, rr_ms)
-    rr_even = cs(t_even)
+    interp = PchipInterpolator(t_s, rr_ms)
+    rr_even = interp(t_even)
     rr_even -= rr_even.mean()
     return rr_even, t_even
+
+
+def gap_stats(t_s: np.ndarray) -> dict:
+    """Kennzahlen zu Zeitlücken in der (bereinigten) RR-Zeitreihe.
+
+    Große zusammenhängende Lücken (entfernte Schläge, Dropout) sind ein
+    spektraler Confounder — hier gemessen, damit die UI sie kenntlich machen kann.
+    """
+    if len(t_s) < 2:
+        return {"max_gap_s": 0.0, "n_gaps": 0, "gap_fraction": 0.0}
+    dt = np.diff(t_s)
+    span = float(t_s[-1] - t_s[0])
+    big = dt[dt > GAP_WARN_S]
+    return {
+        "max_gap_s": float(dt.max()),
+        "n_gaps": int(big.size),
+        "gap_fraction": float(big.sum() / span) if span > 0 else 0.0,
+    }
 
 
 def psd_welch(rr_even: np.ndarray, fs_interp: float = 4.0):
@@ -122,6 +149,8 @@ def compute_frequency_domain(rr_ms: np.ndarray, t_s: np.ndarray, method: str = "
     if len(rr_even) < 20:
         return None
 
+    gaps = gap_stats(t_s)
+
     if method == "burg":
         freqs, psd = psd_burg(rr_even, fs_interp, order=burg_order)
     else:
@@ -150,4 +179,8 @@ def compute_frequency_domain(rr_ms: np.ndarray, t_s: np.ndarray, method: str = "
         "hf_peak_freq": hf_peak_freq,
         "hf_peak_psd":  hf_peak_psd,
         "hf_resp_rate": hf_resp_rate,
+        # Lücken-Diagnostik (spektraler Confounder durch entfernte Schläge/Dropout)
+        "max_gap_s":     gaps["max_gap_s"],
+        "n_gaps":        gaps["n_gaps"],
+        "gap_fraction":  gaps["gap_fraction"],
     }

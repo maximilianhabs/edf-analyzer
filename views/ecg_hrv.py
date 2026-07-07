@@ -46,38 +46,39 @@ def _select_stablest_window(r_times: np.ndarray, rr_ms: np.ndarray,
 
 @st.cache_data(show_spinner="Berechne R-Peaks…")
 def compute_rr(path, channel):
-    """R-Peak-Erkennung auf gefiltertem Gesamtsignal."""
+    """R-Peak-Erkennung via QRS-Band-Detektor (Pan-Tompkins, 5–15 Hz) mit
+    Fiducial-Refinement auf den echten R-Zacken-Scheitel. Präzisere R-Timing-
+    Bestimmung als eine Betragssignal-Schwelle → korrektes RMSSD/pNN50.
+    Danach 4-stufige robuste Artefakt-Bereinigung der RR-Reihe."""
     from core.loader import load_edf
+    from analysis.ecg import detect_r_peaks
     import warnings; warnings.filterwarnings("ignore")
     _raw = load_edf(path, preload=True)
     _data, _ = _raw[:]
     _idx = _raw.ch_names.index(channel)
+    fs = _raw.info["sfreq"]
     sig = _data[_idx].copy().astype(np.float64)
     sig -= sig.mean()
+
+    # Anzeigesignal (0.5–40 Hz) — nur für Amplitude & Polarität der Peaks
     from scipy.signal import butter, filtfilt
-    nyq = _raw.info["sfreq"] / 2
+    nyq = fs / 2
     b, a = butter(4, [0.5/nyq, min(40/nyq, 0.99)], btype="band")
     sig_f = filtfilt(b, a, sig)
-    fs = _raw.info["sfreq"]
 
-    abs_sig = np.abs(sig_f)
-    min_dist = int(fs * 0.35)
+    # QRS-Detektion: 5–15 Hz Bandpass → Differentiation → Squaring →
+    # 150-ms-Integration → adaptive Schwelle → ±40-ms-Refinement (in detect_r_peaks).
+    peaks = detect_r_peaks(sig, fs)
 
-    # Adaptive threshold: 60th-percentile first pass, then median of found peaks
-    # (robust against large artifacts that would inflate a 98th-percentile threshold)
-    _initial_thresh = np.percentile(abs_sig, 60)
-    _init_peaks, _ = _fp(abs_sig, height=_initial_thresh, distance=min_dist)
-    if len(_init_peaks) >= 10:
-        _heights = abs_sig[_init_peaks]
-        _n90 = max(1, int(len(_heights) * 0.90))
-        peak_ref = np.median(np.sort(_heights)[:_n90])
-        threshold = peak_ref * 0.55
+    # Polarität & Amplitude der Peaks aus dem Anzeigesignal (für ▲/▼ und Referenz)
+    if len(peaks):
+        polarities  = np.sign(sig_f[peaks])
+        peak_amps   = np.abs(sig_f[peaks])
+        peak_ref    = float(np.median(peak_amps))
     else:
-        peak_ref = np.percentile(abs_sig, 85)
-        threshold = peak_ref * 0.50
-
-    peaks, _ = _fp(abs_sig, height=threshold, distance=min_dist)
-    polarities = np.sign(sig_f[peaks])
+        polarities  = np.array([], dtype=float)
+        peak_ref    = 0.0
+    threshold = peak_ref  # informativer Referenzwert (median R-Amplitude) für UI
 
     rr = np.diff(peaks) / fs * 1000
     mask1 = (rr > 300) & (rr < 2000)
@@ -1308,11 +1309,11 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
         st.markdown("**QRS-Erkennung — aktuelle Epoche mit erkannten R-Peaks**")
         if fig_ecg_rr is not None:
             st.plotly_chart(fig_ecg_rr, use_container_width=True)
-            thr_mv = rr_data.get("threshold_mv", 0)
             ref_mv = rr_data.get("peak_ref_mv", 0)
             st.caption(
                 f"▲ grün = R-Peak aufwärts · ▼ orange = R-Peak abwärts — "
-                f"Schwelle: **±{thr_mv:.2f} mV** (55 % des Median-Peak-Referenzwerts {ref_mv:.2f} mV)"
+                f"QRS-Band-Detektor (Pan-Tompkins 5–15 Hz, ±40 ms Scheitel-Refinement) · "
+                f"mittlere R-Amplitude {ref_mv:.2f} mV"
             )
         else:
             st.info("ℹ️ Keine R-Peaks in dieser Epoche erkannt — andere Epoche wählen oder Kanal prüfen.")
@@ -1479,6 +1480,20 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                     f"ℹ️ **VLF-Band nicht interpretierbar** — Aufnahmedauer {_dur_min:.1f} min. "
                     f"VLF (0.003–0.04 Hz, Periode 25–300 s) benötigt mindestens 5 min für "
                     f"≥ 1 vollständigen Zyklus. VLF-Zone im Diagramm ist rein orientierend."
+                )
+            # Lücken-Confounder: große zusammenhängende Zeitlücken (entfernte
+            # Schläge / Dropout) werden PCHIP-interpoliert (kein Overshoot), aber
+            # das interpolierte Segment trägt keine echte Information → melden.
+            _mgap = fd.get("max_gap_s", 0.0)
+            _ngap = fd.get("n_gaps", 0)
+            if _ngap > 0:
+                _gfrac = fd.get("gap_fraction", 0.0)
+                st.warning(
+                    f"⚠️ **{_ngap} große Zeitlücke(n)** in der RR-Reihe "
+                    f"(längste {_mgap:.1f} s, zusammen {_gfrac*100:.0f}% der Zeitachse). "
+                    f"Diese Bereiche werden formerhaltend interpoliert (PCHIP, kein "
+                    f"Overshoot), tragen aber keine echte HRV-Information — LF/HF/Total "
+                    f"in diesem Ausmaß mit Vorsicht interpretieren."
                 )
             col_psd_w, col_psd_b = st.columns(2)
             with col_psd_w:

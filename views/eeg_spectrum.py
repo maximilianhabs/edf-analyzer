@@ -4,15 +4,16 @@ import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from scipy.signal import spectrogram, welch
+from scipy.signal import spectrogram
 from scipy.signal import butter, filtfilt
 from scipy.signal.windows import dpss
 
-from core.shared import load_and_prepare, section_header
+from core.shared import load_and_prepare, section_header, get_patient_info
 
 # ── Frequenzbänder ────────────────────────────────────────────────────────────
+# Delta-Untergrenze 1.0 Hz — konsistent mit dem 1-Hz-Hochpass und der 1-Hz-PSD-Maske
 BANDS = [
-    ("Delta",  (0.5,  4.0),  "#4a90d9"),
+    ("Delta",  (1.0,  4.0),  "#4a90d9"),
     ("Theta",  (4.0,  8.0),  "#9b59b6"),
     ("Alpha",  (8.0, 13.0),  "#27ae60"),
     ("Beta",  (13.0, 30.0),  "#e67e22"),
@@ -28,6 +29,27 @@ RATIO_INFO = {
     "Theta/Beta":   {"normal": (0.5, 2.0), "hint": "Erhöht bei Schläfrigkeit, erniedrigt bei Aktivierung"},
     "DTAB":         {"normal": (0.0, 0.5), "hint": "(Delta+Theta)/(Alpha+Beta) — sensitiver Marker diffuser kortikaler Funktionsstörung"},
 }
+
+
+def _alpha_band(age) -> tuple:
+    """Altersadaptives Alpha-Suchfenster für die Peak-Bestimmung.
+
+    Der posteriore Grundrhythmus reift altersabhängig: bei kleinen Kindern liegt er
+    tiefer (~6–9 Hz) und steigt bis ~10 Hz im Jugendalter. Im höheren Alter kann er
+    leicht verlangsamen. Konservativ gehalten — für Erwachsene identisch zum
+    klinischen Standard 8–13 Hz, damit sich etablierte Befunde nicht verschieben.
+
+    Rückgabe: (lo, hi) Suchgrenzen in Hz.
+    """
+    try:
+        a = float(age)
+    except (TypeError, ValueError):
+        return (8.0, 13.0)
+    if a < 6:
+        return (6.0, 11.0)
+    if a < 10:
+        return (7.0, 12.0)
+    return (8.0, 13.0)
 
 
 def _highpass(sig: np.ndarray, fs: float, cutoff: float = 1.0) -> np.ndarray:
@@ -47,44 +69,71 @@ def _peak_freq(freqs, psd, lo, hi):
     return float(freqs[mask][np.argmax(psd[mask])]) if mask.sum() > 1 else float("nan")
 
 
-def _reject_artifacts(sig: np.ndarray, fs: float, nperseg: int,
-                       amp_thresh_uv: float = 80.0) -> np.ndarray:
+def _peak_freq_cog(freqs, psd, lo, hi):
+    """Alpha-Peak per Schwerpunkt (Center of Gravity / Individual Alpha Frequency).
+
+    Robuster als roher argmax: bei bimodalem Alpha (z.B. Gipfel bei 9 und 11 Hz)
+    springt argmax instabil, der Schwerpunkt liefert einen stabilen Mittelwert.
+
+    Vor der Schwerpunktbildung wird eine **lineare Baseline** zwischen den
+    Bandrändern abgezogen (Näherung des 1/f-Untergrunds + Theta-Ausläufer),
+    damit die absteigende Flanke des Theta-Bandes den Schwerpunkt nicht
+    künstlich nach unten zieht (Klimesch, Individual Alpha Frequency).
+
+    CoG = Σ(fᵢ·Pᵢ) / Σ(Pᵢ)  über das (baseline-korrigierte) Alpha-Band.
     """
-    Liefert eine artifact-bereinigte Version von sig.
-    Epochs mit Peak-Amplitude > amp_thresh_uv werden durch lineare Interpolation ersetzt,
-    damit die Signallänge für Welch/Multitaper erhalten bleibt.
-    Methodengrundlage: Nolan 2010 (FASTER), Jas 2017 (MNE autoreject).
-    """
+    mask = (freqs >= lo) & (freqs < hi)
+    if mask.sum() < 3:
+        return float("nan")
+    f = freqs[mask]
+    p = psd[mask].astype(float).copy()
+    # 1/f-/Theta-Untergrund als Gerade zwischen den Bandrändern approximieren
+    baseline = np.linspace(p[0], p[-1], len(p))
+    p = p - baseline
+    p[p < 0] = 0.0
+    if p.sum() <= 0:
+        return float("nan")
+    return float(np.sum(f * p) / np.sum(p))
+
+
+def _epoch_starts(n: int, nperseg: int):
+    """Startindizes überlappender Epochen (50 % Überlapp)."""
     step = nperseg // 2
-    n = len(sig)
-    clean = sig.copy()
-    i = 0
-    while i + nperseg <= n:
-        seg = sig[i:i + nperseg]
-        if np.ptp(seg) > amp_thresh_uv:
-            # Lineare Brücke zwischen Randpunkten
-            clean[i:i + nperseg] = np.linspace(sig[i], sig[i + nperseg - 1], nperseg)
-        i += step
-    return clean
+    return list(range(0, n - nperseg + 1, step))
 
 
-def _compute_psd(sig, fs, nperseg=None, multitaper=False, amp_thresh_uv=80.0):
+def _compute_psd(sig, fs, nperseg=None, multitaper=False, amp_thresh_uv=9999.0):
+    """Leistungsspektraldichte (Welch oder Multitaper), epochenweise gemittelt.
+
+    Artefaktbehandlung: Epochen, deren Peak-to-Peak-Amplitude > amp_thresh_uv liegt,
+    werden **komplett aus dem Mittel weggelassen** (statt per linearer Brücke
+    interpoliert — das erzeugte Steigungssprünge und spektrales Splatter). Bleiben
+    zu wenige saubere Epochen übrig (< 1), wird ausnahmsweise die gesamte (auch
+    artefaktbehaftete) Epochenmenge verwendet, damit weiterhin ein Spektrum entsteht.
+    """
     nperseg = nperseg or min(int(fs * 4), len(sig) // 2, 1024)
     if nperseg < 64:
         return None, None
 
-    sig_clean = _reject_artifacts(sig, fs, nperseg, amp_thresh_uv)
+    starts = _epoch_starts(len(sig), nperseg)
+    if not starts:
+        return None, None
+
+    # Saubere Epochen selektieren (ptp <= Schwelle); Fallback auf alle Epochen
+    clean_starts = [i for i in starts if np.ptp(sig[i:i + nperseg]) <= amp_thresh_uv]
+    if not clean_starts:
+        clean_starts = starts
+
+    freqs = np.fft.rfftfreq(nperseg, d=1.0 / fs)
 
     if multitaper:
         # Thomson (1982) DPSS — NW=3, K=5 gut für Alpha-Detektion (bandwidth ≈ 1.5 Hz)
         NW, K = 3, 5
         tapers, eigs = dpss(nperseg, NW, K, return_ratios=True)
-        step = nperseg // 2
-        freqs = np.fft.rfftfreq(nperseg, d=1.0 / fs)
-
         psds = []
-        for i in range(0, len(sig_clean) - nperseg + 1, step):
-            epoch = sig_clean[i:i + nperseg]
+        for i in clean_starts:
+            epoch = sig[i:i + nperseg]
+            epoch = epoch - epoch.mean()
             ep_psd = np.zeros(len(freqs))
             w_sum = 0.0
             for taper, eig in zip(tapers, eigs):
@@ -96,13 +145,24 @@ def _compute_psd(sig, fs, nperseg=None, multitaper=False, amp_thresh_uv=80.0):
                 w_sum += eig
             if w_sum > 0:
                 psds.append(ep_psd / w_sum)
-
-        if not psds:
-            return None, None
-        psd = np.mean(psds, axis=0)
     else:
-        freqs, psd = welch(sig_clean, fs=fs, nperseg=nperseg,
-                           noverlap=nperseg // 2, scaling="density")
+        # Welch, epochenweise (Hann-Fenster, Density-Skalierung wie scipy.welch)
+        win = np.hanning(nperseg)
+        U = np.sum(win ** 2)                       # Fensterleistung
+        scale_2s = np.full(len(freqs), 2.0)        # einseitiges Spektrum: ×2 …
+        scale_2s[0] = 1.0                          # … außer DC
+        if nperseg % 2 == 0:
+            scale_2s[-1] = 1.0                     # … und Nyquist (bei gerader Länge)
+        psds = []
+        for i in clean_starts:
+            epoch = sig[i:i + nperseg]
+            epoch = epoch - epoch.mean()           # detrend='constant'
+            X = np.fft.rfft(epoch * win)
+            psds.append(scale_2s * (np.abs(X) ** 2) / (fs * U))
+
+    if not psds:
+        return None, None
+    psd = np.mean(psds, axis=0)
 
     mask = (freqs >= 1.0) & (freqs <= FREQ_MAX)
     return freqs[mask], psd[mask]
@@ -200,23 +260,41 @@ def _sg_layout_update(fig, tick_vals, tick_text, title, row=1, col=1):
 
 
 def _fft_figure(signals: dict, t_start, t_end, fs, panel_id,
-                multitaper=False, amp_thresh_uv=80.0):
+                multitaper=False, amp_thresh_uv=9999.0, alpha_band=(8.0, 13.0)):
     """FFT-Overlay mehrerer Signale in einem Plot."""
+    a_lo, a_hi = alpha_band
     colors = {"Posterior (O1+O2)": "#27ae60", "Anterior (F3+F4)": "#e67e22",
               "O1": "#27ae60", "O2": "#2ecc71", "F3": "#e67e22", "F4": "#f39c12"}
     fig = go.Figure()
     alpha_peaks = {}
+    alpha_cog = {}
     bp_all = {}
 
     i0 = int(t_start * fs)
     i1 = int(t_end * fs)
 
     for label, sig in signals.items():
-        seg = sig[i0:i1]
-        freqs, psd = _compute_psd(seg, fs, multitaper=multitaper,
-                                   amp_thresh_uv=amp_thresh_uv)
-        if freqs is None:
-            continue
+        # sig kann ein einzelnes Signal ODER eine Liste von Kanalsignalen sein.
+        # Bei mehreren Kanälen werden die PSDs gemittelt (nicht die Zeitsignale) —
+        # verhindert Phasenauslöschung, wenn z.B. O1/O2 gegenphasige Anteile haben.
+        if isinstance(sig, (list, tuple)):
+            _psds = []
+            freqs = None
+            for _s in sig:
+                _fr, _pp = _compute_psd(_s[i0:i1], fs, multitaper=multitaper,
+                                        amp_thresh_uv=amp_thresh_uv)
+                if _fr is not None:
+                    freqs = _fr
+                    _psds.append(_pp)
+            if not _psds:
+                continue
+            psd = np.mean(_psds, axis=0)
+        else:
+            seg = sig[i0:i1]
+            freqs, psd = _compute_psd(seg, fs, multitaper=multitaper,
+                                       amp_thresh_uv=amp_thresh_uv)
+            if freqs is None:
+                continue
 
         col = colors.get(label, "#2c3e50")
 
@@ -240,8 +318,9 @@ def _fft_figure(signals: dict, t_start, t_end, fs, panel_id,
             hovertemplate=f"{label}: %{{y:.2f}} µV²/Hz @ %{{x:.1f}} Hz<extra></extra>",
         ))
 
-        ap = _peak_freq(freqs, psd, 8, 13)
+        ap = _peak_freq(freqs, psd, a_lo, a_hi)
         alpha_peaks[label] = ap
+        alpha_cog[label] = _peak_freq_cog(freqs, psd, a_lo, a_hi)
         bp_all[label] = {name: _band_power(freqs, psd, lo, hi) for name, (lo, hi), _ in BANDS}
 
         if ap == ap:
@@ -259,7 +338,7 @@ def _fft_figure(signals: dict, t_start, t_end, fs, panel_id,
         plot_bgcolor="#fafafa",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)),
     )
-    return fig, alpha_peaks, bp_all
+    return fig, alpha_peaks, alpha_cog, bp_all
 
 
 def _render_bandpower_and_ratios(bp_all, panel_id):
@@ -341,8 +420,8 @@ def _position_bar(ref_start: int, ref_end: int, dur_s: int,
 
 
 def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_id,
-                            multitaper=False, amp_thresh_uv=80.0,
-                            all_eeg=None, get_sig_fn=None):
+                            multitaper=False, amp_thresh_uv=9999.0,
+                            all_eeg=None, get_sig_fn=None, alpha_band=(8.0, 13.0)):
     """Spektrogramm + FFT + Bandpower für einen Kanal."""
     win_label = f"{t_start}–{t_end} s"
     st.markdown(f"#### Kanal: {ch_label}")
@@ -383,9 +462,9 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
     st.plotly_chart(fig_trend, use_container_width=True, key=f"trend_{panel_id}")
 
     # FFT + Bandpower
-    fig_fft, alpha_peaks, bp_all = _fft_figure(
+    fig_fft, alpha_peaks, alpha_cog, bp_all = _fft_figure(
         {ch_label: sig_full}, t_start, t_end, fs, panel_id,
-        multitaper=multitaper, amp_thresh_uv=amp_thresh_uv,
+        multitaper=multitaper, amp_thresh_uv=amp_thresh_uv, alpha_band=alpha_band,
     )
     st.markdown(f"**FFT — Fenster {win_label}**")
     st.plotly_chart(fig_fft, use_container_width=True, key=f"fft_{panel_id}")
@@ -394,14 +473,18 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
     _render_bandpower_and_ratios(bp_all, panel_id)
 
     ap = alpha_peaks.get(ch_label)
+    acog = alpha_cog.get(ch_label)
     bp = bp_all.get(ch_label, {})
     total = sum(bp.values()) or 1
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Alpha-Peak", f"{ap:.1f} Hz" if ap == ap else "—",
-              help="Norm: 9–11 Hz.")
-    k2.metric("Rel. Alpha", f"{bp.get('Alpha',0)/total*100:.1f}%")
-    k3.metric("Rel. Delta", f"{bp.get('Delta',0)/total*100:.1f}%")
-    k4.metric("Rel. Beta",  f"{bp.get('Beta',0)/total*100:.1f}%")
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Alpha-Peak (Max)", f"{ap:.1f} Hz" if ap == ap else "—",
+              help="Frequenz des PSD-Maximums im 8–13-Hz-Band (argmax). Norm: 9–11 Hz.")
+    k2.metric("Alpha-Peak (CoG)", f"{acog:.1f} Hz" if acog == acog else "—",
+              help="Schwerpunkt (Center of Gravity) im 8–13-Hz-Band nach 1/f-Baseline-"
+                   "Abzug — stabiler bei bimodalem Alpha. Norm: 9–11 Hz.")
+    k3.metric("Rel. Alpha", f"{bp.get('Alpha',0)/total*100:.1f}%")
+    k4.metric("Rel. Delta", f"{bp.get('Delta',0)/total*100:.1f}%")
+    k5.metric("Rel. Beta",  f"{bp.get('Beta',0)/total*100:.1f}%")
 
     # Ratios
     st.markdown("**Klinische Ratios**")
@@ -447,6 +530,10 @@ def render():
     if not eeg_map:
         st.warning("Keine EEG-Kanäle (10-20) erkannt.")
         return
+
+    # Altersadaptives Alpha-Suchfenster (für Erwachsene = Standard 8–13 Hz)
+    _age, _sex = get_patient_info()
+    alpha_band = _alpha_band(_age)
 
     import mne
     raw = mne.io.read_raw_edf(edf_path, preload=True, encoding="latin1", verbose=False)
@@ -576,15 +663,26 @@ def render():
                 )
                 st.plotly_chart(fig_sg, use_container_width=True, key=f"sg_{pid}")
 
-        # FFT-Overlay: beide Kurven in einem Plot
+        # FFT-Overlay: beide Kurven in einem Plot.
+        # Quantitativ (FFT/Bandpower/Peaks) werden die PSDs der Einzelkanäle
+        # gemittelt — deshalb hier Kanallisten statt der zeitgemittelten Signale.
         mt_label = " · Multitaper" if use_multitaper else " · Welch"
         st.markdown(f"**FFT-Vergleich — Fenster {t_start}–{t_end} s**{mt_label}")
-        fig_fft, alpha_peaks, bp_all = _fft_figure(
-            {"Posterior (O1+O2)": sig_post, "Anterior (F3+F4)": sig_ant},
+        fig_fft, alpha_peaks, alpha_cog, bp_all = _fft_figure(
+            {"Posterior (O1+O2)": [_get("O1"), _get("O2")],
+             "Anterior (F3+F4)":  [_get("F3"), _get("F4")]},
             t_start, t_end, fs, "cons",
             multitaper=use_multitaper, amp_thresh_uv=float(amp_thresh),
+            alpha_band=alpha_band,
         )
         st.plotly_chart(fig_fft, use_container_width=True, key="fft_cons")
+        _band_note = ("" if alpha_band == (8.0, 13.0)
+                      else f" · Alpha-Suchfenster altersadaptiv **{alpha_band[0]:.0f}–{alpha_band[1]:.0f} Hz**")
+        st.caption(
+            "FFT, Bandpower und Peaks aus **gemittelten Spektren** der Einzelkanäle "
+            "(O1&O2 bzw. F3&F4) — vermeidet Phasenauslöschung. Die Spektrogramm-Heatmaps "
+            "oben sind zur Darstellung zeitgemittelt." + _band_note
+        )
 
         # Bandpower + A/P-Gradient
         st.markdown("**Bandpower**")
@@ -599,6 +697,8 @@ def render():
         _a = _bp_post.get("Alpha", 0) or 1e-9; _b = _bp_post.get("Beta", 0) or 1e-9
         _ap_post = alpha_peaks.get("Posterior (O1+O2)")
         _ap_ant  = alpha_peaks.get("Anterior (F3+F4)")
+        _cog_post = alpha_cog.get("Posterior (O1+O2)")
+        _cog_ant  = alpha_cog.get("Anterior (F3+F4)")
         st.session_state["eeg_summary"] = {
             "t_start": t_start, "t_end": t_end,
             "bp_post": _bp_post, "bp_ant": _bp_ant,
@@ -612,6 +712,8 @@ def render():
             },
             "alpha_peak_post_hz": _ap_post,
             "alpha_peak_ant_hz":  _ap_ant,
+            "alpha_cog_post_hz":  _cog_post,
+            "alpha_cog_ant_hz":   _cog_ant,
             "ap_ratio": _bp_post.get("Alpha", 0) / (_bp_ant.get("Alpha", 0) or 1e-9),
         }
 
@@ -624,13 +726,22 @@ def render():
         ap_ant  = alpha_peaks.get("Anterior (F3+F4)")
         k1, k2, k3, k4 = st.columns(4)
         k1.metric("Alpha-Peak posterior", f"{ap_post:.1f} Hz" if ap_post == ap_post else "—",
-                  help="Norm: 9–11 Hz. Verlangsamung bei Enzephalopathie.")
+                  help="PSD-Maximum (argmax) im 8–13-Hz-Band. Norm: 9–11 Hz.")
         k2.metric("Alpha-Peak anterior",  f"{ap_ant:.1f} Hz"  if ap_ant  == ap_ant  else "—",
                   help="Sollte niedriger als posterior sein.")
         k3.metric("Rel. Alpha posterior", f"{bp_p.get('Alpha',0)/total_p*100:.1f}%",
                   help="Dominanter Anteil bei wachem, entspanntem EEG.")
         k4.metric("Rel. Delta anterior",  f"{bp_a.get('Delta',0)/total_a*100:.1f}%",
                   help="Erhöht bei Enzephalopathie / tiefer Sedierung.")
+
+        # Vergleich Schwerpunkt (CoG) vs. Maximum — robusteres Maß bei bimodalem Alpha
+        _cog_p_str = f"{_cog_post:.1f} Hz" if _cog_post == _cog_post else "—"
+        _cog_a_str = f"{_cog_ant:.1f} Hz"  if _cog_ant  == _cog_ant  else "—"
+        st.caption(
+            f"🎯 **Alpha-Schwerpunkt (CoG, 1/f-korrigiert):** posterior **{_cog_p_str}** · "
+            f"anterior **{_cog_a_str}** — stabiler bei bimodalem Alpha als das reine Maximum. "
+            f"Größere Abweichung Max↔CoG deutet auf einen breiten oder doppelgipfligen Alpha-Peak."
+        )
 
 
     else:
@@ -658,7 +769,7 @@ def render():
             ch_label, _get(ch_label), fs, dur_s,
             t_start, t_end, f"ch_{ch_label}",
             multitaper=use_multitaper, amp_thresh_uv=float(amp_thresh),
-            all_eeg=all_eeg, get_sig_fn=_get,
+            all_eeg=all_eeg, get_sig_fn=_get, alpha_band=alpha_band,
         )
         st.markdown("---")
 
@@ -757,8 +868,8 @@ def render():
             name=f"{val_ch_global} Referenz ({ref_start_g}–{ref_end_g} s)",
             line=dict(color=ch_col_g, width=2.8),
             hovertemplate=f"{val_ch_global}: %{{y:.3f}} @ %{{x:.1f}} Hz<extra></extra>"))
-        ap_fg = _peak_freq(f_fg, psd_fg, 8, 13)
-        ap_rg = _peak_freq(f_rg2, psd_rg, 8, 13)
+        ap_fg = _peak_freq(f_fg, psd_fg, alpha_band[0], alpha_band[1])
+        ap_rg = _peak_freq(f_rg2, psd_rg, alpha_band[0], alpha_band[1])
         for xp, col, lbl in [
             (ap_fg, "rgba(120,120,120,0.8)", f"α {ap_fg:.1f} Hz (gesamt)"),
             (ap_rg, ch_col_g,               f"α {ap_rg:.1f} Hz ({val_ch_global})"),
