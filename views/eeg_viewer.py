@@ -47,6 +47,17 @@ def render():
 
     pairs = MONTAGES[montage_name]
 
+    # Montage-Vollständigkeit: fehlende Elektroden → leere Ableitungen sichtbar machen
+    _needed = {e for pair in pairs for e in pair}
+    _missing_el = sorted(_needed - set(edf["eeg_map"].keys()))
+    if _missing_el:
+        st.warning(
+            f"⚠️ Für die Montage **{montage_name}** fehlen "
+            f"{len(_missing_el)} Elektrode(n): **{', '.join(_missing_el)}** — die "
+            f"betroffenen Ableitungen bleiben leer. Häufig Fehlklassifikation "
+            f"(Artefakt/Muskel) → in **🔍 Kanal-Identifikation** auf EEG korrigieren."
+        )
+
     with col_head:
         with st.container(border=True):
             st.markdown("<div style='font-size:12px;color:#888;text-align:center'>Aktive Montage</div>",
@@ -59,6 +70,17 @@ def render():
     t_s = ep * eeg_epoch_sec
     i_s, i_e = int(t_s * sfreq), int((t_s + eeg_epoch_sec) * sfreq)
     t = np.arange(i_s, i_e) / sfreq
+
+    # Kalibrier-/Impedanzphase erkennen — dort ist das EEG technisch bedingt flach
+    _CAL_KEYS = ("CAL", "IMP CHECK", "IMPEDANCE", "A1+A2 OFF", "KALIBR")
+    _ep_anns = [a for a in edf["annotations"] if t_s <= a["onset_s"] <= t_s + eeg_epoch_sec]
+    if any(any(k in a["description"].upper() for k in _CAL_KEYS) for a in _ep_anns):
+        st.info(
+            "⚙️ **Kalibrier-/Impedanzphase in dieser Epoche** (z. B. REC START · IMP CHECK · "
+            "A1+A2 OFF) — hier ist das EEG technisch bedingt flach bzw. ungültig "
+            "(gemeinsames Kalibriersignal hebt sich in bipolarer Montage auf). "
+            "Für echtes EEG eine **spätere Epoche** wählen."
+        )
 
     filtered_data = get_filtered_eeg(edf["data"], edf["eeg_map"], sfreq, low_hz, high_hz)
     derivs = get_bipolar_epoch(filtered_data, edf["eeg_map"], pairs, i_s, i_e)
