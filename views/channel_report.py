@@ -318,7 +318,8 @@ def render():
                             showlegend=False,
                         )
                         st.plotly_chart(fig_prev, use_container_width=True,
-                                        config={"displayModeBar": False})
+                                        config={"displayModeBar": False},
+                                        key=f"chreport_prev_{ch}")
 
                 elif f.get("is_flat"):
                     st.warning("Flacher/toter Kanal — kein Signal.")
