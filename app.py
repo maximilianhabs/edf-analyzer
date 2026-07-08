@@ -19,7 +19,7 @@ apply_global_style()
 inject_arrow_key_nav()
 logout_button()
 
-from views import file_patient, eeg_viewer, ecg_hrv, eeg_spectrum, report, channel_report
+from views import file_patient, eeg_viewer, ecg_hrv, eeg_spectrum, report, channel_report, aperiodic
 
 pages = [
     st.Page(file_patient.render, title="Datei & Patient", icon="📂", default=True, url_path="datei-patient"),
@@ -27,6 +27,7 @@ pages = [
     st.Page(eeg_viewer.render, title="EEG-Viewer", icon="🧠", url_path="eeg-viewer"),
     st.Page(ecg_hrv.render, title="EKG & HRV", icon="❤️", url_path="ekg-hrv"),
     st.Page(eeg_spectrum.render, title="EEG-Spektrum", icon="📊", url_path="eeg-spektrum"),
+    st.Page(aperiodic.render, title="Aperiodisch (1/f)", icon="🌀", url_path="aperiodisch"),
     st.Page(report.render, title="Report", icon="📋", url_path="report"),
 ]
 

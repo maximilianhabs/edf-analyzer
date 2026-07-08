@@ -499,7 +499,14 @@ def render():
         _mean_hr = 60000 / _mean_rr
         _sdnn    = float(np.std(rr_seg, ddof=1)) if len(rr_seg) > 1 else 0.0
         _rmssd   = float(np.sqrt(np.mean(_diff**2))) if len(_diff) > 0 else 0.0
-        _pnn50   = float(np.sum(np.abs(_diff) > 50) / max(len(_diff), 1) * 100)
+        _nn50    = int(np.sum(np.abs(_diff) > 50))
+        _pnn50   = float(_nn50 / max(len(_diff), 1) * 100)
+        # CV% = SDNN/mean_RR × 100 — direkt aus der RR-Reihe (keine Rundungskaskade)
+        _cv      = (_sdnn / _mean_rr * 100.0) if _mean_rr > 0 else 0.0
+        # DFA α₁ (nichtlinear) — nur bei ausreichender Schlagzahl
+        from analysis.ecg import dfa_alpha1 as _dfa_fn_panel
+        _dfa_p   = _dfa_fn_panel(rr_seg)
+        _dfa_a1  = _dfa_p["alpha1"] if _dfa_p else float("nan")
 
         # Task Force 1996: Frequenzdomäne valide ab ≥300 Schlägen (~5 min Ruhe-EKG)
         _FREQ_MIN_BEATS = 300
@@ -516,7 +523,8 @@ def render():
         _tp  = _fd["total_power"] if _fd else float("nan")
         _lhr = _fd["lf_hf_ratio"] if _fd else float("nan")
 
-        metrics = {"mean_hr": _mean_hr, "sdnn": _sdnn, "rmssd": _rmssd, "pnn50": _pnn50,
+        metrics = {"mean_hr": _mean_hr, "sdnn": _sdnn, "cv": _cv, "rmssd": _rmssd,
+                   "pnn50": _pnn50, "nn50": _nn50,
                    "lf": _lf, "hf": _hf, "tp": _tp, "lhr": _lhr}
 
         try:
@@ -577,6 +585,9 @@ def render():
             "lf_norm":      "Komplement zu HF norm",
             "hf_resp_rate": "Atemfrequenz aus HF-Gipfel — NeuroFax: NF (Hz) × 60",
             "lf_peak_freq": "NeuroFax: LF (Hz) — Frequenzposition der Mayer-Wellen",
+            "cv":           "HF-normierte Gesamtvariabilität (SDNN/RR) — entkoppelt SDNN von der Herzfrequenz",
+            "nn50":         "Absolutzahl zu pNN50 — NeuroFax gibt beide aus",
+            "dfa_a1":       "Nichtlinear: fraktale Struktur statt Größe der RR-Schwankungen",
         }
 
         lab_groups = [
@@ -584,10 +595,13 @@ def render():
                 ("heart_rate",   "Herzfrequenz",              _mean_hr,  "bpm"),
                 ("hf_resp_rate", "Atemfrequenz (HF-Gipfel)",  _resp,     "/min"),
                 ("pnn50",        "pNN50  (Konkordanz-Check)", _pnn50,    "%"),
+                ("nn50",         "NN50  (Absolutzahl)",       _nn50,     ""),
             ]),
             ("Ebene 2 — Zeitbereich (robust, bandunabhängig)", [
                 ("rmssd", "RMSSD", _rmssd, "ms"),
                 ("sdnn",  "SDNN",  _sdnn,  "ms"),
+                ("cv",    "CV (Variationskoeffizient)", _cv, "%"),
+                ("dfa_a1", "DFA α₁ (nichtlinear/fraktal)", _dfa_a1, ""),
             ]),
             ("Ebene 3 — Frequenzbereich (nur bei valider Signalqualität)", [
                 ("lf_power",     "LF Power",          _lf,       "ms²"),
@@ -686,6 +700,19 @@ def render():
                         (20,  25,  "grenzwertig"),
                         (25,  cls["scale_max"], "grenzwertig"),
                     ]
+                elif key == "nn50":
+                    # Absolutzahl ist längenabhängig → neutraler Info-Balken;
+                    # die klinische Wertung (Marker-Farbe) kommt aus der pNN50-Zone.
+                    zones = [(0, cls["scale_max"], "info")]
+                elif key == "dfa_a1":
+                    # Zweiseitig: gesund ~1,0, auffällig sowohl <0,75 als auch >1,25
+                    zones = [
+                        (0.0,  0.5,  "pathologisch"),
+                        (0.5,  0.75, "grenzwertig"),
+                        (0.75, 1.25, "normal"),
+                        (1.25, 1.5,  "grenzwertig"),
+                        (1.5,  cls["scale_max"], "pathologisch"),
+                    ]
                 else:
                     p5 = cls["p5_threshold"] or 0.01
                     zones = [
@@ -716,9 +743,16 @@ def render():
                                            showarrow=False, text=f"{lbl_hi} ▶",
                                            font=dict(size=10, color="#c0392b"), xanchor="right")
 
+                # NN50: Marker-Farbe aus der pNN50-Zone (gleicher vagaler Prozess),
+                # da die Absolutzahl selbst keine feste Populationsgrenze hat.
+                _marker_zone = cls["zone"]
+                if key == "nn50":
+                    _pn_cls = _classify("pnn50", _pnn50, patient_age, _mean_hr, rmssd=_rmssd)
+                    _marker_zone = _pn_cls["zone"]
+
                 fig_row.add_trace(go.Scatter(
                     x=[value], y=[0], mode="markers",
-                    marker=dict(symbol="diamond", size=16, color=ZONE_COLOR[cls["zone"]],
+                    marker=dict(symbol="diamond", size=16, color=ZONE_COLOR[_marker_zone],
                                 line=dict(width=1.5, color="#2c3e50")),
                     hovertemplate=f"{label}: %{{x:.3f}} {unit}<extra></extra>",
                 ))
@@ -763,9 +797,18 @@ def render():
 
                 ref_src = "Gąsior 2018" if is_pediatric else "Hansen 2024"
                 if cls["zone"] == "info":
-                    ref_range = ("Mayer-Wellen ~0.07–0.12 Hz"
-                                 if key == "lf_peak_freq" else "deskriptiv")
-                    st.caption(f"⚪ **{value:.3f} {unit}** · {ref_range}")
+                    if key == "nn50":
+                        _pn_badge = {"pathologisch": "🔴", "grenzwertig": "🟡",
+                                     "normal": "🟢", "info": "⚪"}[_marker_zone]
+                        st.caption(
+                            f"{_pn_badge} **{int(round(value))}** Intervalle > 50 ms · "
+                            f"Absolutzahl (längenabhängig) — klinische Wertung folgt pNN50 "
+                            f"(Marker in pNN50-Farbe)"
+                        )
+                    else:
+                        ref_range = ("Mayer-Wellen ~0.07–0.12 Hz"
+                                     if key == "lf_peak_freq" else "deskriptiv")
+                        st.caption(f"⚪ **{value:.3f} {unit}** · {ref_range}")
                 else:
                     badge    = {"pathologisch": "🔴", "grenzwertig": "🟡", "normal": "🟢"}[cls["zone"]]
                     sev_text = f" — {cls['severity']}" if cls["zone"] != "normal" else ""
@@ -781,6 +824,8 @@ def render():
                         pnn50_exp = cls.get("pnn50_expected")
                         norm_txt = (f"· Erwartet aus RMSSD: {pnn50_exp:.1f} % [Mietus 2002]"
                                     if pnn50_exp is not None else "")
+                    elif key == "dfa_a1":
+                        norm_txt = "· gesund ~1,0 (0,75–1,25) · <0,5 od. >1,5 auffällig [Peng 1995]"
                     elif cls["p5_threshold"] is not None:
                         norm_txt = f"· 5. Perz.: {cls['p5_threshold']:.1f} {unit} [{ref_src}]"
                     else:
@@ -1066,14 +1111,28 @@ def render():
     mean_rr = float(np.mean(rr_ms))
     mean_hr = 60000 / mean_rr
     sdnn    = float(np.std(rr_ms, ddof=1))
-    rmssd   = float(np.sqrt(np.mean(np.diff(rr_ms)**2))) if len(rr_ms) > 2 else 0.0
-    _n_diff = max(len(np.diff(rr_ms)), 1)
-    _nn50   = int(np.sum(np.abs(np.diff(rr_ms)) > 50))
+    _dd     = np.diff(rr_ms)
+    rmssd   = float(np.sqrt(np.mean(_dd**2))) if len(_dd) > 0 else 0.0
+    _n_diff = max(len(_dd), 1)
+    _nn50   = int(np.sum(np.abs(_dd) > 50))
     pnn50   = float(_nn50 / _n_diff * 100)
+    # pNN20: sensitiver als pNN50 bei geringer Variabilität (Schwelle 20 ms)
+    _nn20   = int(np.sum(np.abs(_dd) > 20))
+    pnn20   = float(_nn20 / _n_diff * 100)
     # CV% direkt aus der RR-Zeitreihe (SDNN/mean_RR × 100) — entkoppelt SDNN von der
     # absoluten Herzfrequenz und vermeidet Rundungsfehler aus den Anzeigewerten.
     cv_pct  = (sdnn / mean_rr * 100.0) if mean_rr > 0 else 0.0
     nn50    = _nn50
+    # Poincaré-Deskriptoren: SD1 = kurzfristige (vagale) Streuung quer zur Identität,
+    # SD2 = langfristige Streuung entlang. SDSD = Std der Sukzessivdifferenzen.
+    _sdsd   = float(np.std(_dd, ddof=1)) if len(_dd) > 1 else 0.0
+    sd1     = float(np.sqrt(0.5) * _sdsd)
+    sd2     = float(np.sqrt(max(2.0 * sdnn**2 - 0.5 * _sdsd**2, 0.0)))
+    sd_ratio = (sd2 / sd1) if sd1 > 0 else float("nan")
+    # DFA α₁ — fraktaler Kurzzeit-Skalenexponent (nichtlinear)
+    from analysis.ecg import dfa_alpha1 as _dfa_fn
+    _dfa = _dfa_fn(rr_ms)
+    dfa_a1 = _dfa["alpha1"] if _dfa else float("nan")
 
     rr_raw       = rr_data["rr_ms_raw"]
     t_raw        = rr_data["times_raw"]
@@ -1194,6 +1253,24 @@ def render():
         name="bereinigt", marker=dict(color="#8e44ad", size=4, opacity=0.6),
         hovertemplate="RRn=%{x:.0f}  RRn+1=%{y:.0f}ms<extra></extra>",
     ))
+    # SD1/SD2-Ellipse (um den Schwerpunkt, 45° zur Identität): halbe Achsen = SD2 (lang) / SD1 (quer)
+    if sd1 > 0 and sd2 > 0:
+        _t = np.linspace(0, 2 * np.pi, 100)
+        _cos, _sin = np.cos(np.pi / 4), np.sin(np.pi / 4)
+        _ex, _ey = sd2 * np.cos(_t), sd1 * np.sin(_t)
+        _x = mean_rr + _ex * _cos - _ey * _sin
+        _y = mean_rr + _ex * _sin + _ey * _cos
+        fig_poin_clean.add_trace(go.Scatter(
+            x=_x, y=_y, mode="lines", name="SD1/SD2-Ellipse",
+            line=dict(color="#e67e22", width=2), hoverinfo="skip",
+        ))
+        fig_poin_clean.add_annotation(
+            x=0.02, y=0.98, xref="paper", yref="paper", showarrow=False,
+            align="left", xanchor="left", yanchor="top",
+            text=f"SD1 {sd1:.1f} ms · SD2 {sd2:.1f} ms · SD2/SD1 {sd_ratio:.2f}",
+            font=dict(size=10, color="#8e44ad"),
+            bgcolor="rgba(255,255,255,0.75)", borderpad=3,
+        )
     p_lo = max(300, mean_rr * 0.55)
     p_hi = min(2000, mean_rr * 1.55)
     lim_clean = [p_lo - 30, p_hi + 30]
@@ -1381,6 +1458,19 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
         # NN50 = Absolutzahl (NeuroFax gibt RR50-Anzahl zusätzlich zum Prozent aus)
         _metric_card(_mc7, "NN50",          f"{nn50}",             "info",             "Anzahl > 50 ms")
 
+        # Zweite Reihe: sensitivere/nichtlineare Zeitbereichs-Deskriptoren
+        _mb1, _mb2, _mb3, _mb4, _mb5 = st.columns(5)
+        _metric_card(_mb1, "pNN20",   f"{pnn20:.1f} %", "info", "sensitiver als pNN50")
+        _metric_card(_mb2, "SD1",     f"{sd1:.1f} ms",  "info", "Poincaré · kurzfristig (vagal)")
+        _metric_card(_mb3, "SD2",     f"{sd2:.1f} ms",  "info", "Poincaré · langfristig")
+        _metric_card(_mb4, "SD2/SD1", f"{sd_ratio:.2f}" if sd_ratio == sd_ratio else "—",
+                     "info", "Balance kurz-/langfristig")
+        if dfa_a1 == dfa_a1:
+            _dfa_cls = _classify("dfa_a1", dfa_a1, patient_age, mean_hr)
+            _metric_card(_mb5, "DFA α₁", f"{dfa_a1:.2f}", _dfa_cls["zone"], "fraktal · ~1,0 gesund")
+        else:
+            _metric_card(_mb5, "DFA α₁", "—", "info", "zu wenige Schläge")
+
         # ── Dauer-Confounder-Hinweis ──────────────────────────────────────────
         # SDNN und die Spektralwerte (Total Power, LF) steigen systematisch mit der
         # Aufnahmedauer, weil längere Fenster mehr niederfrequente Schwankungen einfangen.
@@ -1455,6 +1545,52 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
             st.plotly_chart(fig_rr_clean, use_container_width=True)
         with col_d:
             st.plotly_chart(fig_poin_clean, use_container_width=True)
+
+        # ── DFA α₁ — fraktale Korrelationsstruktur ─────────────────────────────
+        _section("🧬 DFA α₁ — fraktale Dynamik", "Detrended Fluctuation Analysis (Peng 1995)")
+        if _dfa is not None:
+            _sc = _dfa["scales"]; _Fv = _dfa["F"]
+            _logn = np.log10(_sc); _logF = np.log10(_Fv)
+            _b, _a0 = np.polyfit(_logn, _logF, 1)
+            _fit = 10 ** (_a0 + _b * _logn)
+            _dfa_cls2 = _classify("dfa_a1", dfa_a1, patient_age, mean_hr)
+            _dcol = {"normal": "#27ae60", "grenzwertig": "#e67e22",
+                     "pathologisch": "#c0392b", "info": "#7f8c8d"}[_dfa_cls2["zone"]]
+            dcol1, dcol2 = st.columns([3, 2])
+            with dcol1:
+                fig_dfa = go.Figure()
+                fig_dfa.add_trace(go.Scatter(
+                    x=_sc, y=_Fv, mode="markers", name="F(n)",
+                    marker=dict(color="#8e44ad", size=8),
+                    hovertemplate="n=%{x} Schläge · F(n)=%{y:.1f}<extra></extra>"))
+                fig_dfa.add_trace(go.Scatter(
+                    x=_sc, y=_fit, mode="lines", name=f"Fit α₁={dfa_a1:.2f}",
+                    line=dict(color=_dcol, width=2.4, dash="dash"), hoverinfo="skip"))
+                fig_dfa.update_layout(
+                    xaxis=dict(title="Fenstergröße n (Schläge)", type="log",
+                               tickvals=[4, 6, 8, 11, 16], ticktext=["4", "6", "8", "11", "16"]),
+                    yaxis=dict(title="Fluktuation F(n)", type="log"),
+                    height=260, margin=dict(t=10, b=40, l=60, r=10),
+                    plot_bgcolor="#fafafa",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)),
+                )
+                st.plotly_chart(fig_dfa, use_container_width=True)
+            with dcol2:
+                st.markdown(
+                    f"<div style='padding:14px 16px;border-radius:10px;border:2px solid {_dcol};"
+                    f"background:{_dcol}0d;text-align:center'>"
+                    f"<div style='font-size:12px;color:#888'>DFA α₁</div>"
+                    f"<div style='font-size:2.2rem;font-weight:800;color:{_dcol}'>{dfa_a1:.2f}</div>"
+                    f"<div style='font-size:12px;color:#555'>{_dfa_cls2['direction']}</div></div>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(
+                    "**≈1,0** gesunde 1/f-Dynamik · **→0,5** Zufälligkeit "
+                    "(Fatigue/autonome Dysregulation) · **→1,5** Brown'sches Rauschen. "
+                    "Skalen 4–16 Schläge. *Orientierend.*"
+                )
+        else:
+            st.info("ℹ️ DFA α₁ nicht berechenbar — zu wenige Schläge (mind. ~32 nötig).")
 
     # ── Tab 2: Frequenzdomäne ─────────────────────────────────────────────────
     with tab_freq:
@@ -1592,6 +1728,56 @@ Referenz RMSSD→pNN50: RMSSD 20 ms → ~6 %, RMSSD 40 ms → ~21 %, RMSSD 70 ms
 Quelle: **Mietus JE et al.** (2002). *The pNNx files: re-examining a widely used heart
 rate variability measure.* Heart 88(4):378–380.
 
+**pNN20** · Parasympathikus-Marker (vagal)
+⚠️ **Evidenz: ★★★☆☆** — pNNx-Familie; sensitiver als pNN50, aber RMSSD-redundant
+Anteil aufeinanderfolgender RR-Differenzen **>20 ms** (statt 50 ms). Durch die
+niedrigere Schwelle **sensitiver bei geringer Variabilität** (ältere Patienten,
+reduzierte HRV), wo pNN50 oft nahe 0 liegt und kaum noch differenziert. Ergänzt
+pNN50 nach unten hin.
+
+**CV (Variationskoeffizient, %)** · globaler Marker
+⚠️ **Evidenz: ★★★☆☆** — robuste Berechnung, HF-normiert; im Kern normiertes SDNN, moderate eigenständige klinische Evidenz
+CV = SDNN / mittleres RR × 100. **HF-normierte Streuung:** SDNN fällt bei höherer
+Herzfrequenz automatisch kleiner aus (kürzere RR-Intervalle), auch wenn die *relative*
+Variabilität gleich bleibt. CV entkoppelt die Streuung von der absoluten Herzfrequenz
+und macht Personen/Zustände mit unterschiedlicher HF besser vergleichbar. Normgrenze
+hier aus der SDNN-P5 umgerechnet (`CV_p5 = SDNN_p5 × HR/600`, Hansen 2024).
+
+**NN50 (Absolutzahl)** · Parasympathikus-Marker (vagal, längenabhängig)
+⚠️ **Evidenz: ★★☆☆☆** — längenabhängig, keine feste Norm; nur als Ergänzung zu pNN50
+Absolute Anzahl aufeinanderfolgender RR-Differenzen >50 ms (NeuroFax gibt Zahl *und*
+Prozent aus). **Achtung:** die Zahl steigt mit Aufnahmelänge/Schlagzahl → keine feste
+Normgrenze; die klinische Wertung erfolgt über pNN50 (deshalb wird der NN50-Marker in
+der pNN50-Farbe dargestellt).
+
+---
+#### Nichtlinear & Poincaré
+
+**SD1 / SD2 (Poincaré-Plot, ms)** · SD1 vagal · SD2 global
+✅ **Evidenz: ★★★★☆** (SD1) / ⚠️ ★★★☆☆ (SD2) — SD1 ≈ RMSSD/√2 (sehr robust, aber redundant), SD2 korreliert mit SDNN
+Der Poincaré-Plot trägt jedes RR-Intervall gegen das nächste auf (RRₙ vs. RRₙ₊₁). Die
+Punktwolke bildet eine Ellipse:
+- **SD1** = Streuung **quer** zur Identitätslinie = kurzfristige Schlag-zu-Schlag-
+  Variabilität, **vagal** (SD1 = √0,5 × SDSD, eng verwandt mit RMSSD).
+- **SD2** = Streuung **entlang** der Linie = langfristige Variabilität, global.
+- **SD2/SD1** = Verhältnis lang-/kurzfristig (autonome Balance). Es gilt
+  SD1² + SD2² = 2 × SDNN².
+Quelle: **Brennan M et al.** (2001). IEEE Trans Biomed Eng 48(11):1342–1347.
+
+**DFA α₁ (Detrended Fluctuation Analysis)** · nichtlinear, fraktal
+✅ **Evidenz: ★★★★☆** — gute Prognosedaten (Mäkikallio 1999: Mortalität post-MI, unabhängig von SDNN/RMSSD); robust, aber zustandsabhängig (Ruhe ≠ Belastung) und braucht ausreichend Schläge
+Misst **nicht die Größe**, sondern die **fraktale Korrelationsstruktur** der RR-Reihe:
+Sind die Intervalle rein zufällig oder komplex-biologisch organisiert? Das integrierte
+RR-Profil wird in Fenster (4–16 Schläge) zerlegt, je Fenster der lineare Trend abgezogen
+und die Fluktuation F(n) bestimmt; α₁ ist die Steigung von log F(n) über log n.
+- **α₁ ≈ 1,0** → gesunde 1/f-Dynamik („pink noise"), langreichweitig korreliert.
+- **α₁ → 0,5** → unkorreliertes weißes Rauschen: **Verlust der Korrelation** (Fatigue,
+  autonome Dysregulation, hohe Belastung, ungünstige Prognose).
+- **α₁ → 1,5** → Brown'sches Rauschen (integriertes weißes Rauschen).
+Orientierende Grenzen (Ruhe): gesund 0,75–1,25 · auffällig <0,5 oder >1,5. Robuster
+Belastungs-/Fatigue-Marker, aber zustandsabhängig (Ruhe ≠ Belastung).
+Quelle: **Peng CK et al.** (1995). Chaos 5(1):82–87.
+
 ---
 #### Frequenzbereich — Bandleistung
 
@@ -1677,12 +1863,19 @@ NeuroFax-Bezeichnung: **LF (Hz)**.
 | HF Power | ★★★★☆ | Gut validiert, aber atemfrequenzabhängig |
 | Total Power | ★★★★☆ | SDNN-Analog im Frequenzraum; Methodenanfälligkeit beachten |
 | LF Power | ★★★★☆ | Reproduzierbar, aber ≠ Sympathikus-Marker |
+| **DFA α₁** | ★★★★☆ | Unabhängige Prognosedaten (Mäkikallio 1999); robust, zustandsabhängig |
+| **SD1** | ★★★★☆ | ≈ RMSSD/√2; sehr robust, aber redundant zu RMSSD |
+| **CV** | ★★★☆☆ | Robust, HF-normiert; im Kern normiertes SDNN |
+| **SD2** | ★★★☆☆ | Langzeit-Streuung; korreliert mit SDNN |
+| **SD2/SD1** | ★★★☆☆ | Beschreibt Zufälligkeit/Balance; moderate Evidenz |
+| **pNN20** | ★★★☆☆ | Sensitiver als pNN50 bei niedriger HRV; RMSSD-redundant |
 | pNN50 | ★★★☆☆ | RMSSD-Redundanz (r>0.92); kein altersadjustierter Cutoff |
+| **NN50** | ★★☆☆☆ | Längenabhängig, keine feste Norm; Wertung via pNN50 |
 | HF normiert | ★★☆☆☆ | Nur bei kontrollierter Atmung sinnvoll |
 | LF normiert | ★★☆☆☆ | Methodisch schwach; basiert auf fehlerhafter LF-Interpretation |
 | LF/HF-Ratio | ★☆☆☆☆ | Physiologisch diskreditiert; kein verlässlicher Sympatho-Vagal-Index |
 
-*Ranking nach: Reproduzierbarkeit · physiologischer Validität · klinischer Evidenz (Billman 2013, Shaffer & Ginsberg 2017)*
+*Ranking nach: Reproduzierbarkeit · physiologischer Validität · klinischer Evidenz (Billman 2013, Shaffer & Ginsberg 2017). Fett = neu ergänzte Parameter.*
 
 ---
 **Quellen:**
@@ -1694,6 +1887,9 @@ NeuroFax-Bezeichnung: **LF (Hz)**.
 6. **Gąsior JS et al.** (2018). Front Physiol 9:1495.
 7. **Mietus JE et al.** (2002). Heart 88(4):378–380.
 8. **Shaffer F & Ginsberg JP** (2017). Front Public Health 5:258.
+9. **Brennan M et al.** (2001). *Do existing measures of Poincaré plot geometry reflect nonlinear features of HRV?* IEEE Trans Biomed Eng 48(11):1342–1347.
+10. **Peng CK et al.** (1995). *Quantification of scaling exponents … DFA.* Chaos 5(1):82–87.
+11. **Mäkikallio TH et al.** (1999). *Prediction of sudden cardiac death by fractal analysis (DFA α₁).* J Am Coll Cardiol 34(4):1395–1401.
 
 **Zonen-Logik (Erwachsene):**
 - 🔴 Pathologisch: unter P5 alters-/HF-adjustiert (Hansen-Formel)
@@ -1725,6 +1921,11 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
             {"Parameter": "RMSSD",                          "Wert": round(rmssd, 1),              "Einheit": "ms"},
             {"Parameter": "pNN50",                          "Wert": round(pnn50, 1),              "Einheit": "%"},
             {"Parameter": "NN50 (Absolutzahl)",             "Wert": nn50,                          "Einheit": "Anzahl"},
+            {"Parameter": "pNN20",                          "Wert": round(pnn20, 1),              "Einheit": "%"},
+            {"Parameter": "SD1 (Poincaré)",                 "Wert": round(sd1, 1),                "Einheit": "ms"},
+            {"Parameter": "SD2 (Poincaré)",                 "Wert": round(sd2, 1),                "Einheit": "ms"},
+            {"Parameter": "SD2/SD1",                        "Wert": round(sd_ratio, 2) if sd_ratio == sd_ratio else None, "Einheit": "—"},
+            {"Parameter": "DFA α₁ (nichtlinear)",           "Wert": round(dfa_a1, 2) if dfa_a1 == dfa_a1 else None, "Einheit": "—"},
             {"Parameter": "Aufnahmedauer (Analyse)",        "Wert": round(len(rr_ms_analysis) and float(np.sum(rr_ms_analysis)/1000) or 0.0, 1), "Einheit": "s"},
             {"Parameter": "Schläge entfernt (Outlier-Filter)", "Wert": round(pct_removed, 1),   "Einheit": "%"},
             {"Parameter": "LF Power",                       "Wert": round(fd["lf_power"], 1),     "Einheit": "ms²"},

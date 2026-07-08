@@ -156,6 +156,12 @@ def compute_hrv_time_domain(rr_ms: np.ndarray) -> dict:
     # Direkt aus float-Werten gerechnet, damit sich keine Rundungsfehler aus den
     # bereits gerundeten Anzeigewerten SDNN und mean_RR aufsummieren.
     cv_pct  = (sdnn / mean_rr * 100.0) if mean_rr > 0 else 0.0
+    # pNN20 (Schwelle 20 ms) — sensitiver als pNN50 bei geringer Variabilität.
+    nn20    = int(np.sum(np.abs(successive_diff) > 20))
+    # Poincaré-Deskriptoren: SD1 (kurzfristig/vagal), SD2 (langfristig).
+    sdsd    = float(np.std(successive_diff, ddof=1)) if len(successive_diff) > 1 else 0.0
+    sd1     = float(np.sqrt(0.5) * sdsd)
+    sd2     = float(np.sqrt(max(2.0 * sdnn**2 - 0.5 * sdsd**2, 0.0)))
 
     return {
         "mean_rr_ms": round(mean_rr, 1),
@@ -165,10 +171,58 @@ def compute_hrv_time_domain(rr_ms: np.ndarray) -> dict:
         "rmssd_ms": round(float(np.sqrt(np.mean(successive_diff**2))), 1),
         "pnn50_pct": round(float(nn50 / len(successive_diff) * 100), 1),
         "nn50_count": nn50,
+        "pnn20_pct": round(float(nn20 / len(successive_diff) * 100), 1),
+        "sd1_ms": round(sd1, 1),
+        "sd2_ms": round(sd2, 1),
+        "sd2_sd1_ratio": round(sd2 / sd1, 2) if sd1 > 0 else None,
         "min_rr_ms": round(float(np.min(rr_ms)), 1),
         "max_rr_ms": round(float(np.max(rr_ms)), 1),
         "n_beats": len(rr_ms) + 1,
     }
+
+
+def dfa_alpha1(rr_ms: np.ndarray, scale_min: int = 4, scale_max: int = 16):
+    """Detrended Fluctuation Analysis — Kurzzeit-Skalenexponent α₁ (Peng et al. 1995).
+
+    Misst die **fraktale Korrelationsstruktur** der RR-Reihe, nicht ihre Größe:
+      α₁ ≈ 1.0  → gesunde 1/f-Dynamik („pink noise"), langreichweitig korreliert
+      α₁ → 0.5  → unkorreliertes weißes Rauschen (Verlust der Korrelation:
+                  Fatigue, autonome Dysregulation, hohe Belastung)
+      α₁ → 1.5  → Brown'sches Rauschen (integriertes weißes Rauschen)
+
+    Ablauf: (1) integriertes Profil y(k)=Σ(RR−mean); (2) in nicht überlappende
+    Fenster der Länge n zerlegen; (3) je Fenster linearen Trend abziehen, RMS bilden;
+    (4) F(n)=RMS über alle Fenster; (5) α₁ = Steigung von log F(n) über log n
+    im Skalenbereich 4–16 Schläge.
+
+    Rückgabe: dict(alpha1, scales, F) oder None (zu wenige Schläge).
+    """
+    x = np.asarray(rr_ms, dtype=float)
+    N = len(x)
+    if N < max(30, scale_max * 2):
+        return None
+    y = np.cumsum(x - x.mean())
+    scales, F = [], []
+    for n in range(scale_min, scale_max + 1):
+        n_win = N // n
+        if n_win < 1:
+            continue
+        t = np.arange(n)
+        var_list = []
+        for w in range(n_win):
+            seg = y[w * n:(w + 1) * n]
+            coef = np.polyfit(t, seg, 1)
+            trend = np.polyval(coef, t)
+            var_list.append(np.mean((seg - trend) ** 2))
+        if var_list:
+            F.append(float(np.sqrt(np.mean(var_list))))
+            scales.append(n)
+    if len(F) < 4:
+        return None
+    logn = np.log10(scales)
+    logF = np.log10(F)
+    alpha1 = float(np.polyfit(logn, logF, 1)[0])
+    return {"alpha1": alpha1, "scales": np.array(scales), "F": np.array(F)}
 
 
 def compute_hrv_frequency_domain(rr_ms: np.ndarray, sfreq_rr: float = 4.0) -> dict:
