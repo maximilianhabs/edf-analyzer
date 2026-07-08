@@ -19,9 +19,11 @@ COPY . .
 
 EXPOSE 8501
 
-# Healthcheck über Python (curl ist im slim-Image nicht vorhanden)
+# Healthcheck über Python (curl ist im slim-Image nicht vorhanden).
+# WICHTIG: 127.0.0.1 statt localhost — localhost löst im Container auch auf IPv6 (::1)
+# auf; Streamlit lauscht nur auf IPv4 → localhost kann je nach Client fehlschlagen.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8501/_stcore/health').read()==b'ok' else 1)" || exit 1
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health').read()==b'ok' else 1)" || exit 1
 
 CMD ["streamlit", "run", "app.py", \
      "--server.port=8501", \
