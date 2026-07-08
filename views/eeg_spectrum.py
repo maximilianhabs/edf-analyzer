@@ -1011,7 +1011,15 @@ Die Frequenz des höchsten Ausschlags im Alpha-Band (8–13 Hz), okzipital gemes
 
 - **Normbereich**: 9–11 Hz (Augen zu, entspannt)
 - **Klinische Bedeutung**: Die APF ist der stabilste spektrale Parameter des Individuums — vergleichbar einem biologischen Fingerabdruck. Im Längsschnitt signalisiert ein APF-Abfall bereits bei Werten formal im Normbereich einen frühen kognitiven Decline (Petersen 2000, Jelic 2000). Ein APF < 8 Hz ist ein sensitiver Marker für **Alzheimer-Demenz** und metabolische Enzephalopathien.
-- **Methodik**: Hier berechnet als Frequenz des PSD-Maximums im Fenster 8–13 Hz.
+- **Methodik**: Wir zeigen **zwei** Schätzer nebeneinander:
+  - **Alpha-Peak (Max)** = Frequenz des PSD-Maximums (argmax) im 8–13-Hz-Band. Einfach,
+    aber bei zwei nahen Gipfeln (z. B. 9 und 11 Hz) instabil — springt zum minimal höheren.
+  - **Alpha-Peak (CoG)** = Schwerpunkt (Center of Gravity, „Individual Alpha Frequency"):
+    CoG = Σ(fᵢ·Pᵢ) / Σ(Pᵢ) über das Alpha-Band, nach Abzug einer linearen 1/f-Baseline
+    (damit die Theta-Flanke den Schwerpunkt nicht nach unten zieht). **Robuster** bei
+    breitem oder bimodalem Alpha. Eine große Abweichung Max↔CoG deutet auf einen breiten
+    oder doppelgipfligen Alpha-Peak. Das **altersadaptive Suchband** (Kinder tiefer, s. o.)
+    gilt für beide Schätzer. Quelle: Klimesch (1999), Brain Res Rev 29:169–195.
 
 ---
 

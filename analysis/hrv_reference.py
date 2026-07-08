@@ -47,6 +47,9 @@ MARKER_TYPE = {
     "total_power":   {"type": "global", "label": "Globaler Marker"},
     "lf_hf_ratio":   {"type": "mixed",  "label": "↓ niedrig = parasympathikoton · ↑ hoch = sympathikoton"},
     "pnn50":         {"type": "para",   "label": "Parasympathikus-Marker (vagal)"},
+    "cv":            {"type": "global", "label": "Globaler Marker (HF-normierte Gesamtvariabilität)"},
+    "nn50":          {"type": "para",   "label": "Parasympathikus-Marker (vagal, längenabhängig)"},
+    "dfa_a1":        {"type": "global", "label": "Nichtlinear — fraktale Korrelationsstruktur (α₁)"},
     # Neue Parameter (NeuroFax-analog)
     "lf_norm":       {"type": "mixed",  "label": "LF-Anteil (normiert) — Baroreflex-Dominanz"},
     "hf_norm":       {"type": "para",   "label": "HF-Anteil (normiert) — vagale Dominanz"},
@@ -145,6 +148,62 @@ def classify_parameter(param: str, value: float, age: float, heart_rate: float,
             "direction": direction, "position": pos,
             "p5_threshold": pnn50_exp, "ref_lo": None, "ref_hi": None,
             "scale_max": scale_max, "pnn50_expected": pnn50_exp,
+        }
+
+    if param == "cv":
+        # CV% = SDNN/mean_RR × 100 = SDNN × HR/600. Normgrenze aus der SDNN-P5
+        # (Hansen 2024, alters-/HF-adjustiert) in CV umgerechnet → konsistent mit SDNN,
+        # aber entkoppelt von der absoluten Herzfrequenz.
+        sdnn_p5 = hansen_p5_threshold("sdnn", age, heart_rate)
+        cv_p5 = sdnn_p5 * heart_rate / 600.0
+        scale_max = max(12.0, value * 1.25)
+        if value < cv_p5:
+            zone = "pathologisch"
+            severity = "stark" if value < cv_p5 * 0.6 else "mäßig"
+        elif value < cv_p5 * 1.5:
+            zone, severity = "grenzwertig", "leicht"
+        else:
+            zone, severity = "normal", "—"
+        direction = "reduzierte Gesamtvariabilität" if value < cv_p5 * 1.5 else "—"
+        return {
+            "param": param, "value": value, "zone": zone, "severity": severity,
+            "direction": direction, "position": float(np.clip(value / scale_max, 0, 1)),
+            "p5_threshold": cv_p5, "ref_lo": cv_p5, "ref_hi": None, "scale_max": scale_max,
+        }
+
+    if param == "nn50":
+        # Absolutzahl aufeinanderfolgender NN-Intervalle > 50 ms. Stark längen-/
+        # schlagzahlabhängig → KEINE feste Populationsgrenze. Wertung erfolgt über
+        # pNN50 (gleicher Prozess); hier deskriptiv/info, Marker wird in der UI
+        # nach der pNN50-Zone eingefärbt.
+        scale_max = max(10.0, value * 1.3)
+        return {
+            "param": param, "value": value, "zone": "info", "severity": "—",
+            "direction": "Absolutzahl — längenabhängig, Wertung über pNN50", "position": 0.0,
+            "p5_threshold": None, "ref_lo": None, "ref_hi": None, "scale_max": scale_max,
+        }
+
+    if param == "dfa_a1":
+        # DFA α₁: gesunde fraktale Dynamik ~1.0. Zweiseitig — sowohl Abfall Richtung
+        # 0.5 (Zufälligkeit/Dysregulation) als auch Anstieg >1.4 (Brown'sch) auffällig.
+        # Orientierende Grenzen (Ruhe-HRV); kein publizierter harter Cutoff.
+        ref_lo, ref_hi = 0.75, 1.25
+        if value < 0.5 or value > 1.5:
+            zone, severity = "pathologisch", "stark"
+        elif value < ref_lo or value > ref_hi:
+            zone, severity = "grenzwertig", "leicht"
+        else:
+            zone, severity = "normal", "—"
+        if value < ref_lo:
+            direction = "↓ Richtung Zufälligkeit (Korrelationsverlust/Dysregulation)"
+        elif value > ref_hi:
+            direction = "↑ Richtung Brown'sches Rauschen"
+        else:
+            direction = "gesunde 1/f-Dynamik"
+        return {
+            "param": param, "value": value, "zone": zone, "severity": severity,
+            "direction": direction, "position": float(np.clip(value / 1.6, 0, 1)),
+            "p5_threshold": None, "ref_lo": ref_lo, "ref_hi": ref_hi, "scale_max": 1.6,
         }
 
     if param in ("lf_norm", "hf_norm"):
@@ -346,6 +405,45 @@ def classify_parameter_pediatric(param: str, value: float, heart_rate: float,
                 "direction": direction, "position": pos,
                 "p5_threshold": pnn50_exp, "ref_lo": None, "ref_hi": None,
                 "scale_max": scale_max, "pnn50_expected": pnn50_exp}
+
+    if param == "cv":
+        # CV% = SDNN × HR/600. Pädiatrische SDNN-P5 (Gąsior, HR-stratifiziert) → CV.
+        ref = _ped_quartile(heart_rate)
+        sdnn_p5 = ref["sdnn"][0]
+        cv_p5 = sdnn_p5 * heart_rate / 600.0
+        scale_max = max(14.0, value * 1.25)
+        if value < cv_p5:
+            zone = "pathologisch"
+            severity = "stark" if value < cv_p5 * 0.6 else "mäßig"
+        elif value < cv_p5 * 1.5:
+            zone, severity = "grenzwertig", "leicht"
+        else:
+            zone, severity = "normal", "—"
+        direction = "reduzierte Gesamtvariabilität" if value < cv_p5 * 1.5 else "—"
+        return {"param": param, "value": value, "zone": zone, "severity": severity,
+                "direction": direction, "position": float(np.clip(value / scale_max, 0, 1)),
+                "p5_threshold": cv_p5, "ref_lo": cv_p5, "ref_hi": None, "scale_max": scale_max}
+
+    if param == "nn50":
+        scale_max = max(10.0, value * 1.3)
+        return {"param": param, "value": value, "zone": "info", "severity": "—",
+                "direction": "Absolutzahl — längenabhängig, Wertung über pNN50", "position": 0.0,
+                "p5_threshold": None, "ref_lo": None, "ref_hi": None, "scale_max": scale_max}
+
+    if param == "dfa_a1":
+        # Fraktale Dynamik ~1.0 weitgehend altersunabhängig — gleiche orientierende Grenzen.
+        ref_lo, ref_hi = 0.75, 1.25
+        if value < 0.5 or value > 1.5:
+            zone, severity = "pathologisch", "stark"
+        elif value < ref_lo or value > ref_hi:
+            zone, severity = "grenzwertig", "leicht"
+        else:
+            zone, severity = "normal", "—"
+        direction = ("↓ Richtung Zufälligkeit" if value < ref_lo else
+                     ("↑ Richtung Brown'sch" if value > ref_hi else "gesunde 1/f-Dynamik"))
+        return {"param": param, "value": value, "zone": zone, "severity": severity,
+                "direction": direction, "position": float(np.clip(value / 1.6, 0, 1)),
+                "p5_threshold": None, "ref_lo": ref_lo, "ref_hi": ref_hi, "scale_max": 1.6}
 
     if param == "heart_rate":
         if value < 40 or value > 200:
