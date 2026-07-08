@@ -111,6 +111,42 @@ def render():
                 unsafe_allow_html=True,
             )
 
+    # ── Vollständigkeits- & Plausibilitäts-Hinweise ──────────────────────────
+    from core.channel_classifier import make_short_name as _short
+    _STD_1020 = {"FP1", "FP2", "F3", "F4", "F7", "F8", "C3", "C4", "P3", "P4",
+                 "O1", "O2", "T3", "T4", "T5", "T6", "FZ", "CZ", "PZ"}
+    _eff_eeg_shorts = {
+        _short(ch).upper().replace(" ", "")
+        for ch, r in classifications.items()
+        if overrides.get(ch, r.channel_type) == EEG
+    }
+    _present = _STD_1020 & _eff_eeg_shorts
+    _missing = _STD_1020 - _eff_eeg_shorts
+    _n_ecg = sum(1 for ch, r in classifications.items()
+                 if overrides.get(ch, r.channel_type) == ECG)
+
+    if len(_present) < 16:
+        st.warning(
+            f"⚠️ **Nur {len(_present)} / 19 Standard-10-20-Elektroden als EEG erkannt** — "
+            f"fehlen: {', '.join(sorted(_missing))}. Für eine vollständige Montage (z. B. "
+            f"Doppelte Banane) reicht das evtl. nicht. Häufige Ursache: Artefakte / "
+            f"Muskelaktivität → betroffene Kanäle unten manuell auf **EEG** korrigieren."
+        )
+    elif _missing:
+        st.info(
+            f"ℹ️ {len(_present)} / 19 Standard-Elektroden als EEG erkannt · "
+            f"nicht dabei: {', '.join(sorted(_missing))}"
+        )
+
+    if _n_ecg >= 2:
+        _ecg_names = [ch for ch, r in classifications.items()
+                      if overrides.get(ch, r.channel_type) == ECG]
+        st.info(
+            f"❤️ **{_n_ecg} EKG-Kandidaten erkannt** ({', '.join(_ecg_names)}) — "
+            f"physiologisch gibt es meist nur **einen**. Im EKG-Viewer den korrekten Kanal "
+            f"wählen; die übrigen unten ggf. auf einen anderen Typ korrigieren."
+        )
+
     # ── Filter & Sort ────────────────────────────────────────────────────────
     section_header("Kanäle im Detail")
 

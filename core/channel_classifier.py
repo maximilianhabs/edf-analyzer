@@ -588,6 +588,14 @@ def _classify_one(f: dict, ch_name: str, is_bids_eeg_file: bool = False) -> Chan
         scores[EMG] += 22
         reasons[EMG].append("Kanalname: EMG-Bezeichnung erkannt")
 
+    # Benannte 10-20-Elektroden (Fp1, F7, T3 …) sind EEG-Elektroden. Muskelartefakt
+    # (verspannter Patient, temporale Kanäle) ist Kontamination, macht sie NICHT zum
+    # EMG-Kanal. Ohne expliziten EMG-Namen wird der EMG-Score verworfen, damit die
+    # Elektrode als (artefaktbehaftetes) EEG erhalten bleibt und die Montage nicht bricht.
+    if _is_named_eeg and not any(n in ch_up for n in _EMG_HINTS) and scores[EMG] > 0:
+        scores[EMG] = 0.0
+        reasons[EEG].append("10-20-Elektrode: HF-/Muskelanteil als Artefakt gewertet, kein EMG-Kanal")
+
     # ── REF ───────────────────────────────────────────────────────────────────
     # Very low variance (near-zero signal when referenced to itself)
     if std_mv < 0.008:
