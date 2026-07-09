@@ -107,6 +107,40 @@ def fit_aperiodic(freqs: np.ndarray, psd: np.ndarray,
     }
 
 
+def flattened_power(res: dict, lo: float, hi: float) -> float:
+    """Fläche unter dem untergrund-bereinigten („flattened") Spektrum im Band [lo,hi].
+
+    Entspricht FOOOF `_spectrum_flat` (Maschke 2025): log10(PSD/aperiodik) über das Band
+    integriert. Der 1/f-Untergrund ist entfernt → nur der oszillatorische Gipfel bleibt.
+    Werte > 0 zeigen echte Oszillationsleistung über dem Untergrund; ~0 = kein Gipfel.
+    """
+    f = res["freqs"]
+    ratio = res["ratio"]
+    band = (f >= lo) & (f < hi)
+    if band.sum() < 2:
+        return float("nan")
+    flat = np.log10(np.clip(ratio[band], 1e-9, None))
+    return float(np.trapz(flat, f[band]))
+
+
+def band_power_defs(freqs: np.ndarray, psd: np.ndarray, lo: float, hi: float,
+                    full=(1.0, 40.0), res: dict | None = None) -> dict:
+    """Drei Standard-Definitionen der Bandleistung (Maschke 2025):
+      - absolute: log10(Fläche unter der PSD im Band)
+      - relative: Fläche im Band / Fläche im Gesamtspektrum (full) × 100
+      - flattened: Fläche unter dem aperiodik-bereinigten Spektrum (nur wenn res übergeben).
+    """
+    m = (freqs >= lo) & (freqs < hi)
+    mf = (freqs >= full[0]) & (freqs < full[1])
+    area = float(np.trapz(psd[m], freqs[m])) if m.sum() > 1 else 0.0
+    total = float(np.trapz(psd[mf], freqs[mf])) if mf.sum() > 1 else 0.0
+    return {
+        "absolute": float(np.log10(area)) if area > 0 else float("nan"),
+        "relative": (area / total * 100.0) if total > 0 else float("nan"),
+        "flattened": flattened_power(res, lo, hi) if res is not None else float("nan"),
+    }
+
+
 def corrected_peak(res: dict, lo: float, hi: float) -> float:
     """Gipfelfrequenz im Band [lo,hi] aus dem UNTERGRUND-BEREINIGTEN Spektrum.
 

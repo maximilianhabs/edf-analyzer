@@ -1133,6 +1133,9 @@ def render():
     from analysis.ecg import dfa_alpha1 as _dfa_fn
     _dfa = _dfa_fn(rr_ms)
     dfa_a1 = _dfa["alpha1"] if _dfa else float("nan")
+    # Sample Entropy der RR-Reihe — Komplexität/Regelmäßigkeit (nichtlinear)
+    from analysis.complexity import sample_entropy as _sampen_fn
+    samp_en = _sampen_fn(rr_ms) if len(rr_ms) >= 20 else float("nan")
 
     rr_raw       = rr_data["rr_ms_raw"]
     t_raw        = rr_data["times_raw"]
@@ -1444,32 +1447,55 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
         _rmssd_cls = _classify("rmssd",      rmssd,    patient_age, mean_hr)
         _pnn50_cls = _classify("pnn50",      pnn50,    patient_age, mean_hr, rmssd=rmssd)
 
-        _mc1, _mc2, _mc3, _mc4, _mc5, _mc6, _mc7 = st.columns(7)
-        _metric_card(_mc1, "HERZFREQUENZ",  f"{mean_hr:.1f} bpm",  _hr_cls["zone"],    "Norm: 60–100 bpm")
-        _metric_card(_mc2, "MITTL. RR",     f"{mean_rr:.0f} ms",   "info",             "600–1000 ms")
-        _sdnn_ref  = f">{int(_sdnn_cls.get('p5_threshold') or 40)} ms" if _sdnn_cls.get('p5_threshold') else ">40 ms"
-        _metric_card(_mc3, "SDNN",          f"{sdnn:.1f} ms",      _sdnn_cls["zone"],  f"Norm {_sdnn_ref}")
-        # CV% = SDNN/mean_RR × 100 — HF-unabhängiger Streuungsmarker
-        _metric_card(_mc4, "CV",            f"{cv_pct:.1f} %",     "info",             "HF-unabhängig")
-        _rmssd_ref = f">{int(_rmssd_cls.get('p5_threshold') or 20)} ms" if _rmssd_cls.get('p5_threshold') else ">20 ms"
-        _metric_card(_mc5, "RMSSD",         f"{rmssd:.1f} ms",     _rmssd_cls["zone"], f"Norm {_rmssd_ref}")
-        _pnn50_ref = f"Erw. {_pnn50_cls.get('pnn50_expected', 0):.1f}%" if _pnn50_cls.get('pnn50_expected') else ">3%"
-        _metric_card(_mc6, "pNN50",         f"{pnn50:.1f} %",      _pnn50_cls["zone"], _pnn50_ref)
-        # NN50 = Absolutzahl (NeuroFax gibt RR50-Anzahl zusätzlich zum Prozent aus)
-        _metric_card(_mc7, "NN50",          f"{nn50}",             "info",             "Anzahl > 50 ms")
+        def _grp(title, sub):
+            st.markdown(
+                f"<div style='margin:12px 0 3px 0'>"
+                f"<span style='font-size:13px;font-weight:700;color:#2c3e50'>{title}</span>"
+                f"<span style='font-size:11px;color:#8a94a0;margin-left:8px'>{sub}</span></div>",
+                unsafe_allow_html=True)
 
-        # Zweite Reihe: sensitivere/nichtlineare Zeitbereichs-Deskriptoren
-        _mb1, _mb2, _mb3, _mb4, _mb5 = st.columns(5)
-        _metric_card(_mb1, "pNN20",   f"{pnn20:.1f} %", "info", "sensitiver als pNN50")
-        _metric_card(_mb2, "SD1",     f"{sd1:.1f} ms",  "info", "Poincaré · kurzfristig (vagal)")
-        _metric_card(_mb3, "SD2",     f"{sd2:.1f} ms",  "info", "Poincaré · langfristig")
-        _metric_card(_mb4, "SD2/SD1", f"{sd_ratio:.2f}" if sd_ratio == sd_ratio else "—",
-                     "info", "Balance kurz-/langfristig")
+        _sdnn_ref  = f">{int(_sdnn_cls.get('p5_threshold') or 40)} ms" if _sdnn_cls.get('p5_threshold') else ">40 ms"
+        _rmssd_ref = f">{int(_rmssd_cls.get('p5_threshold') or 20)} ms" if _rmssd_cls.get('p5_threshold') else ">20 ms"
+        _pnn50_ref = f"Erw. {_pnn50_cls.get('pnn50_expected', 0):.1f}%" if _pnn50_cls.get('pnn50_expected') else ">3%"
+
+        # Gruppe 1 — Grundwerte
+        _grp("Grundwerte", "Herzrate & mittlerer Schlagabstand")
+        g1 = st.columns(4)
+        _metric_card(g1[0], "HERZFREQUENZ", f"{mean_hr:.1f} bpm", _hr_cls["zone"], "Norm 60–100 bpm")
+        _metric_card(g1[1], "MITTL. RR",    f"{mean_rr:.0f} ms",  "info",          "600–1000 ms")
+
+        # Gruppe 2 — Gesamtvariabilität
+        _grp("Gesamtvariabilität", "gesamte autonome Streuung (Sympathikus + Parasympathikus)")
+        g2 = st.columns(4)
+        _metric_card(g2[0], "SDNN", f"{sdnn:.1f} ms",   _sdnn_cls["zone"], f"Norm {_sdnn_ref}")
+        _metric_card(g2[1], "CV",   f"{cv_pct:.1f} %",  "info",            "= SDNN/RR · HF-unabhängig")
+
+        # Gruppe 3 — Vagale Marker
+        _grp("Vagale Marker", "Parasympathikus — schnelle Schlag-zu-Schlag-Variabilität")
+        g3 = st.columns(4)
+        _metric_card(g3[0], "RMSSD", f"{rmssd:.1f} ms", _rmssd_cls["zone"], f"Norm {_rmssd_ref}")
+        _metric_card(g3[1], "pNN50", f"{pnn50:.1f} %",  _pnn50_cls["zone"], _pnn50_ref)
+        _metric_card(g3[2], "pNN20", f"{pnn20:.1f} %",  "info",            "sensitiver als pNN50")
+        _metric_card(g3[3], "NN50",  f"{nn50}",         "info",            "Anzahl > 50 ms")
+
+        # Gruppe 4 — Poincaré-Geometrie
+        _grp("Poincaré-Geometrie", "Form der RR-Punktwolke: kurz- vs. langfristige Streuung")
+        g4 = st.columns(4)
+        _metric_card(g4[0], "SD1",     f"{sd1:.1f} ms", "info", "quer · kurzfristig (vagal)")
+        _metric_card(g4[1], "SD2",     f"{sd2:.1f} ms", "info", "entlang · langfristig")
+        _metric_card(g4[2], "SD2/SD1", f"{sd_ratio:.2f}" if sd_ratio == sd_ratio else "—",
+                     "info", "Balance lang/kurz")
+
+        # Gruppe 5 — Nichtlineare Komplexität
+        _grp("Nichtlineare Komplexität", "Struktur & Vorhersagbarkeit statt Größe der Schwankung")
+        g5 = st.columns(4)
         if dfa_a1 == dfa_a1:
             _dfa_cls = _classify("dfa_a1", dfa_a1, patient_age, mean_hr)
-            _metric_card(_mb5, "DFA α₁", f"{dfa_a1:.2f}", _dfa_cls["zone"], "fraktal · ~1,0 gesund")
+            _metric_card(g5[0], "DFA α₁", f"{dfa_a1:.2f}", _dfa_cls["zone"], "fraktal · ~1,0 gesund")
         else:
-            _metric_card(_mb5, "DFA α₁", "—", "info", "zu wenige Schläge")
+            _metric_card(g5[0], "DFA α₁", "—", "info", "zu wenige Schläge")
+        _metric_card(g5[1], "SampEn", f"{samp_en:.2f}" if samp_en == samp_en else "—",
+                     "info", "niedrig = regelmäßig")
 
         # ── Dauer-Confounder-Hinweis ──────────────────────────────────────────
         # SDNN und die Spektralwerte (Total Power, LF) steigen systematisch mit der
@@ -1548,6 +1574,19 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
 
         # ── DFA α₁ — fraktale Korrelationsstruktur ─────────────────────────────
         _section("🧬 DFA α₁ — fraktale Dynamik", "Detrended Fluctuation Analysis (Peng 1995)")
+        st.markdown(
+            "<div style='background:#eef7f0;border-left:4px solid #27ae60;border-radius:8px;"
+            "padding:10px 14px;margin:2px 0 8px 0;font-size:13px'>"
+            "<b>Was misst DFA α₁?</b> Nicht die <i>Größe</i> der Herzratenschwankungen (das tun "
+            "SDNN/RMSSD), sondern ihre <b>innere Struktur</b>: Sind die Abstände zwischen den "
+            "Herzschlägen rein zufällig oder folgen sie einem komplexen, gesunden Muster? "
+            "Gesunde Regulation erzeugt ein <b>1/f-Muster</b> (pink noise, α₁ ≈ 1,0) — zwischen "
+            "völliger Starre und völligem Zufall. <b>α₁ → 0,5</b> = Richtung Zufall "
+            "(Korrelationsverlust: Fatigue, autonome Dysregulation) · <b>α₁ → 1,5</b> = zu starr "
+            "(Brown'sches Rauschen). Die Kurve unten zeigt, wie die Schwankung F(n) mit der "
+            "Fenstergröße wächst — die <b>Steigung</b> dieser Geraden <i>ist</i> α₁.</div>",
+            unsafe_allow_html=True,
+        )
         if _dfa is not None:
             _sc = _dfa["scales"]; _Fv = _dfa["F"]
             _logn = np.log10(_sc); _logF = np.log10(_Fv)
@@ -1591,6 +1630,68 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                 )
         else:
             st.info("ℹ️ DFA α₁ nicht berechenbar — zu wenige Schläge (mind. ~32 nötig).")
+
+        # ── Atmung: EDR (ECG-Derived Respiration) ──────────────────────────────
+        _section("🫁 Atmung — EDR", "Aus der R-Zacken-Amplitude rekonstruiert (Moody 1985)")
+        from analysis.ecg import edr_from_ecg as _edr_fn
+        _edr = None
+        if ecg_ch and ecg_ch in edf.get("ecg_filtered", {}):
+            _edr = _edr_fn(edf["ecg_filtered"][ecg_ch], rr_data["peaks"], sfreq)
+        _rsa_rate = fd_welch.get("hf_resp_rate") if fd_welch else float("nan")
+
+        if _edr is None:
+            st.info("ℹ️ EDR nicht berechenbar — zu wenige/instabile R-Zacken oder Segment zu kurz.")
+        else:
+            _edr_rate = _edr["resp_rate_bpm"]
+            ec1, ec2 = st.columns([3, 2])
+            with ec1:
+                fig_edr = go.Figure()
+                fig_edr.add_trace(go.Scatter(
+                    x=_edr["t"], y=_edr["edr"], mode="lines",
+                    line=dict(color="#2980b9", width=1.6),
+                    hovertemplate="t=%{x:.1f}s<extra></extra>"))
+                fig_edr.update_layout(
+                    xaxis=dict(title="Zeit (s)"),
+                    yaxis=dict(title="EDR (rel.)", showticklabels=False, zeroline=True,
+                               zerolinecolor="#ccc"),
+                    height=200, margin=dict(t=8, b=38, l=40, r=10),
+                    plot_bgcolor="#fafafa", showlegend=False,
+                )
+                st.plotly_chart(fig_edr, use_container_width=True, key="edr_wave")
+            with ec2:
+                # Bewertung Atemfrequenz (Ruhe 12–20/min)
+                _zone = "normal" if 12 <= _edr_rate <= 20 else (
+                    "grenzwertig" if 8 <= _edr_rate <= 25 else "pathologisch")
+                _zc = {"normal": "#27ae60", "grenzwertig": "#e67e22",
+                       "pathologisch": "#c0392b"}[_zone]
+                st.markdown(
+                    f"<div style='padding:12px 14px;border-radius:10px;border:2px solid {_zc};"
+                    f"background:{_zc}0d;text-align:center'>"
+                    f"<div style='font-size:12px;color:#888'>Atemfrequenz (EDR)</div>"
+                    f"<div style='font-size:2rem;font-weight:800;color:{_zc}'>{_edr_rate:.1f}"
+                    f"<span style='font-size:1rem'> /min</span></div>"
+                    f"<div style='font-size:11px;color:#555'>Norm 12–20/min · Qualität "
+                    f"{_edr['quality']:.1f}</div></div>",
+                    unsafe_allow_html=True,
+                )
+                # Kreuzvergleich mit RSA
+                if _rsa_rate == _rsa_rate:
+                    _diff = abs(_edr_rate - _rsa_rate)
+                    if _diff <= 3:
+                        st.success(f"✅ Konsistent mit RSA-Schätzung ({_rsa_rate:.1f}/min, "
+                                   f"Δ {_diff:.1f}) — Atemfrequenz belastbar.")
+                    elif _diff <= 6 or abs(_edr_rate*2 - _rsa_rate) <= 3:
+                        st.warning(f"⚠️ Weicht von RSA ab ({_rsa_rate:.1f}/min). Mögliche "
+                                   f"Harmonische/Subharmonische — mit Vorsicht interpretieren.")
+                    else:
+                        st.warning(f"⚠️ Deutliche Abweichung zur RSA ({_rsa_rate:.1f}/min) — "
+                                   f"Atemfrequenz unsicher (unkontrollierte Atmung/Artefakte).")
+            st.caption(
+                "**EDR** rekonstruiert die Atmung aus der atembedingten Schwankung der "
+                "**R-Zacken-Amplitude** (mechanische Herzachsen-Verschiebung) — funktioniert "
+                "auch, wenn die RSA (HF-Peak) schwach ist. Ergänzt die frequenzbasierte "
+                "RSA-Schätzung im Frequenz-Tab. *Einkanal-Verfahren, orientierend.*"
+            )
 
     # ── Tab 2: Frequenzdomäne ─────────────────────────────────────────────────
     with tab_freq:
@@ -1659,6 +1760,39 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                 "die Klassifikation methodenabhängig kippen. **Welch (FFT) gilt als Standard** für die "
                 "klinische Einordnung; Burg dient als ergänzende Detailansicht."
             )
+
+            # ── Kennzahlen-Übersicht (Welch-Standard) ──────────────────────────
+            _section("Frequenzband-Kennzahlen", "Welch (Standard) · Task Force 1996")
+            st.markdown(
+                "<div style='font-size:12px;color:#666;margin-bottom:4px'>"
+                "<b>VLF</b> 0,003–0,04 Hz (langsame Regulation) · "
+                "<b>LF</b> 0,04–0,15 Hz (Baroreflex, gemischt) · "
+                "<b>HF</b> 0,15–0,40 Hz (vagal, atemgekoppelt = RSA). Power in ms² = "
+                "Stärke der Schwankung im jeweiligen Rhythmusband.</div>",
+                unsafe_allow_html=True)
+            _lf = fd_welch.get("lf_power", float("nan"))
+            _hf = fd_welch.get("hf_power", float("nan"))
+            _tp = fd_welch.get("total_power", float("nan"))
+            _lhr = fd_welch.get("lf_hf_ratio", float("nan"))
+            _hfn = fd_welch.get("hf_norm", float("nan"))
+            fq = st.columns(5)
+            def _fq(col, label, val, unit, sub):
+                col.markdown(
+                    f"<div style='background:#f4f6f9;border:1px solid #e0e4e8;border-radius:9px;"
+                    f"padding:9px 10px;text-align:center;min-height:74px'>"
+                    f"<div style='font-size:10px;color:#888;font-weight:600'>{label}</div>"
+                    f"<div style='font-size:17px;font-weight:800;color:#2c3e50;margin:3px 0'>"
+                    f"{val}{unit}</div><div style='font-size:9px;color:#999'>{sub}</div></div>",
+                    unsafe_allow_html=True)
+            _fq(fq[0], "LF Power",  f"{_lf:.0f}" if _lf==_lf else "—", " ms²", "Baroreflex")
+            _fq(fq[1], "HF Power",  f"{_hf:.0f}" if _hf==_hf else "—", " ms²", "vagal (RSA)")
+            _fq(fq[2], "Total Power", f"{_tp:.0f}" if _tp==_tp else "—", " ms²", "≈ SDNN²")
+            _fq(fq[3], "LF/HF",     f"{_lhr:.2f}" if _lhr==_lhr else "—", "", "Balance (umstritten)")
+            _fq(fq[4], "HF normiert", f"{_hfn:.0f}" if _hfn==_hfn else "—", " %", "vagaler Anteil")
+            st.caption(
+                "Volle Normwerte, Farbkodierung und Interpretation der Frequenzparameter findest du "
+                "im Reiter **📋 HRV-Befund**. **LF/HF** ist als Sympathovagal-Balance umstritten "
+                "(Billman 2013) — nur als Trend/unter Provokation verwenden.")
 
     # ── Tab 3: HRV-Befund ─────────────────────────────────────────────────────
     with tab_befund:
@@ -1778,6 +1912,16 @@ Orientierende Grenzen (Ruhe): gesund 0,75–1,25 · auffällig <0,5 oder >1,5. R
 Belastungs-/Fatigue-Marker, aber zustandsabhängig (Ruhe ≠ Belastung).
 Quelle: **Peng CK et al.** (1995). Chaos 5(1):82–87.
 
+**Sample Entropy (SampEn)** · nichtlinear, Komplexität
+⚠️ **Evidenz: ★★★☆☆** — etabliertes Komplexitätsmaß, aber parameter- (m, r) und
+längenabhängig; Normwerte kontextspezifisch
+Misst die **Regelmäßigkeit/Vorhersagbarkeit** der RR-Reihe: Wie wahrscheinlich bleiben
+zwei ähnliche Muster der Länge m (=2) auch bei Länge m+1 ähnlich (Toleranz r = 0,2·SD)?
+SampEn = −ln(A/B). **Niedrig** = regelmäßig/vorhersagbar (reduzierte Komplexität —
+Alterung, Krankheit, autonome Verarmung), **hoch** = komplex. Ergänzt DFA α₁ um die
+Musterebene. Orientierend, v. a. im Verlauf/Vergleich.
+Quelle: **Richman JS & Moorman JR** (2000). Am J Physiol Heart Circ Physiol 278:H2039–H2049.
+
 ---
 #### Frequenzbereich — Bandleistung
 
@@ -1842,11 +1986,25 @@ Task Force 1996 Normbereich: **20–50 %** (Ruhe, liegend). Hohe HF norm = vagal
 ---
 #### Frequenzbereich — Gipfelfrequenzen
 
-**Atemfrequenz aus HF-Gipfel** · kein ANS-Marker (physiologischer Messparameter)
+**Atemfrequenz aus HF-Gipfel (RSA)** · kein ANS-Marker (physiologischer Messparameter)
+✅ **Evidenz: ★★★★☆** — etabliert, aber nur gültig solange die RSA im HF-Band liegt
 Die Frequenz des dominanten Peaks im HF-Band × 60 ergibt die Atemfrequenz in /min.
-Normbereich Ruhe: **12–20 /min** (0.20–0.33 Hz).
+Normbereich Ruhe: **12–20 /min** (0.20–0.33 Hz). Versagt bei schwacher RSA oder
+Atemfrequenz > 24/min (Peak wandert aus dem HF-Band).
 Quelle: **Yasuma F & Hayano J** (2004). Chest 125(2):683–690.
 NeuroFax-Bezeichnung: **NF (Hz)**.
+
+**Atemfrequenz aus EDR (R-Amplitude)** · kein ANS-Marker (physiologischer Messparameter)
+✅ **Evidenz: ★★★★☆** — robustes Einkanal-Standardverfahren, unabhängig von der RSA
+**ECG-Derived Respiration:** Die Atmung verschiebt die elektrische Herzachse
+(Zwerchfell-/Thoraxbewegung) → die **R-Zacken-Amplitude** schwankt im Atemtakt. Aus
+dieser Amplituden-Modulation wird ein Atemsignal rekonstruiert (R-Amplituden je Schlag
+→ Interpolation → Bandpass 0.1–0.5 Hz → dominante Frequenz). **Vorteil gegenüber RSA:**
+funktioniert auch bei schwacher respiratorischer Sinusarrhythmie. Wir zeigen beide
+Schätzer als **Kreuzvergleich** — stimmen sie überein, ist die Atemfrequenz belastbar;
+weichen sie ab (oft Faktor 2 = Harmonische), ist sie unsicher (unkontrollierte Atmung).
+Quelle: **Moody GB et al.** (1985). *Derivation of respiratory signals from multi-lead
+ECGs.* Computers in Cardiology 12:113–116.
 
 **LF-Gipfelfrequenz** · kein ANS-Marker (deskriptiv)
 Frequenz des dominanten Peaks im LF-Band. Mayer-Wellen, typisch **0.07–0.12 Hz**.
@@ -1868,6 +2026,7 @@ NeuroFax-Bezeichnung: **LF (Hz)**.
 | **CV** | ★★★☆☆ | Robust, HF-normiert; im Kern normiertes SDNN |
 | **SD2** | ★★★☆☆ | Langzeit-Streuung; korreliert mit SDNN |
 | **SD2/SD1** | ★★★☆☆ | Beschreibt Zufälligkeit/Balance; moderate Evidenz |
+| **SampEn** | ★★★☆☆ | Komplexität/Regelmäßigkeit; parameter-/längenabhängig |
 | **pNN20** | ★★★☆☆ | Sensitiver als pNN50 bei niedriger HRV; RMSSD-redundant |
 | pNN50 | ★★★☆☆ | RMSSD-Redundanz (r>0.92); kein altersadjustierter Cutoff |
 | **NN50** | ★★☆☆☆ | Längenabhängig, keine feste Norm; Wertung via pNN50 |
@@ -1926,6 +2085,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
             {"Parameter": "SD2 (Poincaré)",                 "Wert": round(sd2, 1),                "Einheit": "ms"},
             {"Parameter": "SD2/SD1",                        "Wert": round(sd_ratio, 2) if sd_ratio == sd_ratio else None, "Einheit": "—"},
             {"Parameter": "DFA α₁ (nichtlinear)",           "Wert": round(dfa_a1, 2) if dfa_a1 == dfa_a1 else None, "Einheit": "—"},
+            {"Parameter": "Sample Entropy (nichtlinear)",   "Wert": round(samp_en, 2) if samp_en == samp_en else None, "Einheit": "—"},
             {"Parameter": "Aufnahmedauer (Analyse)",        "Wert": round(len(rr_ms_analysis) and float(np.sum(rr_ms_analysis)/1000) or 0.0, 1), "Einheit": "s"},
             {"Parameter": "Schläge entfernt (Outlier-Filter)", "Wert": round(pct_removed, 1),   "Einheit": "%"},
             {"Parameter": "LF Power",                       "Wert": round(fd["lf_power"], 1),     "Einheit": "ms²"},
