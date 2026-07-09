@@ -1,5 +1,7 @@
 """Kanal-Identifikations-Report: Classifier-Ergebnisse + manuelle Korrekturen."""
 
+import re
+
 import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
@@ -149,6 +151,9 @@ def render():
 
     # ── Filter & Sort ────────────────────────────────────────────────────────
     section_header("Kanäle im Detail")
+    st.caption("Die **Kopfleiste** jedes Kanals ist nach Erkennungs-Konfidenz eingefärbt: "
+               "🟩 grün = hoch (>70 %) · 🟧 orange = mittel (40–70 %) · 🟥 rot = niedrig (<40 %) — "
+               "bei orange/rot lohnt ein Blick + ggf. manuelle Korrektur.")
 
     # Compute effective types for filter
     all_eff_types = sorted(set(
@@ -195,9 +200,23 @@ def render():
             if override_type else ""
         )
 
-        with st.expander(
+        # ── Kopfleiste nach Konfidenz einfärben ──────────────────────────────
+        # Ganze Klickleiste des Expanders tönen (statt Ampel-Icon): scoped CSS
+        # über einen keyed Container (Streamlit-Klasse .st-key-<key>).
+        _ck = "chan_" + re.sub(r"[^0-9A-Za-z]", "_", ch)
+        st.markdown(
+            f"<style>.st-key-{_ck} details > summary{{"
+            f"background:{c_conf}1f !important;"
+            f"border-left:5px solid {c_conf} !important;"
+            f"border-radius:8px !important;}}"
+            f".st-key-{_ck} details > summary:hover{{background:{c_conf}33 !important;}}"
+            f"</style>",
+            unsafe_allow_html=True,
+        )
+        _chan_box = st.container(key=_ck)
+        with _chan_box, st.expander(
             f"{meta['icon']} **{ch}** — "
-            f"{meta['label']} · {result.confidence:.0f}% Confidence"
+            f"{meta['label']} · {result.confidence:.0f}% Konfidenz"
             + (" ✏️" if override_type else ""),
             expanded=False,
         ):
