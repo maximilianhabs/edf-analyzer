@@ -22,13 +22,41 @@ FREQ_MAX = 30.0
 BAND_DICT  = {name: rng for name, rng, _ in BANDS}
 BAND_COLOR = {name: col for name, _, col in BANDS}
 
+# dir = Richtung, in der der Wert pathologisch wird (nicht symmetrisch!):
+#   "high" → nur erhöhte Werte auffällig (grün ≤ normal-hi, gelb ≤ amber, rot darüber)
+#   "low"  → nur erniedrigte Werte auffällig (grün ≥ normal-lo, gelb ≥ amber, rot darunter)
+# amber = Grenze zwischen gelb (grenzwertig) und rot (deutlich pathologisch).
 RATIO_INFO = {
-    "Delta/Alpha":  {"normal": (0.0, 1.5), "hint": "Erhöht bei diffuser Verlangsamung / Enzephalopathie"},
-    "Theta/Alpha":  {"normal": (0.2, 0.7), "hint": "Frühmarker diffuser Enzephalopathie / kognitiven Declines"},
-    "Alpha/Theta":  {"normal": (1.5, 6.0), "hint": "Erniedrigt bei Schläfrigkeit / Vigilanzminderung"},
-    "Theta/Beta":   {"normal": (0.5, 2.0), "hint": "Erhöht bei Schläfrigkeit, erniedrigt bei Aktivierung"},
-    "DTAB":         {"normal": (0.0, 0.5), "hint": "(Delta+Theta)/(Alpha+Beta) — sensitiver Marker diffuser kortikaler Funktionsstörung"},
+    "Delta/Alpha":  {"normal": (0.0, 1.5), "dir": "high", "amber": 3.0,
+                     "hint": "DAR — erhöht bei diffuser/fokaler Verlangsamung & Enzephalopathie"},
+    "Theta/Alpha":  {"normal": (0.2, 0.7), "dir": "high", "amber": 1.4,
+                     "hint": "TAR — Frühmarker diffuser Enzephalopathie / kognitiven Declines"},
+    "Alpha/Theta":  {"normal": (1.5, 6.0), "dir": "low",  "amber": 0.8,
+                     "hint": "Vigilanzmaß — erniedrigt bei Schläfrigkeit / Vigilanzminderung"},
+    "Theta/Beta":   {"normal": (0.5, 2.0), "dir": "high", "amber": 4.0,
+                     "hint": "TBR — erhöht bei Schläfrigkeit; isoliert wenig spezifisch"},
+    "DTAB":         {"normal": (0.0, 0.5), "dir": "high", "amber": 1.0,
+                     "hint": "(Delta+Theta)/(Alpha+Beta) — sensitivster Einzelmarker diffuser Funktionsstörung"},
 }
+
+
+def _ratio_zone(rinfo: dict, v: float):
+    """Richtungsabhängige Ampel für eine klinische Ratio → (farbe, emoji, label)."""
+    if v != v:
+        return "#7f8c8d", "⚫", "—"
+    lo_n, hi_n = rinfo["normal"]
+    if rinfo["dir"] == "high":
+        if v <= hi_n:
+            return "#27ae60", "🟢", "normal"
+        if v <= rinfo["amber"]:
+            return "#e6a817", "🟡", "leicht erhöht"
+        return "#c0392b", "🔴", "deutlich erhöht"
+    # dir == "low": nur niedrige Werte auffällig
+    if v >= lo_n:
+        return "#27ae60", "🟢", "normal"
+    if v >= rinfo["amber"]:
+        return "#e6a817", "🟡", "leicht erniedrigt"
+    return "#c0392b", "🔴", "deutlich erniedrigt"
 
 
 def _alpha_band(age) -> tuple:
@@ -630,7 +658,7 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
                 f"<span>abs / relativ / flattened</span><span style='color:var(--text-primary)'>"
                 f"{_fx(_apow['absolute'],'',2)} / {_fx(_apow['relative'],' %')} / {_fx(_apow['flattened'],'',2)}</span></div></div>")
         _cards.append(
-            f"<div style='background:var(--surface-2);border:0.5px solid var(--border);"
+            f"<div style='background:{col}12;border:0.5px solid var(--border);"
             f"border-left:4px solid {col};border-radius:0 10px 10px 0;padding:11px 13px'>"
             "<div style='display:flex;justify-content:space-between;align-items:baseline'>"
             f"<span style='font-weight:700;color:{col}'>{name}</span>"
@@ -653,21 +681,28 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
                 f"<div style='font-size:10px;color:var(--text-muted)'>{hint}</div></div>")
 
     st.markdown(
-        "<div style='background:var(--surface-2);border:0.5px solid var(--border);"
+        "<div style='background:rgba(100,116,139,0.12);border:0.5px solid var(--border);"
         "border-left:4px solid #64748b;border-radius:0 10px 10px 0;padding:11px 13px;margin-top:10px'>"
-        "<div style='font-weight:700;color:var(--text-secondary);margin-bottom:9px'>"
+        "<div style='font-weight:700;color:var(--text-secondary)'>"
         "Übergreifend — spektrale Verlangsamung &amp; Komplexität</div>"
+        "<div style='font-size:11px;color:var(--text-muted);margin:2px 0 9px'>"
+        "Zwei Fragen über das ganze Spektrum: <b>Wie langsam</b> ist das EEG (Verlangsamung = "
+        "Funktionsstörung) und <b>wie komplex/unvorhersagbar</b> (Komplexität sinkt bei "
+        "reduziertem Bewusstsein).</div>"
         "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px'>"
-        + _cxcell("SEF95", _fx(_sef95, " Hz"), "↓ bei Verlangsamung")
-        + _cxcell("Medianfrequenz", _fx(_medf, " Hz"), "↓ verlangsamt")
-        + _cxcell("Sample Entropy", _fx(_sampen_val, "", 2), "↓ reduziertes Bewusstsein")
-        + _cxcell("LZC (shuffle/phase)", _lzc_str, "hoch = komplex")
+        + _cxcell("SEF95", _fx(_sef95, " Hz"), "95 %-Grenzfrequenz · ↓ = Verlangsamung")
+        + _cxcell("Medianfrequenz", _fx(_medf, " Hz"), "50 %-Grenzfrequenz · ↓ = Verlangsamung")
+        + _cxcell("Sample Entropy", _fx(_sampen_val, "", 2), "Vorhersagbarkeit · ↓ = weniger wach")
+        + _cxcell("LZC (shuffle/phase)", _lzc_str, "Signal-Komplexität · ↑ = komplexer")
         + "</div><div style='font-size:11px;color:var(--text-muted);margin-top:8px'>"
         "Zustandsabhängig — als Trend/Deutung, keine feste Ampel.</div></div>",
         unsafe_allow_html=True)
 
-    # Ratios
-    st.markdown("**Klinische Ratios**")
+    # Ratios — richtungsabhängige Ampel (nur die pathologische Richtung wird rot)
+    st.markdown("**Klinische Ratios** <span style='font-size:11px;color:#8a94a0'>— "
+                "Verhältnis langsamer zu schneller Aktivität · Ampel <b>richtungsabhängig</b>: "
+                "nur die klinisch auffällige Richtung (↑ Verlangsamung bzw. ↓ Vigilanz) wird "
+                "gelb/rot</span>", unsafe_allow_html=True)
     _d  = bp.get("Delta", 0)
     _t  = bp.get("Theta", 0)
     _a  = bp.get("Alpha", 0) or 1e-9
@@ -680,13 +715,26 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
         "Theta/Beta":  _t / _b,
         "DTAB":        (_d + _t) / _ab,
     }
-    r_cols = st.columns(len(RATIO_INFO))
-    for cw, (rname, rinfo) in zip(r_cols, RATIO_INFO.items()):
+    _rcards = []
+    for rname, rinfo in RATIO_INFO.items():
         v = rv[rname]
+        zc, zemoji, zlabel = _ratio_zone(rinfo, v)
         lo_n, hi_n = rinfo["normal"]
-        badge = "🟢" if (v == v and lo_n <= v <= hi_n) else ("🟡" if v == v else "⚫")
-        cw.metric(f"{badge} {rname}", f"{v:.2f}" if v == v else "—",
-                  help=f"Norm: {lo_n}–{hi_n} · {rinfo['hint']}")
+        _vstr = f"{v:.2f}" if v == v else "—"
+        _arrow = "↑ hoch = auffällig" if rinfo["dir"] == "high" else "↓ niedrig = auffällig"
+        _rcards.append(
+            f"<div style='background:{zc}12;border:0.5px solid {zc}55;"
+            f"border-top:3px solid {zc};border-radius:8px;padding:9px 11px'>"
+            f"<div style='font-size:12px;font-weight:700;color:var(--text-secondary)'>{rname}</div>"
+            f"<div style='font-size:22px;font-weight:800;color:{zc};margin:1px 0'>{_vstr}</div>"
+            f"<div style='font-size:11px;color:{zc};font-weight:600'>{zemoji} {zlabel}</div>"
+            f"<div style='font-size:10px;color:var(--text-muted);margin-top:4px'>"
+            f"Norm {lo_n:g}–{hi_n:g} · {_arrow}</div>"
+            f"<div style='font-size:10px;color:var(--text-muted);margin-top:3px'>{rinfo['hint']}</div>"
+            f"</div>")
+    st.markdown(
+        "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px'>"
+        + "".join(_rcards) + "</div>", unsafe_allow_html=True)
 
     # (Referenz-Epoch wird einmalig am Seitenende angeboten — nicht pro Kanal)
 
@@ -765,7 +813,7 @@ def render():
             unsafe_allow_html=True,
         )
 
-    with st.expander("⚙️ Analyse-Optionen", expanded=False):
+    with st.expander("⚙️ Analyse-Optionen", expanded=True):
         opt_col1, opt_col2 = st.columns(2)
         with opt_col1:
             use_multitaper = st.toggle(
@@ -981,6 +1029,76 @@ def render():
                 f"<span style='font-size:11px;color:#888'>{_par['n_post']} post · "
                 f"{_par['n_ant']} ant Elektroden (Cz-Linie ausgeschlossen)</span></div>",
                 unsafe_allow_html=True)
+        # ── Schemakopf: anteriore Werte oben, posteriore unten, Kopf vorne→hinten graduiert
+        _es = st.session_state.get("eeg_summary") or {}
+
+        def _rp(side, band):
+            bp = _es.get(f"bp_{side}") or {}
+            tot = _es.get(f"total_{side}") or (sum(bp.values()) or 1)
+            return (bp.get(band, 0) / tot * 100) if bp else float("nan")
+
+        def _fh(v, u="", d=1):
+            return f"{v:.{d}f}{u}" if (v is not None and v == v) else "—"
+
+        _apk_ant  = _es.get("alpha_peak_ant_hz")
+        _apk_post = _es.get("alpha_peak_post_hz")
+        _relA_ant,  _relD_ant  = _rp("ant", "Alpha"),  _rp("ant", "Delta")
+        _relA_post, _relD_post = _rp("post", "Alpha"), _rp("post", "Delta")
+
+        def _chip(x, y, label, value, sub, color):
+            return (
+                f"<rect x='{x}' y='{y}' width='190' height='58' rx='9' "
+                f"fill='var(--surface-1,#fff)' stroke='{color}' stroke-width='1.2' stroke-opacity='0.55'/>"
+                f"<text x='{x+12}' y='{y+19}' font-size='11' fill='var(--text-secondary,#6b7684)'>{label}</text>"
+                f"<text x='{x+12}' y='{y+41}' font-size='18' font-weight='700' fill='{color}'>{value}</text>"
+                f"<text x='{x+12}' y='{y+53}' font-size='9.5' fill='var(--text-muted,#98a3b0)'>{sub}</text>"
+            )
+
+        _GRN, _BLU, _AMB = "#27ae60", "#4a90d9", "#e67e22"
+        _svg = (
+            "<svg viewBox='0 0 660 500' xmlns='http://www.w3.org/2000/svg' role='img' "
+            "font-family='system-ui,-apple-system,sans-serif' style='max-width:560px;width:100%'>"
+            "<title>A/P-Gradient als Schemakopf</title>"
+            "<defs><linearGradient id='apheadgrad' x1='0' y1='0' x2='0' y2='1'>"
+            "<stop offset='0%' stop-color='#e67e22' stop-opacity='0.26'/>"
+            "<stop offset='45%' stop-color='#9b59b6' stop-opacity='0.13'/>"
+            "<stop offset='100%' stop-color='#27ae60' stop-opacity='0.32'/>"
+            "</linearGradient></defs>"
+            "<text x='330' y='18' text-anchor='middle' font-size='12' font-weight='700' "
+            "fill='#c0722a' letter-spacing='1'>ANTERIOR · vorne</text>"
+            # anteriore Chips (oben)
+            + _chip(20, 28, "Alpha-Peak ant.", _fh(_apk_ant, " Hz"), "frontaler Gipfel", _AMB)
+            + _chip(235, 28, "rel. Alpha ant.", _fh(_relA_ant, " %", 0), "vorne meist gering", _GRN)
+            + _chip(450, 28, "rel. Delta ant.", _fh(_relD_ant, " %", 0), "↑ = frontale Verlangsamung", _BLU)
+            # Nase + Ohren + Kopf
+            + "<path d='M330 104 L316 128 L344 128 Z' fill='var(--surface-2,#e9edf2)' "
+              "stroke='var(--border,#c4ccd6)' stroke-width='1.5'/>"
+            + "<ellipse cx='188' cy='262' rx='15' ry='28' fill='var(--surface-2,#e9edf2)' "
+              "stroke='var(--border,#c4ccd6)' stroke-width='1.5'/>"
+            + "<ellipse cx='472' cy='262' rx='15' ry='28' fill='var(--surface-2,#e9edf2)' "
+              "stroke='var(--border,#c4ccd6)' stroke-width='1.5'/>"
+            + "<ellipse cx='330' cy='262' rx='122' ry='148' fill='url(#apheadgrad)' "
+              "stroke='var(--border-strong,#98a3b0)' stroke-width='2'/>"
+            # PAR-Badge (Mitte)
+            + f"<rect x='245' y='232' width='170' height='60' rx='12' fill='var(--surface-1,#fff)' "
+              f"stroke='{_pcol}' stroke-width='2'/>"
+            + "<text x='330' y='253' text-anchor='middle' font-size='11.5' "
+              "fill='var(--text-secondary,#6b7684)'>Alpha-PAR (post/ant)</text>"
+            + f"<text x='330' y='279' text-anchor='middle' font-size='23' font-weight='800' "
+              f"fill='{_pcol}'>{_pv:.2f}</text>"
+            # posteriore Chips (unten)
+            + _chip(20, 412, "Alpha-Peak post.", _fh(_apk_post, " Hz"), "okz. Grundrhythmus", _GRN)
+            + _chip(235, 412, "rel. Alpha post.", _fh(_relA_post, " %", 0), "dominant = wach/normal", _GRN)
+            + _chip(450, 412, "rel. Delta post.", _fh(_relD_post, " %", 0), "↑ = post. Verlangsamung", _BLU)
+            + "<text x='330' y='488' text-anchor='middle' font-size='12' font-weight='700' "
+              "fill='#1e8449' letter-spacing='1'>POSTERIOR · hinten</text>"
+            "</svg>"
+        )
+        st.markdown(f"<div style='text-align:center;margin:6px 0'>{_svg}</div>",
+                    unsafe_allow_html=True)
+        if not _es:
+            st.caption("ℹ️ Die anterioren/posterioren Bandwerte am Kopf stammen aus dem "
+                       "Konsensus-Panel (O1+O2 vs. F3+F4) — sichtbar sobald diese Kanäle vorliegen.")
         st.caption(
             "Der **A/P-Gradient** ist bei gesundem wachem EEG posterior-dominant (okzipitaler "
             "Alpha-Grundrhythmus). Umkehr/Verlust = diffuse Störung. Colombo 2023: PAR "
@@ -1188,24 +1306,44 @@ def render():
                 continue
             lbp = _ch_psds[l_ch]
             rbp = _ch_psds[r_ch]
-            st.markdown(f"**{pair_label}**")
+            st.markdown(f"**{pair_label}** "
+                        "<span style='font-size:11px;color:#888'>🔵 links dominant · "
+                        "🟠 rechts dominant · roter Rahmen = |AI| > 20 % (auffällig)</span>",
+                        unsafe_allow_html=True)
+            _L, _R = "#2980b9", "#e67e22"          # links blau · rechts orange
             ai_cols = st.columns(4)
             for col_w, bname in zip(ai_cols, ["Delta", "Theta", "Alpha", "Beta"]):
                 ai_val = _ai(lbp.get(bname, 0), rbp.get(bname, 0))
                 if ai_val != ai_val:
-                    col_w.metric(f"AI {bname}", "—")
+                    col_w.markdown(
+                        f"<div style='text-align:center;color:var(--text-muted);font-size:12px;"
+                        f"padding:10px 0'>AI {bname}<br>—</div>", unsafe_allow_html=True)
                     continue
-                badge = "🟢" if abs(ai_val) <= 20 else "🔴"
-                direction = f"links >{r_ch}" if ai_val > 0 else f"rechts >{l_ch}"
-                col_w.metric(
-                    f"{badge} AI {bname}",
-                    f"{ai_val:+.1f}%",
-                    help=(
-                        f"{l_ch} = {lbp.get(bname,0):.1f} µV²  "
-                        f"{r_ch} = {rbp.get(bname,0):.1f} µV²  "
-                        f"({direction}) · |AI|>20% pathologisch verdächtig"
-                    ),
-                )
+                _patho = abs(ai_val) > 20
+                _side_col = _L if ai_val > 0 else _R
+                _w = min(abs(ai_val), 50.0)         # |AI|% der vollen Breite ab Mitte
+                if ai_val >= 0:                     # links dominant → Balken nach links
+                    _seg = (f"<div style='position:absolute;right:50%;top:2px;bottom:2px;"
+                            f"width:{_w:.0f}%;background:{_L};border-radius:4px 0 0 4px'></div>")
+                else:                               # rechts dominant → nach rechts
+                    _seg = (f"<div style='position:absolute;left:50%;top:2px;bottom:2px;"
+                            f"width:{_w:.0f}%;background:{_R};border-radius:0 4px 4px 0'></div>")
+                _bandcol = BAND_COLOR.get(bname, "#64748b")
+                _outline = "border:1.5px solid #c0392b;" if _patho else f"border:0.5px solid {_bandcol}55;"
+                col_w.markdown(
+                    f"<div style='{_outline}background:{_bandcol}12;border-top:3px solid {_bandcol};"
+                    f"border-radius:8px;padding:7px 8px'>"
+                    f"<div style='font-size:11px;color:{_bandcol};font-weight:700;text-align:center'>"
+                    f"AI {bname}{' ⚠' if _patho else ''}</div>"
+                    f"<div style='position:relative;height:20px;background:var(--surface-1);"
+                    f"border-radius:5px;margin:5px 0'>"
+                    f"<div style='position:absolute;left:50%;top:0;bottom:0;width:1px;"
+                    f"background:var(--border-strong)'></div>{_seg}</div>"
+                    f"<div style='font-size:13px;font-weight:500;text-align:center;color:{_side_col}'>"
+                    f"{ai_val:+.0f} %</div>"
+                    f"<div style='display:flex;justify-content:space-between;font-size:9px;"
+                    f"color:var(--text-muted)'><span>{l_ch}</span><span>{r_ch}</span></div></div>",
+                    unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════════
     # APPENDIX — Methodenerklärungen

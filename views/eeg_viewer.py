@@ -39,7 +39,7 @@ def render():
             }
             tc_label = col_lc.selectbox("Zeitkonstante / untere Grenzfreq.", list(TC_OPTIONS.keys()), index=1)
             low_hz = TC_OPTIONS[tc_label]
-            high_hz = col_hc.selectbox("Obere Grenzfreq. (Hz)", [15, 30, 35, 50, 70, 100], index=2)
+            high_hz = col_hc.selectbox("Obere Grenzfreq. (Hz)", [15, 30, 35, 50, 70, 100], index=4)
             # EKG-Spur ist fix unten (kein Umschalter mehr) — wenn ein EKG-Kanal erkannt wurde.
             ecg_channels_avail = edf["ecg_channels"]
             show_ecg_lane = bool(ecg_channels_avail)

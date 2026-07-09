@@ -1454,8 +1454,16 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                 f"<span style='font-size:11px;color:#8a94a0;margin-left:8px'>{sub}</span></div>",
                 unsafe_allow_html=True)
 
-        _sdnn_ref  = f">{int(_sdnn_cls.get('p5_threshold') or 40)} ms" if _sdnn_cls.get('p5_threshold') else ">40 ms"
-        _rmssd_ref = f">{int(_rmssd_cls.get('p5_threshold') or 20)} ms" if _rmssd_cls.get('p5_threshold') else ">20 ms"
+        def _graded_ref(cls, unit, fallback_p5):
+            # Ampel-Grenzen exakt wie in classify_parameter: pathologisch <P5,
+            # grenzwertig P5…max(1.5·P5, P5+5), normal (grün) darüber. Text an die
+            # angezeigte Farbe koppeln, damit „grün ≥…" nicht der Gelb-Färbung widerspricht.
+            p5 = cls.get("p5_threshold") or fallback_p5
+            norm = max(p5 * 1.5, p5 + 5.0)
+            return f"grün ≥{norm:.0f} · gelb {p5:.0f}–{norm:.0f} {unit}"
+
+        _sdnn_ref  = _graded_ref(_sdnn_cls,  "ms", 40)
+        _rmssd_ref = _graded_ref(_rmssd_cls, "ms", 20)
         _pnn50_ref = f"Erw. {_pnn50_cls.get('pnn50_expected', 0):.1f}%" if _pnn50_cls.get('pnn50_expected') else ">3%"
 
         # Gruppe 1 — Grundwerte
@@ -1467,13 +1475,13 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
         # Gruppe 2 — Gesamtvariabilität
         _grp("Gesamtvariabilität", "gesamte autonome Streuung (Sympathikus + Parasympathikus)")
         g2 = st.columns(4)
-        _metric_card(g2[0], "SDNN", f"{sdnn:.1f} ms",   _sdnn_cls["zone"], f"Norm {_sdnn_ref}")
+        _metric_card(g2[0], "SDNN", f"{sdnn:.1f} ms",   _sdnn_cls["zone"], _sdnn_ref)
         _metric_card(g2[1], "CV",   f"{cv_pct:.1f} %",  "info",            "= SDNN/RR · HF-unabhängig")
 
         # Gruppe 3 — Vagale Marker
         _grp("Vagale Marker", "Parasympathikus — schnelle Schlag-zu-Schlag-Variabilität")
         g3 = st.columns(4)
-        _metric_card(g3[0], "RMSSD", f"{rmssd:.1f} ms", _rmssd_cls["zone"], f"Norm {_rmssd_ref}")
+        _metric_card(g3[0], "RMSSD", f"{rmssd:.1f} ms", _rmssd_cls["zone"], _rmssd_ref)
         _metric_card(g3[1], "pNN50", f"{pnn50:.1f} %",  _pnn50_cls["zone"], _pnn50_ref)
         _metric_card(g3[2], "pNN20", f"{pnn20:.1f} %",  "info",            "sensitiver als pNN50")
         _metric_card(g3[3], "NN50",  f"{nn50}",         "info",            "Anzahl > 50 ms")
@@ -1575,16 +1583,22 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
         # ── DFA α₁ — fraktale Korrelationsstruktur ─────────────────────────────
         _section("🧬 DFA α₁ — fraktale Dynamik", "Detrended Fluctuation Analysis (Peng 1995)")
         st.markdown(
-            "<div style='background:#eef7f0;border-left:4px solid #27ae60;border-radius:8px;"
-            "padding:10px 14px;margin:2px 0 8px 0;font-size:13px'>"
-            "<b>Was misst DFA α₁?</b> Nicht die <i>Größe</i> der Herzratenschwankungen (das tun "
-            "SDNN/RMSSD), sondern ihre <b>innere Struktur</b>: Sind die Abstände zwischen den "
-            "Herzschlägen rein zufällig oder folgen sie einem komplexen, gesunden Muster? "
-            "Gesunde Regulation erzeugt ein <b>1/f-Muster</b> (pink noise, α₁ ≈ 1,0) — zwischen "
-            "völliger Starre und völligem Zufall. <b>α₁ → 0,5</b> = Richtung Zufall "
-            "(Korrelationsverlust: Fatigue, autonome Dysregulation) · <b>α₁ → 1,5</b> = zu starr "
-            "(Brown'sches Rauschen). Die Kurve unten zeigt, wie die Schwankung F(n) mit der "
-            "Fenstergröße wächst — die <b>Steigung</b> dieser Geraden <i>ist</i> α₁.</div>",
+            "<div style='background:linear-gradient(90deg,#27ae6014,transparent);"
+            "border-left:5px solid #27ae60;border-radius:8px;padding:14px 18px;margin:2px 0 8px 0'>"
+            "<div style='font-size:15px;font-weight:800;color:#1e8449'>DFA α₁ ≈ die „Gesundheit\" "
+            "der autonomen Regulation — fraktale Ordnung des Herzschlags</div>"
+            "<div style='font-size:13px;color:#333;margin-top:5px'>"
+            "<b>Warum bestimmen wir das?</b> SDNN/RMSSD messen die <i>Größe</i> der "
+            "Herzraten-Schwankung — DFA α₁ misst ihre <b>innere Struktur</b>: Folgen die "
+            "Schlagabstände einem komplexen, gesunden Muster oder werden sie zufällig? Eine "
+            "gesunde Regulation erzeugt ein <b>1/f-Muster</b> (α₁ ≈ 1,0) — die Balance zwischen "
+            "zu starr und rein zufällig. <b>Sinn:</b> einer der <b>robustesten Marker</b> für "
+            "körperliche Belastung, Erschöpfung und autonome Integrität — oft aussagekräftiger "
+            "als die reine Variabilität.<br>"
+            "<b>α₁ → 0,5</b> = Richtung Zufall (Fatigue, autonome Dysregulation, hohe Last) · "
+            "<b>α₁ → 1,5</b> = zu starr (Brown'sches Rauschen).<br>"
+            "<b>Anwendungen:</b> Fatigue-/Belastungssteuerung · Stress · autonome Dysfunktion · "
+            "Prognose bei Herz-/Hirnschädigung.</div></div>",
             unsafe_allow_html=True,
         )
         if _dfa is not None:
