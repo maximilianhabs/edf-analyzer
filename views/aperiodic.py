@@ -110,33 +110,35 @@ def _exponent_hint(exp: float, age) -> str:
 def render():
     st.title("🌀 Aperiodische Komponente (1/f)")
 
-    # ── Anschaulicher Einstieg: „Was machen wir hier?" ────────────────────────
+    # ── Biomarker-Headline (Biologie zuerst) ──────────────────────────────────
     st.markdown(
-        "<div style='background:#f3eefb;border-left:5px solid #8e44ad;border-radius:8px;"
-        "padding:14px 18px;margin:4px 0 6px 0'>"
-        "<b>Worum geht es auf dieser Seite?</b><br>"
-        "Ein EEG-Spektrum besteht aus <b>zwei überlagerten Anteilen</b>, die man üblicherweise "
-        "zusammen als Bandpower misst:"
-        "<ul style='margin:6px 0 6px 18px;padding:0'>"
-        "<li>🌀 <b>Der 1/f-Hintergrund (aperiodisch)</b> — eine schräg abfallende „Grundrauschen"
-        "-artige Kurve <i>ohne</i> echten Rhythmus. Ihre <b>Steilheit</b> (Exponent) ist ein eigener "
-        "Biomarker: sie spiegelt die <b>Erregungs-/Hemmungs-Balance</b> des Kortex und die "
-        "Vigilanz wider (flacher = mehr Exzitation/wach, steiler = mehr Inhibition/schläfrig).</li>"
-        "<li>📈 <b>Die echten Rhythmen</b> (Alpha, Beta …) — die <b>Gipfel, die über</b> diesem "
-        "Hintergrund herausragen.</li></ul>"
-        "Diese Seite <b>trennt beides sauber</b>: Sie zeigt die 1/f-Gerade, ihren Exponenten "
-        "als Marker — und das <b>untergrund-bereinigte</b> Spektrum, in dem man den echten "
-        "Alpha-Gipfel unabhängig vom Hintergrund ablesen kann. <b>Warum wichtig?</b> Scheinbare "
-        "scheinbare <i>Alpha-sinkt / Beta-steigt</i>-Befunde sind oft nur eine Verschiebung "
-        "dieses Hintergrunds — "
-        "erst die Trennung zeigt, was <i>wirklich</i> ein Rhythmus ist."
-        "</div>",
+        "<div style='background:linear-gradient(90deg,#8e44ad14,transparent);"
+        "border-left:5px solid #8e44ad;border-radius:8px;padding:14px 18px;margin:4px 0 4px 0'>"
+        "<div style='font-size:16px;font-weight:800;color:#6c3483'>Der aperiodische Exponent ≈ "
+        "Erregungs-/Hemmungs-Balance (E/I) des Kortex</div>"
+        "<div style='font-size:13px;color:#333;margin-top:5px'>"
+        "Er ist ein <b>eigenständiger Biomarker für Arousal, Vigilanz und kortikale Aktivierung</b> "
+        "— unabhängig von jedem einzelnen Rhythmus. <b>Flacher</b> = relativ mehr <b>Exzitation</b> "
+        "(wacher/aktivierter), <b>steiler</b> = relativ mehr <b>Inhibition</b> (schläfrig, sediert, "
+        "tiefe Bewusstseinsstörung).<br>"
+        "<b>Anwendungen:</b> Anästhesietiefe · Bewusstseinsstörungen (DoC) · Schlaf/Vigilanz · "
+        "Alter (flacht mit dem Alter ab) · Kognition.</div></div>",
         unsafe_allow_html=True,
     )
-    st.caption(
-        "Methodik: robuster 1/f-Geradenfit im log-log-Raum (1–40 & 1–20 Hz), ohne Knee-Term. "
-        "Forschungsmarker — orientierend, nicht für Einzelfall-Entscheidungen."
-    )
+
+    # ── Wie funktioniert die Trennung? (Kurzfassung) ──────────────────────────
+    with st.expander("Wie wird das gemessen? (Trennung von Hintergrund & Rhythmus)"):
+        st.markdown(
+            "Ein EEG-Spektrum ist die **Summe** aus (1) dem **1/f-Hintergrund** (aperiodisch, eine "
+            "schräg abfallende Kurve *ohne* echten Rhythmus — ihre **Steilheit** ist der Exponent) "
+            "und (2) den **echten Rhythmen** (Alpha, Beta … = Gipfel, die *über* dem Hintergrund "
+            "herausragen). Diese Seite **trennt beides**: 1/f-Gerade + Exponent als Marker, und das "
+            "**untergrund-bereinigte** Spektrum, in dem der echte Alpha-Gipfel unabhängig vom "
+            "Hintergrund ablesbar ist.\n\n"
+            "**Warum wichtig?** Scheinbare *Alpha-sinkt / Beta-steigt*-Befunde sind oft nur eine "
+            "Verschiebung des Hintergrunds — erst die Trennung zeigt, was *wirklich* ein Rhythmus "
+            "ist. Methodik: robuster 1/f-Geradenfit im log-log-Raum (1–40 & 1–20 Hz), ohne Knee. "
+            "*Forschungsmarker — orientierend, nicht für Einzelfall-Entscheidungen.*")
 
     edf_path = st.session_state.get("edf_path", "")
     if not edf_path:

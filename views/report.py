@@ -68,9 +68,11 @@ def _compute_bandpower(sig, fs, t_start=0, t_end=None):
 
 
 def _compute_hrv(edf_path, edf):
-    """Berechnet HRV-Zeitbereich + Frequenzbereich. Gibt Dict zurück."""
+    """Berechnet HRV-Zeitbereich + nichtlineare + Frequenzbereich + EDR. Gibt Dict zurück."""
     from views.ecg_hrv import compute_rr
     from analysis.hrv_freq import compute_frequency_domain
+    from analysis.ecg import compute_hrv_time_domain, dfa_alpha1, edr_from_ecg
+    from analysis.complexity import sample_entropy
     ecg_channels = edf.get("ecg_channels", [])
     if not ecg_channels:
         return None
@@ -80,15 +82,29 @@ def _compute_hrv(edf_path, edf):
     r_times = rr_data["times"]
     if len(rr_ms) < 10:
         return None
+    fs = rr_data["fs"]
 
-    mean_rr = float(np.mean(rr_ms))
-    mean_hr = 60000 / mean_rr
-    sdnn    = float(np.std(rr_ms, ddof=1))
-    rmssd   = float(np.sqrt(np.mean(np.diff(rr_ms) ** 2)))
-    pnn50   = float(np.sum(np.abs(np.diff(rr_ms)) > 50) / max(len(np.diff(rr_ms)), 1) * 100)
+    # Kanonischer Zeitbereich (inkl. CV, NN50, pNN20, SD1/SD2/SD2SD1)
+    td = compute_hrv_time_domain(rr_ms)
     n_total = rr_data["n_peaks_total"]
     n_removed = rr_data["n_removed"]
     pct_removed = n_removed / max(n_total, 1) * 100
+
+    # Nichtlinear
+    _dfa = dfa_alpha1(rr_ms)
+    dfa_a1 = _dfa["alpha1"] if _dfa else float("nan")
+    samp_en = sample_entropy(rr_ms) if len(rr_ms) >= 20 else float("nan")
+
+    # EDR (Atmung aus R-Amplitude)
+    edr_rate = float("nan")
+    try:
+        _ecg = edf.get("ecg_filtered", {}).get(ecg_ch)
+        if _ecg is not None:
+            _edr = edr_from_ecg(_ecg, rr_data["peaks"], fs)
+            if _edr:
+                edr_rate = _edr["resp_rate_bpm"]
+    except Exception:
+        pass
 
     fd_welch = fd_burg = None
     try:
@@ -98,7 +114,11 @@ def _compute_hrv(edf_path, edf):
         pass
 
     return {
-        "mean_hr": mean_hr, "sdnn": sdnn, "rmssd": rmssd, "pnn50": pnn50,
+        "mean_hr": td["mean_hr_bpm"], "mean_rr": td["mean_rr_ms"],
+        "sdnn": td["sdnn_ms"], "cv": td["cv_pct"], "rmssd": td["rmssd_ms"],
+        "pnn50": td["pnn50_pct"], "pnn20": td["pnn20_pct"], "nn50": td["nn50_count"],
+        "sd1": td["sd1_ms"], "sd2": td["sd2_ms"], "sd2_sd1": td["sd2_sd1_ratio"],
+        "dfa_a1": dfa_a1, "samp_en": samp_en, "edr_rate": edr_rate,
         "pct_removed": pct_removed, "fd_welch": fd_welch, "fd_burg": fd_burg,
     }
 
@@ -156,36 +176,63 @@ def render():
         if not edf.get("ecg_channels"):
             st.info("Kein EKG-Kanal in dieser Aufnahme erkannt.")
         else:
-            hrv = st.session_state.get("hrv_summary")
+            hrv = st.session_state.get("hrv_summary_report")
             if hrv is None:
                 with st.spinner("Berechne HRV …"):
                     try:
                         hrv = _compute_hrv(edf_path, edf)
-                        if hrv:
-                            st.session_state["hrv_summary_report"] = hrv
+                        st.session_state["hrv_summary_report"] = hrv
                     except Exception as e:
                         st.warning(f"HRV-Berechnung fehlgeschlagen: {e}")
                         hrv = None
-            # Priorität: frisch berechnete Daten aus Report, dann aus EKG-Seite
-            hrv = hrv or st.session_state.get("hrv_summary_report")
 
             if not hrv:
-                st.info("Keine HRV-Daten verfügbar. Bitte die Seite **EKG & HRV** einmal öffnen.")
+                st.info("Keine HRV-Daten verfügbar.")
             else:
-                st.markdown("**Zeitbereich**")
+                st.markdown("**Zeitbereich — Grundwerte & Variabilität**")
                 td = pd.DataFrame([
                     {"Parameter": "Herzfrequenz (HR)", "Wert": _nan(hrv["mean_hr"], ".1f"), "Einheit": "bpm",
                      "Referenz": "67  (IQR 61–74)", "": _zone(hrv["mean_hr"], 60, 100)},
+                    {"Parameter": "Mittleres RR",  "Wert": _nan(hrv["mean_rr"], ".0f"), "Einheit": "ms",
+                     "Referenz": "600–1000",        "": "—"},
                     {"Parameter": "SDNN",   "Wert": _nan(hrv["sdnn"],   ".1f"), "Einheit": "ms",
                      "Referenz": "37  (IQR 27–54)", "": _zone(hrv["sdnn"], 20, 80)},
+                    {"Parameter": "CV (Variationskoeff.)", "Wert": _nan(hrv["cv"], ".1f"), "Einheit": "%",
+                     "Referenz": "HF-unabhängig",   "": "—"},
+                ])
+                st.dataframe(td, hide_index=True, use_container_width=True)
+
+                st.markdown("**Zeitbereich — vagale (parasympathische) Marker**")
+                tv = pd.DataFrame([
                     {"Parameter": "RMSSD",  "Wert": _nan(hrv["rmssd"],  ".1f"), "Einheit": "ms",
                      "Referenz": "27  (IQR 17–44)", "": _zone(hrv["rmssd"], 15, 80)},
                     {"Parameter": "pNN50",  "Wert": _nan(hrv["pnn50"],  ".1f"), "Einheit": "%",
                      "Referenz": "~12  (5–28)",     "": "—"},
+                    {"Parameter": "pNN20",  "Wert": _nan(hrv["pnn20"],  ".1f"), "Einheit": "%",
+                     "Referenz": "sensitiver als pNN50", "": "—"},
+                    {"Parameter": "NN50 (Absolutzahl)", "Wert": _nan(hrv["nn50"], ".0f"), "Einheit": "",
+                     "Referenz": "längenabhängig",  "": "—"},
+                ])
+                st.dataframe(tv, hide_index=True, use_container_width=True)
+
+                st.markdown("**Nichtlinear — Poincaré & Komplexität**")
+                tn = pd.DataFrame([
+                    {"Parameter": "SD1 (kurzfristig/vagal)", "Wert": _nan(hrv["sd1"], ".1f"), "Einheit": "ms",
+                     "Referenz": "≈ RMSSD/√2",      "": "—"},
+                    {"Parameter": "SD2 (langfristig)", "Wert": _nan(hrv["sd2"], ".1f"), "Einheit": "ms",
+                     "Referenz": "≈ SDNN",          "": "—"},
+                    {"Parameter": "SD2/SD1",        "Wert": _nan(hrv["sd2_sd1"], ".2f"), "Einheit": "—",
+                     "Referenz": "Balance lang/kurz", "": "—"},
+                    {"Parameter": "DFA α₁ (fraktal)", "Wert": _nan(hrv["dfa_a1"], ".2f"), "Einheit": "—",
+                     "Referenz": "~1,0 gesund",     "": _zone(hrv["dfa_a1"], 0.75, 1.25)},
+                    {"Parameter": "Sample Entropy", "Wert": _nan(hrv["samp_en"], ".2f"), "Einheit": "—",
+                     "Referenz": "niedrig=regelmäßig", "": "—"},
+                    {"Parameter": "Atemfrequenz (EDR)", "Wert": _nan(hrv["edr_rate"], ".1f"), "Einheit": "/min",
+                     "Referenz": "12–20",           "": _zone(hrv["edr_rate"], 12, 20)},
                     {"Parameter": "Artefaktrate", "Wert": _nan(hrv["pct_removed"], ".1f"), "Einheit": "%",
                      "Referenz": "< 5 % gut",      "": _zone(hrv["pct_removed"], 0, 15)},
                 ])
-                st.dataframe(td, hide_index=True, use_container_width=True)
+                st.dataframe(tn, hide_index=True, use_container_width=True)
 
                 for fd_label, fd_key in [("Frequenzbereich — Welch (FFT)", "fd_welch"),
                                           ("Frequenzbereich — Burg (MEM)",  "fd_burg")]:
@@ -304,3 +351,46 @@ def render():
                             "Klinischer Hinweis": hint,
                         })
                     st.dataframe(pd.DataFrame(ratio_rows), hide_index=True, use_container_width=True)
+
+                    # ── Spektrale Kennzahlen, Aperiodik & Komplexität (posterior) ──
+                    freqs_p, psd_p = _res_p[1], _res_p[2]
+                    if freqs_p is not None and len(freqs_p) > 2:
+                        from views.eeg_spectrum import _spectral_edge, _compute_par
+                        from analysis.aperiodic import fit_aperiodic, band_power_defs
+                        from analysis.complexity import sample_entropy, lziv_complexity
+                        with st.spinner("Berechne spektrale Kennzahlen & Komplexität …"):
+                            _sef95 = _spectral_edge(freqs_p, psd_p, 0.95)
+                            _medf  = _spectral_edge(freqs_p, psd_p, 0.50)
+                            _rap20 = fit_aperiodic(freqs_p, psd_p, 1, 20)
+                            _exp20 = _rap20["exponent"] if _rap20 else float("nan")
+                            _r2_20 = _rap20["r2"] if _rap20 else float("nan")
+                            _flat_a = band_power_defs(freqs_p, psd_p, 8, 13, res=_rap20)["flattened"]
+                            _seg = sig_post[int(t_start * sfreq):int(t_end * sfreq)]
+                            _sampen = sample_entropy(_seg, max_n=4000) if len(_seg) >= 100 else float("nan")
+                            _lzc = lziv_complexity(_seg, sfreq) if len(_seg) >= int(5 * sfreq) else {"shuffle": float("nan"), "phase": float("nan")}
+                        st.markdown("**Spektrale Kennzahlen, Aperiodik & Komplexität (posterior O1/O2)**")
+                        st.dataframe(pd.DataFrame([
+                            {"Parameter": "SEF95 (spektrale Randfrequenz)", "Wert": _nan(_sef95, ".1f"), "Einheit": "Hz", "Referenz": "sinkt bei Verlangsamung"},
+                            {"Parameter": "Medianfrequenz (SEF50)", "Wert": _nan(_medf, ".1f"), "Einheit": "Hz", "Referenz": "sinkt bei Verlangsamung"},
+                            {"Parameter": "Aperiod. Exponent (1–20 Hz)", "Wert": _nan(_exp20, ".2f"), "Einheit": "—", "Referenz": f"R²={_nan(_r2_20, '.2f')} · flach=aktiviert"},
+                            {"Parameter": "Alpha flattened (aperiodik-bereinigt)", "Wert": _nan(_flat_a, ".2f"), "Einheit": "—", "Referenz": ">0 = echter Alpha-Gipfel"},
+                            {"Parameter": "Sample Entropy", "Wert": _nan(_sampen, ".2f"), "Einheit": "—", "Referenz": "niedrig=regelmäßig (↓ Bewusstsein)"},
+                            {"Parameter": "LZC (shuffle)", "Wert": _nan(_lzc.get("shuffle"), ".2f"), "Einheit": "—", "Referenz": "hoch=komplex"},
+                            {"Parameter": "LZC (phase)", "Wert": _nan(_lzc.get("phase"), ".2f"), "Einheit": "—", "Referenz": ">1=spektral-unabh. komplex"},
+                        ]), hide_index=True, use_container_width=True)
+
+                        # ── Anterior-Posterior-Gradient (ganzer Kopf, PAR) ──────
+                        try:
+                            _par = _compute_par(edf_path, t_start, t_end, 8.0, 13.0, False, 9999.0)
+                            if _par["n_post"] >= 2 and _par["n_ant"] >= 2:
+                                st.markdown("**Anterior-Posterior-Gradient (ganzer Kopf)**")
+                                st.dataframe(pd.DataFrame([
+                                    {"Parameter": "Alpha-PAR (post/ant, geom. Mittel)",
+                                     "Wert": _nan(_par["par"], ".2f"), "Einheit": "—",
+                                     "Referenz": ">1 posterior-dominant", "": _zone(_par["par"], 1.0, 99)},
+                                    {"Parameter": "Exponent-Gradient (post−ant)",
+                                     "Wert": _nan(_par["exp_grad"], "+.2f"), "Einheit": "—",
+                                     "Referenz": f"{_par['n_post']} post · {_par['n_ant']} ant", "": "—"},
+                                ]), hide_index=True, use_container_width=True)
+                        except Exception:
+                            pass
