@@ -69,6 +69,86 @@ def _peak_freq(freqs, psd, lo, hi):
     return float(freqs[mask][np.argmax(psd[mask])]) if mask.sum() > 1 else float("nan")
 
 
+@st.cache_data(show_spinner="Berechne LZC-Komplexität…")
+def _lzc_cached(seg_bytes: bytes, n: int, fs: float) -> dict:
+    """Gecachte LZC-Berechnung (langsam, O(N²)) — Key = Segment-Bytes."""
+    from analysis.complexity import lziv_complexity
+    x = np.frombuffer(seg_bytes, dtype=np.float64)[:n]
+    return lziv_complexity(x, fs)
+
+
+@st.cache_data(show_spinner="Berechne A/P-Gradient (PAR)…")
+def _compute_par(edf_path, t_start, t_end, a_lo, a_hi, multitaper, amp_thresh):
+    """Anterior-Posterior-Ratio der absoluten Alpha-Power über den ganzen Kopf.
+
+    PAR = geom. Mittel(posteriore absolute Alpha-Fläche) / geom. Mittel(anteriore)
+    (Colombo 2023 / Maschke 2025). Split an der Cz-Linie (|y|≤0,2 ausgeschlossen).
+    PAR > 1 = posterior-dominantes Alpha (wach/normal), < 1 = anteriorisiert
+    (Bewusstseinsminderung/Anästhesie). Zusätzlich Exponent-Gradient (post−ant, 1–20 Hz).
+    """
+    import mne
+    from core.shared import ELECTRODE_POS
+    from analysis.aperiodic import fit_aperiodic
+    edf = load_and_prepare(edf_path)
+    fs = edf["sfreq"]
+    eeg_map = edf["eeg_map"]
+    raw = mne.io.read_raw_edf(edf_path, preload=True, encoding="latin1", verbose=False)
+    i0, i1 = int(t_start * fs), int(t_end * fs)
+    post_a, ant_a, post_e, ant_e = [], [], [], []
+    for short, idx in eeg_map.items():
+        pos = ELECTRODE_POS.get(short)
+        if pos is None or abs(pos[1]) <= 0.2:      # unbekannt oder Cz-Linie → ausschließen
+            continue
+        sig = _highpass(raw[idx, :][0][0] * 1e6, fs, 1.0)
+        f, p = _compute_psd(sig[i0:i1], fs, multitaper=multitaper, amp_thresh_uv=amp_thresh)
+        if f is None:
+            continue
+        m = (f >= a_lo) & (f < a_hi)
+        area = float(np.trapz(p[m], f[m])) if m.sum() > 1 else float("nan")
+        r = fit_aperiodic(f, p, 1, 20)
+        exp = r["exponent"] if r else float("nan")
+        if pos[1] > 0.2:                            # anterior
+            if area == area and area > 0: ant_a.append(area)
+            if exp == exp: ant_e.append(exp)
+        else:                                       # posterior
+            if area == area and area > 0: post_a.append(area)
+            if exp == exp: post_e.append(exp)
+
+    def _geo(xs):
+        return float(np.exp(np.mean(np.log(xs)))) if xs else float("nan")
+
+    par = (_geo(post_a) / _geo(ant_a)) if (post_a and ant_a) else float("nan")
+    exp_grad = (float(np.mean(post_e)) - float(np.mean(ant_e))) if (post_e and ant_e) else float("nan")
+    return {"par": par, "exp_grad": exp_grad, "n_post": len(post_a), "n_ant": len(ant_a)}
+
+
+def _spectral_edge(freqs, psd, pct):
+    """Spektrale Edge-Frequenz: Frequenz, unter der pct der Gesamtleistung liegt.
+
+    pct=0.95 → SEF95 (Vigilanz-/Sedierungs-/Enzephalopathie-Marker), pct=0.50 →
+    Medianfrequenz. Sinkt bei Verlangsamung. Berechnet über das Analyseband (1–30 Hz)
+    per kumulierter Leistung mit linearer Interpolation zwischen den Bins.
+    """
+    if len(freqs) < 2:
+        return float("nan")
+    cum = np.cumsum(psd)
+    tot = cum[-1]
+    if tot <= 0:
+        return float("nan")
+    cum = cum / tot
+    idx = int(np.searchsorted(cum, pct))
+    if idx == 0:
+        return float(freqs[0])
+    if idx >= len(freqs):
+        return float(freqs[-1])
+    # lineare Interpolation zwischen idx-1 und idx für Sub-Bin-Genauigkeit
+    c0, c1 = cum[idx - 1], cum[idx]
+    f0, f1 = freqs[idx - 1], freqs[idx]
+    if c1 == c0:
+        return float(f1)
+    return float(f0 + (pct - c0) / (c1 - c0) * (f1 - f0))
+
+
 def _peak_freq_cog(freqs, psd, lo, hi):
     """Alpha-Peak per Schwerpunkt (Center of Gravity / Individual Alpha Frequency).
 
@@ -366,14 +446,30 @@ def _render_bandpower_and_ratios(bp_all, panel_id):
         labels = list(bp_all.keys())
         post_bp = bp_all[labels[0]]
         ant_bp  = bp_all[labels[1]]
-        st.markdown("**Anterior/Posterior-Gradient**")
+        st.markdown("**Anterior/Posterior-Gradient** "
+                    "<span style='font-size:11px;color:#888'>— gesundes waches EEG ist "
+                    "posterior-dominant (okzipitaler Alpha-Grundrhythmus)</span>",
+                    unsafe_allow_html=True)
         g1, g2, g3 = st.columns(3)
         post_alpha = post_bp.get("Alpha", 0)
         ant_alpha  = ant_bp.get("Alpha", 0)
         ap_ratio   = post_alpha / ant_alpha if ant_alpha > 0 else float("nan")
-        g1.metric("Alpha posterior/anterior",
-                  f"{ap_ratio:.2f}" if ap_ratio == ap_ratio else "—",
-                  help="Norm: >1 — Alpha dominiert posterior. <1 = Gradient umgekehrt (pathologisch).")
+        # Farbcodierung: >1 posterior-dominant (grün), 0,6–1 abgeschwächt (gelb), <0,6 umgekehrt (rot)
+        if ap_ratio == ap_ratio:
+            _apz = "#27ae60" if ap_ratio >= 1 else ("#e67e22" if ap_ratio >= 0.6 else "#c0392b")
+            _apl = "🟢 posterior-dominant" if ap_ratio >= 1 else (
+                   "🟡 abgeschwächt" if ap_ratio >= 0.6 else "🔴 umgekehrt/verloren")
+        else:
+            _apz, _apl = "#7f8c8d", "—"
+        with g1:
+            st.markdown(
+                f"<div style='background:{_apz}0d;border:1.5px solid {_apz};border-radius:10px;"
+                f"padding:8px 10px;text-align:center'>"
+                f"<div style='font-size:10px;color:#888'>Alpha posterior/anterior</div>"
+                f"<div style='font-size:20px;font-weight:800;color:{_apz}'>"
+                f"{ap_ratio:.2f}" + ("</div>" if ap_ratio == ap_ratio else "—</div>") +
+                f"<div style='font-size:10px;color:#555'>{_apl}</div></div>",
+                unsafe_allow_html=True)
         post_delta = post_bp.get("Delta", 0)
         ant_delta  = ant_bp.get("Delta", 0)
         g2.metric("Delta anterior", f"{ant_delta/(sum(ant_bp.values()) or 1)*100:.1f}%",
@@ -485,6 +581,60 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
     k3.metric("Rel. Alpha", f"{bp.get('Alpha',0)/total*100:.1f}%")
     k4.metric("Rel. Delta", f"{bp.get('Delta',0)/total*100:.1f}%")
     k5.metric("Rel. Beta",  f"{bp.get('Beta',0)/total*100:.1f}%")
+
+    # Spektrale Summenkennzahlen (SEF95 + Medianfrequenz) aus der PSD des Fensters
+    i0, i1 = int(t_start * fs), int(t_end * fs)
+    f_psd, p_psd = _compute_psd(sig_full[i0:i1], fs,
+                                multitaper=multitaper, amp_thresh_uv=amp_thresh_uv)
+    if f_psd is not None:
+        _sef95 = _spectral_edge(f_psd, p_psd, 0.95)
+        _medf  = _spectral_edge(f_psd, p_psd, 0.50)
+        # Komplexität des EEG-Segments (Sample Entropy + LZC) — auf dem Fenster-Segment
+        from analysis.complexity import sample_entropy as _sampen
+        _seg = sig_full[i0:i1]
+        _sampen_val = _sampen(_seg, max_n=4000) if len(_seg) >= 100 else float("nan")
+        _lzc = _lzc_cached(_seg.astype(np.float64).tobytes(), len(_seg), fs) \
+            if len(_seg) >= int(5 * fs) else {"shuffle": float("nan"), "phase": float("nan")}
+        s1, s2, s3, s4, s5 = st.columns(5)
+        s1.metric("SEF95", f"{_sef95:.1f} Hz" if _sef95 == _sef95 else "—",
+                  help="Spectral Edge Frequency: unter dieser Frequenz liegen 95 % der "
+                       "Leistung (1–30 Hz). Sinkt bei Verlangsamung — Vigilanz-/Sedierungs-/"
+                       "Enzephalopathie-Marker.")
+        s2.metric("Medianfrequenz", f"{_medf:.1f} Hz" if _medf == _medf else "—",
+                  help="Frequenz, unter der 50 % der Leistung liegen (SEF50). "
+                       "Robustes Maß der spektralen Verlangsamung.")
+        s3.metric("Sample Entropy", f"{_sampen_val:.2f}" if _sampen_val == _sampen_val else "—",
+                  help="Komplexität/Vorhersagbarkeit des EEG (m=2, r=0,2·SD). Niedrig = "
+                       "regelmäßig/vorhersagbar (Sedierung, Delir, Enzephalopathie), "
+                       "hoch = komplex/wach. Zentrales Segment (max. 4000 Punkte).")
+        s4.metric("LZC (shuffle)", f"{_lzc['shuffle']:.2f}" if _lzc['shuffle'] == _lzc['shuffle'] else "—",
+                  help="Lempel-Ziv-Komplexität, shuffle-normalisiert (0..1). Hoch = komplex/"
+                       "inkompressibel, niedrig = regelmäßig. Sinkt bei reduziertem Bewusstsein "
+                       "(Maschke 2025: diagnostisch v. a. bei nicht-anoxischen Patienten).")
+        s5.metric("LZC (phase)", f"{_lzc['phase']:.2f}" if _lzc['phase'] == _lzc['phase'] else "—",
+                  help="LZC phasen-normalisiert: >1 = komplexer als das Leistungsspektrum allein "
+                       "erwarten lässt (spektral-unabhängige Komplexität), <1 = weniger.")
+
+        # ── Alpha-Power: drei Definitionen (DoC-Marker, Maschke 2025) ──────────
+        # Untergrund für "flattened" über den robusten 1–20-Hz-Fit (HF-Muskelartefakt
+        # verfälscht den 1–40-Fit gerade am Alpha; vgl. Exponent-Kacheln).
+        from analysis.aperiodic import fit_aperiodic as _fit_ap, band_power_defs as _bpd
+        _res_ap = _fit_ap(f_psd, p_psd, fmin=1.0, fmax=min(20.0, float(f_psd[-1])))
+        _apow = _bpd(f_psd, p_psd, alpha_band[0], alpha_band[1], res=_res_ap)
+        st.markdown("**Alpha-Power — drei Definitionen** "
+                    "<span style='font-size:11px;color:#888'>(Maschke 2025: abs/flattened → "
+                    "v. a. anoxisch · relativ → v. a. nicht-anoxisch)</span>",
+                    unsafe_allow_html=True)
+        a1, a2, a3 = st.columns(3)
+        a1.metric("Alpha absolut", f"{_apow['absolute']:.2f}" if _apow['absolute'] == _apow['absolute'] else "—",
+                  help="log₁₀(Fläche unter der PSD im Alpha-Band). Von Untergrund-Suppression "
+                       "beeinflusst; diagnostisch v. a. bei anoxischen Patienten.")
+        a2.metric("Alpha relativ", f"{_apow['relative']:.1f} %" if _apow['relative'] == _apow['relative'] else "—",
+                  help="Anteil der Alpha-Leistung am Gesamtspektrum (1–40 Hz). Korrigiert für "
+                       "Gesamtpower; diagnostisch v. a. bei nicht-anoxischen Patienten (v. a. via Exponent).")
+        a3.metric("Alpha flattened", f"{_apow['flattened']:.2f}" if _apow['flattened'] == _apow['flattened'] else "—",
+                  help="Fläche unter dem aperiodik-bereinigten Spektrum im Alpha-Band — nur der "
+                       "echte Oszillationsgipfel, ohne 1/f-Untergrund. Diagnostisch v. a. anoxisch.")
 
     # Ratios
     st.markdown("**Klinische Ratios**")
@@ -749,6 +899,45 @@ def render():
         st.info(f"ℹ️ Konsensus-Panel nicht verfügbar — fehlende Kanäle: {', '.join(sorted(missing))}")
 
     # ══════════════════════════════════════════════════════════════════════════
+    # ANTERIOR-POSTERIOR-GRADIENT (PAR) — ganzer Kopf
+    # ══════════════════════════════════════════════════════════════════════════
+    section_header("🧭 Anterior-Posterior-Gradient (PAR)",
+                   "Ganzer Kopf · geom. Mittel posterior/anterior · Colombo 2023 / Maschke 2025")
+    _par = _compute_par(edf_path, t_start, t_end, alpha_band[0], alpha_band[1],
+                        use_multitaper, float(amp_thresh))
+    if _par["n_post"] >= 2 and _par["n_ant"] >= 2 and _par["par"] == _par["par"]:
+        _pv = _par["par"]
+        _pzone = "normal" if _pv >= 1.0 else ("grenzwertig" if _pv >= 0.6 else "pathologisch")
+        _pcol = {"normal": "#27ae60", "grenzwertig": "#e67e22", "pathologisch": "#c0392b"}[_pzone]
+        pc1, pc2, pc3 = st.columns([2, 2, 3])
+        pc1.metric("Alpha-PAR", f"{_pv:.2f}",
+                   help="Posterior/anterior geom. Mittel der absoluten Alpha-Power. >1 = "
+                        "posterior-dominant (wach/normal), <1 = anteriorisiert "
+                        "(Bewusstseinsminderung/Anästhesie).")
+        pc2.metric("Exponent-Gradient (post−ant)",
+                   f"{_par['exp_grad']:+.2f}" if _par['exp_grad'] == _par['exp_grad'] else "—",
+                   help="Differenz des spektralen Exponenten posterior − anterior (1–20 Hz). "
+                        "Positiv = posterior steiler; anterior-posteriore Verflachung "
+                        "korreliert mit Bewusstseinsniveau (Maschke 2025).")
+        with pc3:
+            _lbl = {"normal": "🟢 posterior-dominant", "grenzwertig": "🟡 abgeschwächt",
+                    "pathologisch": "🔴 anteriorisiert"}[_pzone]
+            st.markdown(
+                f"<div style='padding:10px 12px;border-radius:10px;border:1.5px solid {_pcol};"
+                f"background:{_pcol}0d;font-size:13px;margin-top:6px'>{_lbl}<br>"
+                f"<span style='font-size:11px;color:#888'>{_par['n_post']} post · "
+                f"{_par['n_ant']} ant Elektroden (Cz-Linie ausgeschlossen)</span></div>",
+                unsafe_allow_html=True)
+        st.caption(
+            "Der **A/P-Gradient** ist bei gesundem wachem EEG posterior-dominant (okzipitaler "
+            "Alpha-Grundrhythmus). Umkehr/Verlust = diffuse Störung. Colombo 2023: PAR "
+            "diagnostisch v. a. bei nicht-anoxischen DoC-Patienten; Maschke 2025: als "
+            "Ganzgruppen-Marker durch Ätiologie konfundiert — ätiologiespezifisch interpretieren.")
+    else:
+        st.info("ℹ️ PAR nicht berechenbar — zu wenige posteriore/anteriore 10-20-Elektroden "
+                "(je ≥ 2 nötig, Cz-Linie ausgeschlossen).")
+
+    # ══════════════════════════════════════════════════════════════════════════
     # EINZELKANAL-ANALYSE
     # ══════════════════════════════════════════════════════════════════════════
     section_header("🔬 Einzelkanal-Analyse", "Bandpower · FFT · Klinische Ratios pro Kanal")
@@ -1005,6 +1194,28 @@ $$\\text{Rel. Power}_{Band} = \\frac{P_{Band}}{P_{Delta} + P_{Theta} + P_{Alpha}
 
 ---
 
+#### Alpha-Power — drei Definitionen (Maschke et al. 2025)
+
+Für Bewusstseinsmarker (DoC) sind **drei** Alpha-Power-Definitionen relevant, die
+unterschiedlich robust und **ätiologie-abhängig** aussagekräftig sind:
+
+- **Absolut** = log₁₀(Fläche unter der PSD im Alpha-Band). Wird stark von der
+  **Untergrund-Suppression** beeinflusst (bei Anoxie ist der Untergrund oft supprimiert).
+  → diagnostisch v. a. bei **anoxischen** Patienten.
+- **Relativ** = Alpha-Fläche / Gesamt-Fläche (1–40 Hz) × 100. Korrigiert für die Gesamtpower.
+  → diagnostisch v. a. bei **nicht-anoxischen** Patienten (Wert läuft dort weitgehend über
+  den spektralen Exponenten).
+- **Flattened** = Fläche unter dem **aperiodik-bereinigten** Spektrum im Alpha-Band
+  (FOOOF `_spectrum_flat`): nur der echte Oszillationsgipfel, **ohne 1/f-Untergrund**. Trennt
+  „echtes Alpha" von broadband-Untergrund. → diagnostisch v. a. bei **anoxischen** Patienten.
+
+**Kernbotschaft von Maschke 2025:** *Der gleiche Marker bedeutet je nach Ätiologie
+Verschiedenes* — anoxisch vs. nicht-anoxisch nie zusammenwerfen. Grundlage des geplanten
+DoC-Gradings.
+Quelle: **Maschke C. et al.** (2025). *Cerebral Cortex* 35:bhaf254; **Donoghue et al.** (2020).
+
+---
+
 #### Alpha Peak Frequency (APF)
 
 Die Frequenz des höchsten Ausschlags im Alpha-Band (8–13 Hz), okzipital gemessen.
@@ -1020,6 +1231,52 @@ Die Frequenz des höchsten Ausschlags im Alpha-Band (8–13 Hz), okzipital gemes
     breitem oder bimodalem Alpha. Eine große Abweichung Max↔CoG deutet auf einen breiten
     oder doppelgipfligen Alpha-Peak. Das **altersadaptive Suchband** (Kinder tiefer, s. o.)
     gilt für beide Schätzer. Quelle: Klimesch (1999), Brain Res Rev 29:169–195.
+
+---
+
+#### Spektrale Summenkennzahlen — SEF95 & Medianfrequenz
+
+Zwei Einzelzahlen, die die **Form des gesamten Spektrums** zusammenfassen (aus der
+kumulierten Leistung im Analyseband 1–30 Hz):
+
+- **SEF95 (Spectral Edge Frequency 95 %)**: Frequenz, unter der **95 %** der Leistung
+  liegen. Sinkt bei spektraler Verlangsamung. Standard-Trendmarker in Sedierungs-/
+  Narkose-Monitoring und bei Enzephalopathie; höhere Werte = wacher/aktivierter.
+- **Medianfrequenz (SEF50)**: Frequenz, unter der **50 %** der Leistung liegen —
+  robustes Maß der Verlangsamung, weniger empfindlich gegen hochfrequente Artefakte
+  als SEF95.
+
+Beide sind rein deskriptiv (kein fester Cutoff hier) und v. a. im **Verlauf** bzw. im
+**Seitenvergleich** aussagekräftig. Berechnet mit linearer Interpolation zwischen den
+Frequenz-Bins für Sub-Bin-Genauigkeit.
+Quelle: **Drummond GB et al.** (1991), Br J Anaesth; **Tonner & Bein** (2006), Best Pract Res Clin Anaesthesiol.
+
+---
+
+#### Sample Entropy (Komplexität)
+
+Nichtlineares Maß der **Vorhersagbarkeit** des EEG-Signals (m=2, r=0,2·SD): Wie
+wahrscheinlich bleiben ähnliche Muster über eine Zeitschritt-Verlängerung ähnlich?
+- **niedrig** → regelmäßig/vorhersagbar: Müdigkeit, Sedierung, Delir, Demenz,
+  Bewusstseinsstörungen
+- **hoch** → komplex/wach
+
+Berechnet auf einem zentralen Segment des Analysefensters (max. 4000 Punkte, O(N²)).
+Bereits ein Kanal genügt. Orientierend, parameter-/längenabhängig — v. a. im Verlauf/
+Seitenvergleich aussagekräftig.
+Quelle: **Richman JS & Moorman JR** (2000). Am J Physiol Heart Circ Physiol 278:H2039–H2049.
+
+**Lempel-Ziv-Komplexität (LZC)** — zweite, kompressionsbasierte Komplexitäts-Sicht:
+Das Signal wird je 5-s-Segment am Mittelwert **binarisiert** und die LZ76-Komplexität
+bestimmt, auf zwei Arten normalisiert:
+- **shuffle** (0..1): gegen zufällig gemischte Binärsequenzen — hoch = komplex/inkompressibel.
+- **phase** (~1): gegen phasen-randomisierte Surrogate mit gleichem Spektrum — >1 = komplexer
+  als das Spektrum allein erklärt (spektral-unabhängige, „echte" Komplexität), <1 = weniger.
+
+Reduzierte LZC bei sinkendem Bewusstsein. **Maschke et al. 2025** (Cerebral Cortex 35:bhaf254):
+LZC (shuffle) diagnostisch v. a. bei **nicht-anoxischen** DoC-Patienten; kongruent mit dem
+spektralen Exponenten. Grundlage für das geplante DoC-Grading.
+Quelle: **Lempel & Ziv** (1976) IEEE Trans Inf Theory; **Schartner et al.** (2015) PLoS ONE.
 
 ---
 

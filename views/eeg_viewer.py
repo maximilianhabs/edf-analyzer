@@ -30,7 +30,7 @@ def render():
                 "<div style='font-size:12px;color:#888;margin-top:-4px;margin-bottom:2px'>"
                 "Frequenzfilter</div>", unsafe_allow_html=True,
             )
-            col_lc, col_hc, col_ekg = st.columns([1.4, 1, 1.4])
+            col_lc, col_hc = st.columns([1.4, 1])
             TC_OPTIONS = {
                 "0.1 s (≈1.59 Hz)": 1.59,
                 "0.3 s (≈0.53 Hz)": 0.53,
@@ -40,10 +40,11 @@ def render():
             tc_label = col_lc.selectbox("Zeitkonstante / untere Grenzfreq.", list(TC_OPTIONS.keys()), index=1)
             low_hz = TC_OPTIONS[tc_label]
             high_hz = col_hc.selectbox("Obere Grenzfreq. (Hz)", [15, 30, 35, 50, 70, 100], index=2)
+            # EKG-Spur ist fix unten (kein Umschalter mehr) — wenn ein EKG-Kanal erkannt wurde.
             ecg_channels_avail = edf["ecg_channels"]
-            show_ecg_lane = col_ekg.checkbox("EKG-Spur mitlaufen lassen", value=False,
-                                              disabled=not ecg_channels_avail,
-                                              help="Zeigt das EKG unterhalb des EEG mit eigener mV-Skala")
+            show_ecg_lane = bool(ecg_channels_avail)
+            if show_ecg_lane:
+                st.caption(f"❤️ EKG-Spur fix unten: **{ecg_channels_avail[0]}** (eigene mV-Skala)")
 
     pairs = MONTAGES[montage_name]
 

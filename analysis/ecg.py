@@ -225,6 +225,62 @@ def dfa_alpha1(rr_ms: np.ndarray, scale_min: int = 4, scale_max: int = 16):
     return {"alpha1": alpha1, "scales": np.array(scales), "F": np.array(F)}
 
 
+def edr_from_ecg(ecg: np.ndarray, r_peaks: np.ndarray, fs: float,
+                 resp_band=(0.1, 0.5), fs_interp: float = 4.0):
+    """ECG-Derived Respiration (EDR) aus der R-Zacken-Amplituden-Modulation.
+
+    Die Atmung verschiebt die elektrische Herzachse (Zwerchfell-/Thoraxbewegung) →
+    die **R-Zacken-Amplitude** schwankt mit dem Atemzyklus. Aus dieser Modulation
+    lässt sich ein Atemsignal rekonstruieren — auch wenn die respiratorische
+    Sinusarrhythmie (RSA/HF-Peak) schwach ist. Einkanal-Ansatz (Moody et al. 1985).
+
+    Ablauf: R-Amplituden je Schlag → PCHIP-Interpolation auf gleichmäßiges Raster →
+    Bandpass 0.1–0.5 Hz (6–30 /min) → dominante Frequenz (Welch) = Atemfrequenz.
+
+    Rückgabe: dict(t, edr, resp_freq_hz, resp_rate_bpm, quality, amp_t, amp) oder None.
+    """
+    from scipy.interpolate import PchipInterpolator
+    from scipy.signal import butter, filtfilt, welch
+
+    r_peaks = np.asarray(r_peaks)
+    if len(r_peaks) < 8:
+        return None
+    amps = np.asarray(ecg, dtype=float)[r_peaks]
+    t = r_peaks / fs
+    if t[-1] - t[0] < 20:                      # < 20 s → Atemfrequenz nicht robust
+        return None
+
+    t_even = np.arange(t[0], t[-1], 1.0 / fs_interp)
+    if len(t_even) < 32:
+        return None
+    edr = PchipInterpolator(t, amps)(t_even)
+    edr = edr - edr.mean()
+
+    nyq = fs_interp / 2.0
+    try:
+        b, a = butter(2, [resp_band[0] / nyq, min(resp_band[1] / nyq, 0.99)], btype="band")
+        edr_bp = filtfilt(b, a, edr)
+    except Exception:
+        edr_bp = edr
+
+    nperseg = int(min(len(edr_bp), fs_interp * 60))
+    freqs, psd = welch(edr_bp, fs=fs_interp, nperseg=nperseg)
+    band = (freqs >= resp_band[0]) & (freqs <= resp_band[1])
+    if band.sum() < 2:
+        return None
+    fpk = float(freqs[band][np.argmax(psd[band])])
+    # Qualität: spektrale Konzentration am Gipfel (Peak vs. Median im Atemband)
+    _med = float(np.median(psd[band])) or 1e-30
+    quality = float(np.max(psd[band]) / _med)
+
+    return {
+        "t": t_even, "edr": edr_bp,
+        "resp_freq_hz": fpk, "resp_rate_bpm": fpk * 60.0,
+        "quality": quality,
+        "amp_t": t, "amp": amps - amps.mean(),
+    }
+
+
 def compute_hrv_frequency_domain(rr_ms: np.ndarray, sfreq_rr: float = 4.0) -> dict:
     """Compute frequency-domain HRV (LF, HF, LF/HF ratio) via Welch."""
     from scipy.signal import welch

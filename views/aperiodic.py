@@ -109,9 +109,33 @@ def _exponent_hint(exp: float, age) -> str:
 
 def render():
     st.title("🌀 Aperiodische Komponente (1/f)")
+
+    # ── Anschaulicher Einstieg: „Was machen wir hier?" ────────────────────────
+    st.markdown(
+        "<div style='background:#f3eefb;border-left:5px solid #8e44ad;border-radius:8px;"
+        "padding:14px 18px;margin:4px 0 6px 0'>"
+        "<b>Worum geht es auf dieser Seite?</b><br>"
+        "Ein EEG-Spektrum besteht aus <b>zwei überlagerten Anteilen</b>, die man üblicherweise "
+        "zusammen als Bandpower misst:"
+        "<ul style='margin:6px 0 6px 18px;padding:0'>"
+        "<li>🌀 <b>Der 1/f-Hintergrund (aperiodisch)</b> — eine schräg abfallende „Grundrauschen"
+        "-artige Kurve <i>ohne</i> echten Rhythmus. Ihre <b>Steilheit</b> (Exponent) ist ein eigener "
+        "Biomarker: sie spiegelt die <b>Erregungs-/Hemmungs-Balance</b> des Kortex und die "
+        "Vigilanz wider (flacher = mehr Exzitation/wach, steiler = mehr Inhibition/schläfrig).</li>"
+        "<li>📈 <b>Die echten Rhythmen</b> (Alpha, Beta …) — die <b>Gipfel, die über</b> diesem "
+        "Hintergrund herausragen.</li></ul>"
+        "Diese Seite <b>trennt beides sauber</b>: Sie zeigt die 1/f-Gerade, ihren Exponenten "
+        "als Marker — und das <b>untergrund-bereinigte</b> Spektrum, in dem man den echten "
+        "Alpha-Gipfel unabhängig vom Hintergrund ablesen kann. <b>Warum wichtig?</b> Scheinbare "
+        "scheinbare <i>Alpha-sinkt / Beta-steigt</i>-Befunde sind oft nur eine Verschiebung "
+        "dieses Hintergrunds — "
+        "erst die Trennung zeigt, was <i>wirklich</i> ein Rhythmus ist."
+        "</div>",
+        unsafe_allow_html=True,
+    )
     st.caption(
-        "Trennt das Spektrum in den aperiodischen 1/f-Untergrund (Offset + Exponent) "
-        "und die echten oszillatorischen Gipfel. Fit-Bereich 1–40 Hz, ohne Knee-Term."
+        "Methodik: robuster 1/f-Geradenfit im log-log-Raum (1–40 & 1–20 Hz), ohne Knee-Term. "
+        "Forschungsmarker — orientierend, nicht für Einzelfall-Entscheidungen."
     )
 
     edf_path = st.session_state.get("edf_path", "")
@@ -185,6 +209,9 @@ def render():
     if res is None:
         st.warning("Aperiodischer Fit nicht möglich (zu wenige Frequenzpunkte).")
         return
+    # Zusätzlicher Fit im 1–20-Hz-Fenster (Maschke 2025: diagnostisch/prognostisch stärker)
+    res20 = fit_aperiodic(freqs, psd, fmin=FIT_LO, fmax=20.0)
+    exp20 = res20["exponent"] if res20 else float("nan")
 
     exp = res["exponent"]
     off = res["offset"]
@@ -192,7 +219,7 @@ def render():
     apf_corr = corrected_peak(res, a_lo, a_hi)
 
     # ── Kennzahlen ────────────────────────────────────────────────────────────
-    section_header("Kennzahlen", f"Kanal {ch} · Fit {FIT_LO:.0f}–{FIT_HI:.0f} Hz")
+    section_header("Kennzahlen", f"Kanal {ch} · Fit 1–40 & 1–20 Hz")
     _r2_zone = "normal" if r2 >= 0.95 else ("grenzwertig" if r2 >= 0.90 else "pathologisch")
     _r2_col = {"normal": "#27ae60", "grenzwertig": "#e67e22", "pathologisch": "#c0392b"}[_r2_zone]
     _r2_txt = {"normal": "guter Fit", "grenzwertig": "mäßiger Fit", "pathologisch": "schwacher Fit"}[_r2_zone]
@@ -207,15 +234,19 @@ def render():
             unsafe_allow_html=True,
         )
 
-    k1, k2, k3, k4 = st.columns(4)
-    _tile(k1, "EXPONENT (Steilheit)", f"{exp:.2f}", "1/f-Abfall", "#8e44ad")
-    _tile(k2, "OFFSET", f"{off:.2f}", "log₁₀ Power @ 1 Hz", "#2471a3")
-    _tile(k3, "FIT-GÜTE R²", f"{r2:.3f}", _r2_txt, _r2_col)
-    _tile(k4, "ALPHA-PEAK (korrigiert)",
+    k1, k2, k3, k4, k5 = st.columns(5)
+    _tile(k1, "EXPONENT (1–40 Hz)", f"{exp:.2f}", "1/f-Abfall", "#8e44ad")
+    _tile(k2, "EXPONENT (1–20 Hz)", f"{exp20:.2f}" if exp20 == exp20 else "—",
+          "diagnostisch stärker", "#7d3c98")
+    _tile(k3, "OFFSET", f"{off:.2f}", "log₁₀ Power @ 1 Hz", "#2471a3")
+    _tile(k4, "FIT-GÜTE R²", f"{r2:.3f}", _r2_txt, _r2_col)
+    _tile(k5, "ALPHA-PEAK (korrigiert)",
           f"{apf_corr:.1f} Hz" if apf_corr == apf_corr else "—",
           "Gipfel über Untergrund", "#27ae60")
 
-    st.caption(f"🌀 **Exponent {exp:.2f}** — {_exponent_hint(exp, age)}. "
+    st.caption(f"🌀 **Exponent {exp:.2f}** (1–40 Hz) · **{exp20:.2f}** (1–20 Hz) — "
+               f"{_exponent_hint(exp, age)}. Das **1–20-Hz-Fenster** ist bei DoC-Patienten "
+               f"diagnostisch/prognostisch stärker (Maschke 2025). "
                f"*Orientierend — Forschungsmarker, keine breit etablierte klinische Norm.*")
 
     # ── E/I-Achse (altersbezogen) ─────────────────────────────────────────────
@@ -383,10 +414,20 @@ alleinige Entscheidungsgrundlage.
 
 ### Unsere Methode (schlank, ohne Knee)
 
-PSD (Welch, 1–40 Hz) → log-log → **robuster iterativer Geradenfit**: Punkte, die
+PSD (Welch) → log-log → **robuster iterativer Geradenfit**: Punkte, die
 deutlich über der Geraden liegen (= Gipfel), werden verworfen und neu gefittet
 („sigma-clipping"), damit die Gipfel den Untergrund nicht nach oben ziehen.
 Ausgabe: Offset, Exponent, Fit-Güte R² und das untergrund-bereinigte Spektrum.
+
+**Zwei Fit-Fenster:** **1–40 Hz** (breite Sicht) und **1–20 Hz**. Letzteres ist bei
+Bewusstseinsstörungen (DoC) diagnostisch/prognostisch aussagekräftiger (Maschke et al.
+2025) — u. a. weil hochfrequente Muskelartefakte den Exponenten im breiten Fenster
+verfälschen können.
+
+**Methoden-Hinweis:** Wir nutzen einen **robusten Sigma-Clip-Geradenfit**, nicht die
+volle FOOOF/specparam-Gipfel-Parametrisierung. Der aperiodische Exponent ist derselbe
+Kennwert; FOOOF-Hyperparameter (min_peak_height etc.) haben hier daher **kein** direktes
+Pendant. Volle FOOOF-Gipfelanalyse ist eine mögliche Ausbaustufe.
 
 **Grenzen:** Forschungsmarker mit wachsender, aber noch nicht flächig
 etablierter klinischer Normdatenbank. Zustandsabhängig (Augen auf/zu, Vigilanz).
