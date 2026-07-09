@@ -517,7 +517,8 @@ def _position_bar(ref_start: int, ref_end: int, dur_s: int,
 
 def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_id,
                             multitaper=False, amp_thresh_uv=9999.0,
-                            all_eeg=None, get_sig_fn=None, alpha_band=(8.0, 13.0)):
+                            all_eeg=None, get_sig_fn=None, alpha_band=(8.0, 13.0),
+                            compute_lzc=False):
     """Spektrogramm + FFT + Bandpower für einen Kanal."""
     win_label = f"{t_start}–{t_end} s"
     st.markdown(f"#### Kanal: {ch_label}")
@@ -572,69 +573,98 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
     acog = alpha_cog.get(ch_label)
     bp = bp_all.get(ch_label, {})
     total = sum(bp.values()) or 1
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("Alpha-Peak (Max)", f"{ap:.1f} Hz" if ap == ap else "—",
-              help="Frequenz des PSD-Maximums im 8–13-Hz-Band (argmax). Norm: 9–11 Hz.")
-    k2.metric("Alpha-Peak (CoG)", f"{acog:.1f} Hz" if acog == acog else "—",
-              help="Schwerpunkt (Center of Gravity) im 8–13-Hz-Band nach 1/f-Baseline-"
-                   "Abzug — stabiler bei bimodalem Alpha. Norm: 9–11 Hz.")
-    k3.metric("Rel. Alpha", f"{bp.get('Alpha',0)/total*100:.1f}%")
-    k4.metric("Rel. Delta", f"{bp.get('Delta',0)/total*100:.1f}%")
-    k5.metric("Rel. Beta",  f"{bp.get('Beta',0)/total*100:.1f}%")
 
-    # Spektrale Summenkennzahlen (SEF95 + Medianfrequenz) aus der PSD des Fensters
+    # PSD des Fensters (Basis für Alpha-Power/SEF/Komplexität)
     i0, i1 = int(t_start * fs), int(t_end * fs)
     f_psd, p_psd = _compute_psd(sig_full[i0:i1], fs,
                                 multitaper=multitaper, amp_thresh_uv=amp_thresh_uv)
+    _apow = {"absolute": float("nan"), "relative": float("nan"), "flattened": float("nan")}
+    _sef95 = _medf = _sampen_val = float("nan")
+    _lzc = {"shuffle": float("nan"), "phase": float("nan")}
     if f_psd is not None:
-        _sef95 = _spectral_edge(f_psd, p_psd, 0.95)
-        _medf  = _spectral_edge(f_psd, p_psd, 0.50)
-        # Komplexität des EEG-Segments (Sample Entropy + LZC) — auf dem Fenster-Segment
-        from analysis.complexity import sample_entropy as _sampen
-        _seg = sig_full[i0:i1]
-        _sampen_val = _sampen(_seg, max_n=4000) if len(_seg) >= 100 else float("nan")
-        _lzc = _lzc_cached(_seg.astype(np.float64).tobytes(), len(_seg), fs) \
-            if len(_seg) >= int(5 * fs) else {"shuffle": float("nan"), "phase": float("nan")}
-        s1, s2, s3, s4, s5 = st.columns(5)
-        s1.metric("SEF95", f"{_sef95:.1f} Hz" if _sef95 == _sef95 else "—",
-                  help="Spectral Edge Frequency: unter dieser Frequenz liegen 95 % der "
-                       "Leistung (1–30 Hz). Sinkt bei Verlangsamung — Vigilanz-/Sedierungs-/"
-                       "Enzephalopathie-Marker.")
-        s2.metric("Medianfrequenz", f"{_medf:.1f} Hz" if _medf == _medf else "—",
-                  help="Frequenz, unter der 50 % der Leistung liegen (SEF50). "
-                       "Robustes Maß der spektralen Verlangsamung.")
-        s3.metric("Sample Entropy", f"{_sampen_val:.2f}" if _sampen_val == _sampen_val else "—",
-                  help="Komplexität/Vorhersagbarkeit des EEG (m=2, r=0,2·SD). Niedrig = "
-                       "regelmäßig/vorhersagbar (Sedierung, Delir, Enzephalopathie), "
-                       "hoch = komplex/wach. Zentrales Segment (max. 4000 Punkte).")
-        s4.metric("LZC (shuffle)", f"{_lzc['shuffle']:.2f}" if _lzc['shuffle'] == _lzc['shuffle'] else "—",
-                  help="Lempel-Ziv-Komplexität, shuffle-normalisiert (0..1). Hoch = komplex/"
-                       "inkompressibel, niedrig = regelmäßig. Sinkt bei reduziertem Bewusstsein "
-                       "(Maschke 2025: diagnostisch v. a. bei nicht-anoxischen Patienten).")
-        s5.metric("LZC (phase)", f"{_lzc['phase']:.2f}" if _lzc['phase'] == _lzc['phase'] else "—",
-                  help="LZC phasen-normalisiert: >1 = komplexer als das Leistungsspektrum allein "
-                       "erwarten lässt (spektral-unabhängige Komplexität), <1 = weniger.")
-
-        # ── Alpha-Power: drei Definitionen (DoC-Marker, Maschke 2025) ──────────
-        # Untergrund für "flattened" über den robusten 1–20-Hz-Fit (HF-Muskelartefakt
-        # verfälscht den 1–40-Fit gerade am Alpha; vgl. Exponent-Kacheln).
         from analysis.aperiodic import fit_aperiodic as _fit_ap, band_power_defs as _bpd
+        from analysis.complexity import sample_entropy as _sampen
         _res_ap = _fit_ap(f_psd, p_psd, fmin=1.0, fmax=min(20.0, float(f_psd[-1])))
         _apow = _bpd(f_psd, p_psd, alpha_band[0], alpha_band[1], res=_res_ap)
-        st.markdown("**Alpha-Power — drei Definitionen** "
-                    "<span style='font-size:11px;color:#888'>(Maschke 2025: abs/flattened → "
-                    "v. a. anoxisch · relativ → v. a. nicht-anoxisch)</span>",
-                    unsafe_allow_html=True)
-        a1, a2, a3 = st.columns(3)
-        a1.metric("Alpha absolut", f"{_apow['absolute']:.2f}" if _apow['absolute'] == _apow['absolute'] else "—",
-                  help="log₁₀(Fläche unter der PSD im Alpha-Band). Von Untergrund-Suppression "
-                       "beeinflusst; diagnostisch v. a. bei anoxischen Patienten.")
-        a2.metric("Alpha relativ", f"{_apow['relative']:.1f} %" if _apow['relative'] == _apow['relative'] else "—",
-                  help="Anteil der Alpha-Leistung am Gesamtspektrum (1–40 Hz). Korrigiert für "
-                       "Gesamtpower; diagnostisch v. a. bei nicht-anoxischen Patienten (v. a. via Exponent).")
-        a3.metric("Alpha flattened", f"{_apow['flattened']:.2f}" if _apow['flattened'] == _apow['flattened'] else "—",
-                  help="Fläche unter dem aperiodik-bereinigten Spektrum im Alpha-Band — nur der "
-                       "echte Oszillationsgipfel, ohne 1/f-Untergrund. Diagnostisch v. a. anoxisch.")
+        _sef95 = _spectral_edge(f_psd, p_psd, 0.95)
+        _medf  = _spectral_edge(f_psd, p_psd, 0.50)
+        _seg = sig_full[i0:i1]
+        _sampen_val = _sampen(_seg, max_n=4000) if len(_seg) >= 100 else float("nan")
+        if compute_lzc and len(_seg) >= int(5 * fs):
+            _lzc = _lzc_cached(_seg.astype(np.float64).tobytes(), len(_seg), fs)
+
+    # ── Band-Karten (je Rhythmus eine Karte, feste Bandfarben) ────────────────
+    def _fx(v, u="", d=1):
+        return f"{v:.{d}f}{u}" if v == v else "—"
+
+    def _apk_dot(v):
+        if v != v:
+            return "transparent"
+        if 9 <= v <= 11:
+            return "#27ae60"
+        if 8 <= v < 9 or 11 < v <= 13:
+            return "#e6a817"
+        return "#c0392b"
+
+    st.markdown("**Frequenzbänder** <span style='font-size:11px;color:#8a94a0'>— je Rhythmus "
+                "eine Karte · feste Bandfarben · Ampel nur beim Alpha-Peak (belastbare Norm)</span>",
+                unsafe_allow_html=True)
+
+    _band_meta = [
+        ("Alpha", "#27ae60", "Grundrhythmus, wach — hinten am stärksten · Norm-Peak 9–11 Hz"),
+        ("Delta", "#4a90d9", "↑ erhöht = Verlangsamung / Enzephalopathie"),
+        ("Theta", "#9b59b6", "↑ bei Schläfrigkeit / Verlangsamung"),
+        ("Beta",  "#e67e22", "Aktivierung · Benzodiazepine/Barbiturate ↑"),
+    ]
+    _cards = []
+    for name, col, meaning in _band_meta:
+        rel = bp.get(name, 0) / total * 100
+        extra = ""
+        if name == "Alpha":
+            extra = (
+                "<div style='border-top:0.5px solid var(--border);margin-top:9px;padding-top:7px'>"
+                "<div style='display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary)'>"
+                f"<span>Peak (Max/CoG)</span><span style='color:var(--text-primary)'>"
+                f"{_fx(ap,' Hz')} <span style='color:{_apk_dot(ap)};font-size:14px'>●</span> / {_fx(acog,' Hz')}</span></div>"
+                "<div style='display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-top:3px'>"
+                f"<span>abs / relativ / flattened</span><span style='color:var(--text-primary)'>"
+                f"{_fx(_apow['absolute'],'',2)} / {_fx(_apow['relative'],' %')} / {_fx(_apow['flattened'],'',2)}</span></div></div>")
+        _cards.append(
+            f"<div style='background:var(--surface-2);border:0.5px solid var(--border);"
+            f"border-left:4px solid {col};border-radius:0 10px 10px 0;padding:11px 13px'>"
+            "<div style='display:flex;justify-content:space-between;align-items:baseline'>"
+            f"<span style='font-weight:700;color:{col}'>{name}</span>"
+            f"<span style='font-size:21px;font-weight:800;color:var(--text-primary)'>{rel:.0f} %</span></div>"
+            "<div style='height:5px;border-radius:3px;background:var(--surface-1);margin-top:6px'>"
+            f"<div style='height:100%;width:{min(rel,100):.0f}%;background:{col};border-radius:3px'></div></div>"
+            f"<div style='font-size:11px;color:var(--text-muted);margin-top:7px'>{meaning}</div>{extra}</div>")
+
+    st.markdown(
+        "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px'>"
+        + "".join(_cards) + "</div>", unsafe_allow_html=True)
+
+    # ── Übergreifende Karte: Verlangsamung & Komplexität (zustandsabhängig) ────
+    _lzc_str = (f"{_fx(_lzc['shuffle'],'',2)} / {_fx(_lzc['phase'],'',2)}"
+                if _lzc['shuffle'] == _lzc['shuffle'] else "— (in ⚙️ aktivieren)")
+
+    def _cxcell(label, val, hint):
+        return (f"<div><div style='font-size:11px;color:var(--text-secondary)'>{label}</div>"
+                f"<div style='font-size:19px;font-weight:500;color:var(--text-primary)'>{val}</div>"
+                f"<div style='font-size:10px;color:var(--text-muted)'>{hint}</div></div>")
+
+    st.markdown(
+        "<div style='background:var(--surface-2);border:0.5px solid var(--border);"
+        "border-left:4px solid #64748b;border-radius:0 10px 10px 0;padding:11px 13px;margin-top:10px'>"
+        "<div style='font-weight:700;color:var(--text-secondary);margin-bottom:9px'>"
+        "Übergreifend — spektrale Verlangsamung &amp; Komplexität</div>"
+        "<div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px'>"
+        + _cxcell("SEF95", _fx(_sef95, " Hz"), "↓ bei Verlangsamung")
+        + _cxcell("Medianfrequenz", _fx(_medf, " Hz"), "↓ verlangsamt")
+        + _cxcell("Sample Entropy", _fx(_sampen_val, "", 2), "↓ reduziertes Bewusstsein")
+        + _cxcell("LZC (shuffle/phase)", _lzc_str, "hoch = komplex")
+        + "</div><div style='font-size:11px;color:var(--text-muted);margin-top:8px'>"
+        "Zustandsabhängig — als Trend/Deutung, keine feste Ampel.</div></div>",
+        unsafe_allow_html=True)
 
     # Ratios
     st.markdown("**Klinische Ratios**")
@@ -760,6 +790,12 @@ def render():
                 ),
             )
         amp_thresh = 150.0 if use_art_filter else 9999.0
+
+        heavy_calc = st.toggle(
+            "Rechenintensive Maße berechnen (LZC, A/P-Gradient)",
+            value=False, key="spec_heavy",
+            help="LZC-Komplexität (O(N²)) und der kopfweite A/P-Gradient (PAR) brauchen mehr "
+                 "Rechenzeit. Standard aus, damit die Ansicht schnell bleibt — bei Bedarf aktivieren.")
 
     all_eeg = sorted(eeg_map.keys())
 
@@ -901,10 +937,27 @@ def render():
     # ══════════════════════════════════════════════════════════════════════════
     # ANTERIOR-POSTERIOR-GRADIENT (PAR) — ganzer Kopf
     # ══════════════════════════════════════════════════════════════════════════
-    section_header("🧭 Anterior-Posterior-Gradient (PAR)",
-                   "Ganzer Kopf · geom. Mittel posterior/anterior · Colombo 2023 / Maschke 2025")
-    _par = _compute_par(edf_path, t_start, t_end, alpha_band[0], alpha_band[1],
-                        use_multitaper, float(amp_thresh))
+    section_header("🧭 Anterior-Posterior-Gradient (PAR)", "Ganzer Kopf · ganzes Gehirn")
+    st.markdown(
+        "<div style='background:#eef3fb;border-left:4px solid #2471a3;border-radius:8px;"
+        "padding:10px 14px;margin:2px 0 8px 0;font-size:13px'>"
+        "<b>Was misst dieser Gradient — und warum ist er interessant?</b><br>"
+        "Beim <b>gesunden wachen Gehirn</b> sitzt der Alpha-Grundrhythmus <b>hinten</b> "
+        "(okzipital), vorne dominiert schnellere Aktivität. Dieses <b>Hinten-stärker-als-vorne</b> "
+        "ist ein Grundmerkmal des intakten, wachen Kortex. Der PAR fasst das in einer Zahl: "
+        "<b>&gt;1 = posterior-dominant (normal)</b>. Sinkt oder kehrt sich der Gradient um "
+        "(&lt;1), spricht das für eine <b>diffuse Hirnfunktionsstörung</b> (Enzephalopathie, "
+        "Bewusstseinsminderung) — der Rhythmus wandert nach vorne oder verschwindet.</div>",
+        unsafe_allow_html=True,
+    )
+    if not st.session_state.get("spec_heavy", False):
+        st.info("ℹ️ Rechenintensiv — in den **⚙️ Analyse-Optionen** oben die Option "
+                "**Rechenintensive Maße berechnen** aktivieren, um den A/P-Gradienten "
+                "(ganzer Kopf) zu berechnen.")
+        _par = {"n_post": 0, "n_ant": 0, "par": float("nan")}
+    else:
+        _par = _compute_par(edf_path, t_start, t_end, alpha_band[0], alpha_band[1],
+                            use_multitaper, float(amp_thresh))
     if _par["n_post"] >= 2 and _par["n_ant"] >= 2 and _par["par"] == _par["par"]:
         _pv = _par["par"]
         _pzone = "normal" if _pv >= 1.0 else ("grenzwertig" if _pv >= 0.6 else "pathologisch")
@@ -958,7 +1011,7 @@ def render():
             ch_label, _get(ch_label), fs, dur_s,
             t_start, t_end, f"ch_{ch_label}",
             multitaper=use_multitaper, amp_thresh_uv=float(amp_thresh),
-            all_eeg=all_eeg, get_sig_fn=_get, alpha_band=alpha_band,
+            all_eeg=all_eeg, get_sig_fn=_get, alpha_band=alpha_band, compute_lzc=heavy_calc,
         )
         st.markdown("---")
 

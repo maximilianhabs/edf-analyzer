@@ -616,6 +616,14 @@ def _classify_one(f: dict, ch_name: str, is_bids_eeg_file: bool = False) -> Chan
         scores[REF] += 16
         reasons[REF].append("Kanalname: Referenz-Bezeichnung erkannt")
 
+    # Benannte 10-20-Elektroden (C3, O2 …) sind nie eine Referenz — niedrige Amplitude
+    # ist bei echtem EEG normal (zentrale Kanäle 5–15 µV) und bei zerebraler Inaktivität/
+    # Hirntod ist die near-isoelektrische Linie SELBST der Befund. A1/A2/M1/M2 sind nicht in
+    # _EEG_ELECTRODES und dürfen daher weiter REF werden.
+    if _is_named_eeg and not any(n in ch_up for n in _REF_HINTS) and scores[REF] > 0:
+        scores[REF] = 0.0
+        reasons[EEG].append("10-20-Elektrode: niedrige Amplitude ≠ Referenz")
+
     # ── Winner selection ──────────────────────────────────────────────────────
     best_type  = max(scores, key=lambda t: scores[t])
     best_score = scores[best_type]
