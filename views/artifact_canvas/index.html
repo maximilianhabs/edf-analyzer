@@ -69,16 +69,22 @@ function draw() {
     const [x, w] = segX(s, W);
     if (s.state === "removed") {
       ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
-      ctx.strokeRect(x, 0.5, w, plotH - 1); ctx.setLineDash([]);
+      ctx.strokeRect(x, 16.5, w, plotH - 17); ctx.setLineDash([]);
       ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "bold 9px system-ui";
-      if (w > 46) ctx.fillText("inaktiv – Klick aktiviert", x + 3, 11);
+      if (w > 46) ctx.fillText("inaktiv – Klick aktiviert", x + 3, 27);
     } else {
       ctx.strokeStyle = s.state === "manual" ? "#f59e0b" : "#ff2d2d"; ctx.lineWidth = 1.5;
-      ctx.strokeRect(x, 0.75, w, plotH - 1.5);
+      ctx.strokeRect(x, 0.75 + 16, w, plotH - 1.5 - 16);
       ctx.fillStyle = ctx.strokeStyle; ctx.font = "bold 9px system-ui";
-      if (w > 34) ctx.fillText(s.state === "manual" ? "manuell" : "verworfen", x + 3, 11);
+      if (w > 34) ctx.fillText(s.state === "manual" ? "manuell" : "verworfen", x + 3, 27);
     }
   });
+
+  // Klick-Hinweis-Leiste (immer oben, lesbar — auch über invertierten Blöcken)
+  ctx.fillStyle = "#0f1115"; ctx.fillRect(0, 0, W, 16);
+  ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = "11px system-ui";
+  ctx.fillText("Klick ins EEG → 5-s-Artefakt hinzufügen (direkt daneben klicken verlängert den Block)"
+    + "   ·   Klick auf einen Block → entfernen / wieder aktivieren", LEFT + 2, 12);
 }
 
 cv.addEventListener("click", ev => {
@@ -96,6 +102,18 @@ cv.addEventListener("click", ev => {
   } else {
     sendValue({action: "add", t: t, n: Date.now()});
   }
+});
+
+cv.addEventListener("mousemove", ev => {
+  if (!D) return;
+  const rect = cv.getBoundingClientRect();
+  const W = cv.clientWidth, PW = W - LEFT;
+  const px = ev.clientX - rect.left;
+  if (px < LEFT) { cv.style.cursor = "default"; return; }
+  const frac = (px - LEFT) / PW;
+  let over = false;
+  for (const s of D.segments) { if (frac >= s.x0 && frac <= s.x1) { over = true; break; } }
+  cv.style.cursor = over ? "pointer" : "crosshair";
 });
 
 window.addEventListener("message", e => {
