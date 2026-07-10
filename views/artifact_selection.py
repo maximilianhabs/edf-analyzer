@@ -377,7 +377,8 @@ def _render_review_viewer(edf, res):
     with c1:
         montage = st.selectbox("Montage", _MONTAGES, index=0)
     with c2:
-        screen_s = st.selectbox("Screen", [60, 100], index=0, format_func=lambda s: f"{s} s")
+        screen_s = st.selectbox("Screen", [10, 30, 60, 100], index=2,
+                                format_func=lambda s: f"{s} s")
     with c4:
         st.markdown("<div style='font-size:13px;color:#555'>Empfindlichkeit</div>",
                     unsafe_allow_html=True)
