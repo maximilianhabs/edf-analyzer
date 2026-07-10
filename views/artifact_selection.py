@@ -379,8 +379,22 @@ def _render_review_viewer(edf, res):
     with c2:
         screen_s = st.selectbox("Screen", [60, 100], index=0, format_func=lambda s: f"{s} s")
     with c4:
-        sens = st.select_slider("Empfindlichkeit", options=[0.25, 0.5, 1.0, 2.0, 4.0],
-                                value=1.0, format_func=lambda v: f"{v:g}×")
+        st.markdown("<div style='font-size:13px;color:#555'>Empfindlichkeit</div>",
+                    unsafe_allow_html=True)
+        _SENS_OPTS = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+        sk = "artifact_sens"
+        cur = st.session_state.get(sk, 1.0)
+        si = _SENS_OPTS.index(cur) if cur in _SENS_OPTS else 2
+        sc1, sc2, sc3 = st.columns([1, 1.3, 1])
+        if sc1.button("−", key="sens_dn", use_container_width=True, disabled=(si == 0)):
+            si -= 1
+        if sc3.button("＋", key="sens_up", use_container_width=True,
+                      disabled=(si == len(_SENS_OPTS) - 1)):
+            si += 1
+        st.session_state[sk] = _SENS_OPTS[si]
+        sens = _SENS_OPTS[si]
+        sc2.markdown(f"<div style='text-align:center;padding-top:6px;font-weight:800;"
+                     f"font-size:15px'>{sens:g}×</div>", unsafe_allow_html=True)
 
     n_screens = max(1, int(np.ceil(dur / screen_s)))
     key = "artifact_screen_idx"
