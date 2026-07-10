@@ -395,50 +395,6 @@ def render():
                         except Exception:
                             pass
 
-    # ── 3b. Methodik & Validität (W0) + R-Zacken-Vergleich (W1) ───────────────
-    st.divider()
-    with st.expander("🔬 Methodik & Validität — Verfahren, Referenzen, Reifegrad", expanded=False):
-        from analysis.methods import METHODS
-        st.dataframe(pd.DataFrame(
-            [{"Bereich": b, "Parameter": p, "Verfahren": v, "Referenz": r, "Reifegrad": m}
-             for b, p, v, r, m in METHODS], columns=["Bereich", "Parameter", "Verfahren", "Referenz", "Reifegrad"]),
-            hide_index=True, use_container_width=True)
-        st.caption("✅ validiert · 🟡 akzeptierte Methode, vereinfachte Umsetzung · 🔬 Forschungs-"
-                   "Proxy/geplant. Die Umsetzung wird schrittweise (W-Serie) auf Goldstandard gehoben.")
-
-        if edf.get("ecg_channels"):
-            st.markdown("**R-Zacken-Detektor — Methodenvergleich (W1)**")
-
-            @st.cache_data(show_spinner="Vergleiche R-Zacken-Detektoren …")
-            def _rpeak_compare(_path):
-                e = apply_channel_overrides(load_and_prepare(_path))
-                ch = e["ecg_channels"][0]; sf = e["sfreq"]
-                sig = e["data"][e["ch_idx"][ch]].astype(float)
-                from analysis.ecg import (detect_r_peaks, detect_r_peaks_validated,
-                                          build_rr_series, compute_hrv_time_domain)
-                rows = []
-                for label, pk in [("eigen (simpel)", detect_r_peaks(sig, sf)),
-                                  ("Hamilton 2002 (validiert)", detect_r_peaks_validated(sig, sf, "hamilton")),
-                                  ("Pan-Tompkins (validiert)", detect_r_peaks_validated(sig, sf, "pan_tompkins"))]:
-                    rr = build_rr_series(np.asarray(pk, int), sf)
-                    if rr is None:
-                        continue
-                    td = compute_hrv_time_domain(rr.rr_ms[~rr.artifact_mask])
-                    rows.append({"Detektor": label, "#R-Zacken": len(pk),
-                                 "HR (bpm)": td["mean_hr_bpm"], "SDNN (ms)": td["sdnn_ms"],
-                                 "RMSSD (ms)": td["rmssd_ms"], "pNN50 (%)": td["pnn50_pct"]})
-                return rows
-
-            try:
-                st.dataframe(pd.DataFrame(_rpeak_compare(edf_path)), hide_index=True,
-                             use_container_width=True)
-                st.caption("Der Detektor beeinflusst v. a. **RMSSD/pNN50** (Timing-Präzision der "
-                           "R-Zacke). **Hamilton 2002** = validierter Standard (py-ecg-detectors) + "
-                           "Maximum-Refinement. Aktuell laufen HRV-Werte noch über den eigenen "
-                           "Detektor; Umstellung des Defaults nach breiterer Validierung.")
-            except Exception as ex:
-                st.caption(f"Detektor-Vergleich nicht verfügbar: {ex}")
-
     # ── 4. Export: kompletter Report als PDF / Excel ──────────────────────────
     st.divider()
     st.subheader("⬇️ Gesamt-Report exportieren")
