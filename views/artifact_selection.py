@@ -113,6 +113,9 @@ def _render_spectral_compare(edf, res):
     eeg_map = edf["eeg_map"]
     section_header("Spektralanalyse — Gesamt vs. artefaktkorrigiert",
                    "Gleiche Analyse einmal über die ganze Aufnahme, einmal nur auf sauberen Segmenten")
+    st.caption(f"🔄 Der Korrigiert-Wert nutzt die **aktuelle** Maske ({_mmss(res.clean_s)} min:s "
+               f"sauber, {len(res.segments)} Segmente) — aktualisiert sich sofort bei jeder "
+               "Bearbeitung oben.")
 
     if not res.segments:
         st.info("Keine Artefakt-Segmente markiert → korrigiert = Gesamt (nichts zu entfernen).")
@@ -187,6 +190,8 @@ def _render_hrv_compare(edf, edf_path, res, overrides_key):
     ecg_channels = edf.get("ecg_channels") or []
     section_header("HRV — Gesamt vs. artefaktkorrigiert",
                    "RR-basierte Herzratenvariabilität, einmal komplett, einmal ohne Bewegungsfenster")
+    st.caption(f"🔄 Der Korrigiert-Wert schließt die Schläge in der **aktuellen** Maske "
+               f"({len(res.segments)} Segmente) aus — aktualisiert sich sofort bei jeder Bearbeitung.")
     if not ecg_channels:
         st.info("Kein EKG-Kanal identifiziert → HRV-Vergleich nicht möglich. Ggf. in der "
                 "Kanal-Identifikation einen EKG-Kanal festlegen.")
@@ -584,14 +589,31 @@ def render():
     res = _effective_res(res_auto, dur)   # Auto-Maske + manuelle Overrides (A9a)
 
     # ── Zusammenfassung ──────────────────────────────────────────────────────
-    section_header("Übersicht", "Auto-Vorschlag — read-only")
+    ov = st.session_state.get("artifact_overrides", {"removed": [], "added": []})
+    n_add, n_rem = len(ov["added"]), len(ov["removed"])
+    edited = bool(n_add or n_rem)
+    section_header("Übersicht", "Effektive Maske = Auto + deine Änderungen · live berechnet")
     disc = dur - res.clean_s
+    _dpp = (res.clean_frac - res_auto.clean_frac) * 100   # Prozentpunkte vs. Auto
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Sauberes EEG", f"{res.clean_frac*100:.0f}%", help="Anteil ohne markiertes Artefakt.")
-    m2.metric("Verworfen (Vorschlag)", f"{disc:.0f}s",
-              help=f"{_mmss(disc)} min:s von {_mmss(dur)}.")
-    m3.metric("Artefakt-Segmente", f"{len(res.segments)}")
+    m1.metric("Sauberes EEG", f"{res.clean_frac*100:.0f}%",
+              delta=(f"{_dpp:+.0f} pp vs. Auto" if abs(_dpp) >= 0.5 else None),
+              help="Anteil ohne markiertes Artefakt (nach deinen Änderungen).")
+    m2.metric("Verworfen", f"{disc:.0f}s", help=f"{_mmss(disc)} min:s von {_mmss(dur)}.")
+    m3.metric("Segmente", f"{len(res.segments)}",
+              delta=(f"+{n_add}/−{n_rem} manuell" if edited else None), delta_color="off")
     m4.metric("Bad-Channel-Vorschläge", f"{len(res.bad_channels)}")
+
+    # Live-Status: WANN/WORAUF die Auswertung basiert
+    if edited:
+        st.success(
+            f"🔄 **Live aktualisiert.** Spektrum & HRV unten rechnen mit deiner **bearbeiteten** "
+            f"Maske: Auto {len(res_auto.segments)} Segmente, manuell **+{n_add} / −{n_rem}** → "
+            f"effektiv **{len(res.segments)} Segmente**, **{res.clean_frac*100:.0f}%** sauber "
+            f"(Auto: {res_auto.clean_frac*100:.0f}%). Jede Klick-Änderung wird **sofort** neu berechnet.")
+    else:
+        st.info("🔄 Noch keine manuellen Änderungen — es gilt die **Auto-Maske**. Sobald du oben im "
+                "Canvas Segmente hinzufügst/entfernst, werden **Spektrum & HRV sofort** neu berechnet.")
 
     # Genügend saubere Zeit? (Literatur: ~1–2 min reichen spektral)
     if res.clean_s < 60:
