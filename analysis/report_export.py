@@ -30,7 +30,10 @@ def _row(p, val, unit="", norm=""):
 # ──────────────────────────────────────────────────────────────────────────────
 # Parameter sammeln → [(Bereich, [rows])]
 # ──────────────────────────────────────────────────────────────────────────────
-def collect_sections(edf: dict, edf_path: str):
+def collect_sections(edf: dict, edf_path: str, segments=None):
+    """segments=None → Auswertung über die Gesamtaufnahme. segments=[{start_s,end_s}] →
+    artefaktkorrigiert: diese Bereiche werden aus EEG (Sample-Ebene) und HRV (Schläge) entfernt."""
+    corrected = bool(segments)
     sections = []
     sfreq = edf["sfreq"]
     dur_s = edf["duration_s"]
@@ -38,7 +41,7 @@ def collect_sections(edf: dict, edf_path: str):
 
     # ── Aufnahme ──────────────────────────────────────────────────────────────
     phi = "PHI im Header" if (edf.get("has_patient_id") or edf.get("has_rec_id")) else "anonymisiert"
-    sections.append(("Aufnahme & Erkennung", [
+    aufnahme = [
         _row("Dauer", f"{dur_s/60:.1f}", "min", f"{int(dur_s)} s"),
         _row("Abtastrate", _f(sfreq, ".0f"), "Hz", ""),
         _row("Kanäle gesamt", str(len(edf["ch_names"])), "", ""),
@@ -46,13 +49,25 @@ def collect_sections(edf: dict, edf_path: str):
         _row("EKG erkannt", "ja" if edf.get("ecg_channels") else "nein", "",
              (edf["ecg_channels"][0] if edf.get("ecg_channels") else "")),
         _row("Datenschutz", phi, "", ""),
-    ]))
+    ]
+    if corrected:
+        disc = sum(s["end_s"] - s["start_s"] for s in segments)
+        aufnahme.append(_row("Modus", "artefaktkorrigiert", "",
+                             f"{len(segments)} Segmente entfernt · {disc:.0f}s"))
+        aufnahme.append(_row("Sauberes EEG", f"{max(0.0, dur_s-disc):.0f}", "s",
+                             f"{max(0.0, dur_s-disc)/dur_s*100:.0f}% der Aufnahme"))
+    else:
+        aufnahme.append(_row("Modus", "Gesamtaufnahme", "", "ohne Artefaktkorrektur"))
+    sections.append(("Aufnahme & Erkennung", aufnahme))
 
     # ── HRV ───────────────────────────────────────────────────────────────────
     if edf.get("ecg_channels"):
         try:
-            from views.report import _compute_hrv
-            hrv = _compute_hrv(edf_path, edf)
+            if corrected:
+                hrv = _compute_hrv_corrected(edf_path, edf, segments)
+            else:
+                from views.report import _compute_hrv
+                hrv = _compute_hrv(edf_path, edf)
         except Exception:
             hrv = None
         if hrv:
@@ -92,25 +107,85 @@ def collect_sections(edf: dict, edf_path: str):
 
     # ── EEG-Spektrum ──────────────────────────────────────────────────────────
     if eeg_map:
-        _collect_eeg(sections, edf, edf_path, sfreq, dur_s, eeg_map)
+        _collect_eeg(sections, edf, edf_path, sfreq, dur_s, eeg_map, segments)
 
     return sections
 
 
-def _collect_eeg(sections, edf, edf_path, sfreq, dur_s, eeg_map):
+def _clean_sig(sig, fs, segments):
+    """Entfernt die Artefakt-Segmente aus einem Signal (behält nur saubere Samples)."""
+    keep = np.ones(len(sig), dtype=bool)
+    for s in segments:
+        keep[max(0, int(s["start_s"] * fs)):min(len(sig), int(s["end_s"] * fs))] = False
+    return sig[keep]
+
+
+def _compute_hrv_corrected(edf_path, edf, segments):
+    """Wie views.report._compute_hrv, aber ohne Schläge in den Artefakt-Segmenten."""
+    from analysis.ecg import (detect_r_peaks, build_rr_series, compute_hrv_time_domain,
+                              dfa_alpha1)
+    from analysis.complexity import sample_entropy
+    from analysis.hrv_freq import compute_frequency_domain
+    ch = edf["ecg_channels"][0]
+    if ch not in edf.get("ch_idx", {}):
+        return None
+    fs = edf["sfreq"]
+    sig = edf["data"][edf["ch_idx"][ch]].astype(float)
+    rr = build_rr_series(detect_r_peaks(sig, fs), fs)
+    if rr is None:
+        return None
+    rr_ms, times, ect = rr.rr_ms, rr.rr_times_s, rr.artifact_mask
+    in_seg = np.zeros(len(rr_ms), dtype=bool)
+    for s in segments:
+        in_seg |= (times >= s["start_s"]) & (times < s["end_s"])
+    keep = (~ect) & (~in_seg)
+    rr_c, times_c = rr_ms[keep], times[keep]
+    if len(rr_c) < 10:
+        return None
+    td = compute_hrv_time_domain(rr_c)
+    _dfa = dfa_alpha1(rr_c)
+    fd_welch = None
+    try:
+        fd_welch = compute_frequency_domain(rr_c, times_c, method="welch")
+    except Exception:
+        pass
+    n_removed = int((~keep).sum())
+    return {
+        "mean_hr": td["mean_hr_bpm"], "mean_rr": td["mean_rr_ms"], "sdnn": td["sdnn_ms"],
+        "cv": td["cv_pct"], "rmssd": td["rmssd_ms"], "pnn50": td["pnn50_pct"],
+        "pnn20": td["pnn20_pct"], "nn50": td["nn50_count"], "sd1": td["sd1_ms"],
+        "sd2": td["sd2_ms"], "sd2_sd1": td["sd2_sd1_ratio"],
+        "dfa_a1": _dfa["alpha1"] if _dfa else float("nan"),
+        "samp_en": sample_entropy(rr_c) if len(rr_c) >= 20 else float("nan"),
+        "edr_rate": float("nan"),  # EDR braucht durchgehende R-Zacken → im korrigierten Modus n/v
+        "pct_removed": n_removed / max(len(rr_ms), 1) * 100,
+        "fd_welch": fd_welch, "fd_burg": None,
+    }
+
+
+def _collect_eeg(sections, edf, edf_path, sfreq, dur_s, eeg_map, segments=None):
     from views.report import _compute_bandpower
+    corrected = bool(segments)
 
     def _get(ch):
-        return edf["data"][eeg_map[ch]] * 1e6 if ch in eeg_map else None
+        if ch not in eeg_map:
+            return None
+        s = edf["data"][eeg_map[ch]] * 1e6
+        return _clean_sig(s, sfreq, segments) if corrected else s
 
     o1, o2, f3, f4 = _get("O1"), _get("O2"), _get("F3"), _get("F4")
     sig_post = (o1 + o2) / 2 if o1 is not None and o2 is not None else (o1 if o1 is not None else o2)
     sig_ant = (f3 + f4) / 2 if f3 is not None and f4 is not None else (f3 if f3 is not None else f4)
     if sig_post is None:
         return
-    ana = min(dur_s, 300.0)
-    t0 = max(0.0, (dur_s - ana) / 2)
-    t1 = t0 + ana
+    if corrected:
+        t0, t1 = 0.0, None
+        win_lbl = f"{len(sig_post)/sfreq:.0f}s sauber (artefaktkorrigiert)"
+    else:
+        ana = min(dur_s, 300.0)
+        t0 = max(0.0, (dur_s - ana) / 2)
+        t1 = t0 + ana
+        win_lbl = f"{int(t0)}–{int(t1)} s"
 
     bp_p, freqs_p, psd_p, ap_post = _compute_bandpower(sig_post, sfreq, t0, t1)
     if not bp_p:
@@ -123,7 +198,7 @@ def _collect_eeg(sections, edf, edf_path, sfreq, dur_s, eeg_map):
     BK = ["Delta (1–4 Hz)", "Theta (4–8 Hz)", "Alpha (8–13 Hz)", "Beta (13–30 Hz)"]
     BN = ["Delta", "Theta", "Alpha", "Beta"]
 
-    sections.append((f"EEG-Bandpower posterior O1/O2 · {int(t0)}–{int(t1)} s", [
+    sections.append((f"EEG-Bandpower posterior O1/O2 · {win_lbl}", [
         _row(f"{bn} relativ", _f(bp_p.get(bk, 0) / tp * 100), "%", "rel. Anteil")
         for bk, bn in zip(BK, BN)
     ]))
@@ -139,16 +214,18 @@ def _collect_eeg(sections, edf, edf_path, sfreq, dur_s, eeg_map):
         _row("Alpha-Gipfel anterior", _f(ap_ant, ".2f"), "Hz", "< posterior"),
         _row("Post/Ant Alpha-Ratio", _f(ap_ratio, ".2f"), "Ratio", "> 1 posterior-dominant"),
     ]
-    # A/P-Gradient (ganzer Kopf, PAR)
-    try:
-        from views.eeg_spectrum import _compute_par
-        par = _compute_par(edf_path, t0, t1, 8.0, 13.0, False, 9999.0)
-        if par["n_post"] >= 2 and par["n_ant"] >= 2:
-            grad.append(_row("Alpha-PAR (ganzer Kopf)", _f(par["par"], ".2f"), "—", "> 1 posterior-dominant"))
-            grad.append(_row("Exponent-Gradient post−ant", _f(par["exp_grad"], "+.2f"), "—",
-                             f"{par['n_post']} post / {par['n_ant']} ant"))
-    except Exception:
-        pass
+    # A/P-Gradient (ganzer Kopf, PAR) — nur unkorrigiert (PAR rechnet auf der Rohdatei über
+    # ein Zeitfenster; auf sample-bereinigten Daten nicht ohne Weiteres anwendbar).
+    if not corrected:
+        try:
+            from views.eeg_spectrum import _compute_par
+            par = _compute_par(edf_path, t0, t1, 8.0, 13.0, False, 9999.0)
+            if par["n_post"] >= 2 and par["n_ant"] >= 2:
+                grad.append(_row("Alpha-PAR (ganzer Kopf)", _f(par["par"], ".2f"), "—", "> 1 posterior-dominant"))
+                grad.append(_row("Exponent-Gradient post−ant", _f(par["exp_grad"], "+.2f"), "—",
+                                 f"{par['n_post']} post / {par['n_ant']} ant"))
+        except Exception:
+            pass
     sections.append(("EEG — Alpha-Gipfel & A/P-Gradient", grad))
 
     # Klinische Ratios
@@ -174,7 +251,7 @@ def _collect_eeg(sections, edf, edf_path, sfreq, dur_s, eeg_map):
             exp20 = rap["exponent"] if rap else float("nan")
             r2 = rap["r2"] if rap else float("nan")
             flat_a = band_power_defs(freqs_p, psd_p, 8, 13, res=rap)["flattened"]
-            seg = sig_post[int(t0 * sfreq):int(t1 * sfreq)]
+            seg = sig_post if corrected else sig_post[int(t0 * sfreq):int(t1 * sfreq)]
             sampen = sample_entropy(seg, max_n=4000) if len(seg) >= 100 else float("nan")
             lzc = lziv_complexity(seg, sfreq) if len(seg) >= int(5 * sfreq) else {"shuffle": float("nan"), "phase": float("nan")}
             sections.append(("EEG — Verlangsamung, Aperiodik (1/f) & Komplexität", [

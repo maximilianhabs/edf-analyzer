@@ -672,3 +672,38 @@ def render():
             "Elektrode zum Ausblenden **vorgeschlagen**.\n\n"
             "*Im Zweifel wird behalten — lieber ein Artefakt durchlassen als echtes EEG verwerfen.*"
         )
+
+    # ── Export: artefaktkorrigierter Report als PDF / Excel ──────────────────
+    st.divider()
+    st.subheader("⬇️ Artefaktkorrigierten Report exportieren")
+    st.caption("Alle Parameter (HRV · EEG-Spektrum · Aperiodik · Asymmetrie) berechnet auf den "
+               "**sauberen** Segmenten deiner aktuellen Maske — kompakt, mit Einheit und kurzer Norm. "
+               "PDF und Excel, analog zum Report, aber artefaktkorrigiert.")
+
+    @st.cache_data(show_spinner="Erstelle artefaktkorrigierten Report …")
+    def _export_corrected(_path, _seg_tuple, _disp):
+        from analysis.report_export import collect_sections, build_pdf, build_excel
+        e = apply_channel_overrides(load_and_prepare(_path))
+        segs = [{"start_s": a, "end_s": b} for a, b in _seg_tuple]
+        secs = collect_sections(e, _path, segments=segs)
+        return build_pdf(secs, _disp + " (artefaktkorrigiert)"), build_excel(secs, e, _disp)
+
+    _disp = st.session_state.get("edf_display_name", "report")
+    _base = (_disp.rsplit(".", 1)[0] if _disp else "report") + "_artefaktkorrigiert"
+    _seg_tuple = tuple((s["start_s"], s["end_s"]) for s in res.segments)
+    if not res.segments:
+        st.info("Noch keine Artefakt-Segmente markiert → der korrigierte Report entspräche der "
+                "Gesamtauswertung. Markiere/erzeuge oben Segmente oder nutze den Export auf der "
+                "**Report**-Seite.")
+    else:
+        try:
+            pdf_bytes, xlsx_bytes = _export_corrected(edf_path, _seg_tuple, _disp)
+            ec1, ec2 = st.columns(2)
+            ec1.download_button("📄 PDF (korrigiert)", pdf_bytes, file_name=f"{_base}.pdf",
+                                mime="application/pdf", use_container_width=True)
+            ec2.download_button(
+                "📊 Excel (korrigiert)", xlsx_bytes, file_name=f"{_base}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True)
+        except Exception as e:
+            st.error(f"Export fehlgeschlagen: {e}")
