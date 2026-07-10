@@ -36,12 +36,25 @@ def _mmss(s: float) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
+# A10: Regions-Toleranz-Presets (Faktoren + räumlicher Schutz min_nonfrontal)
+_REGION_PRESETS = {
+    "aus":     ({"FP1": 1.0, "FP2": 1.0, "F7": 1.0, "F8": 1.0, "T3": 1.0, "T4": 1.0}, 0),
+    "moderat": (None, 1),  # None → Modul-Default (Fp 2,0 / F7F8 1,4 / T3T4 1,2)
+    "kräftig": ({"FP1": 2.5, "FP2": 2.5, "F7": 1.8, "F8": 1.8, "T3": 1.4, "T4": 1.4}, 2),
+}
+
+
 @st.cache_data(show_spinner="Berechne Artefakt-Maske …")
-def _cached_mask(edf_path: str, overrides_key: str):
-    """Gecachte Masken-Berechnung. overrides_key hält den Cache konsistent mit den
-    manuellen Kanal-Korrekturen (Kanal-Identifikation)."""
+def _cached_mask(edf_path: str, overrides_key: str, flag_sus: float, consensus_n: int,
+                 min_island: float, region: str):
+    """Gecachte Masken-Berechnung. Cache-Key umfasst Kanal-Overrides UND die justierten
+    Detektor-Schwellen (A10)."""
     edf = apply_channel_overrides(load_and_prepare(edf_path))
-    return mask_from_edf(edf, ArtifactParams())
+    rf, mnf = _REGION_PRESETS.get(region, (None, 1))
+    p = ArtifactParams(flag_sus=flag_sus, consensus_n=int(consensus_n),
+                       min_clean_island_s=float(min_island),
+                       region_factors=rf, min_nonfrontal=mnf)
+    return mask_from_edf(edf, p)
 
 
 @st.cache_data(show_spinner="Erkenne R-Zacken …")
@@ -584,7 +597,31 @@ def render():
         return
 
     overrides_key = str(sorted(st.session_state.get("channel_overrides", {}).items()))
-    res_auto = _cached_mask(edf_path, overrides_key)
+
+    # ── A10: Detektor-Schwellen justierbar ───────────────────────────────────
+    with st.expander("⚙️ Detektor-Einstellungen — Feinjustierung der Artefakt-Erkennung", expanded=False):
+        if st.button("Auf Standard zurücksetzen", key="art_reset_params"):
+            for k in ("art_flag_sus", "art_consensus", "art_island", "art_region"):
+                st.session_state.pop(k, None)
+            st.rerun()
+        sc = st.columns(4)
+        flag_sus = sc[0].slider("Amplitude ≥ (× Baseline)", 3.0, 8.0,
+                                st.session_state.get("art_flag_sus", 4.0), 0.5, key="art_flag_sus",
+                                help="Höher = strenger (nur größere Ausschläge zählen).")
+        consensus_n = sc[1].slider("Konsens: ≥ Kanäle heiß", 2, 8,
+                                   st.session_state.get("art_consensus", 3), key="art_consensus",
+                                   help="Höher = strenger (mehr Kanäle müssen gleichzeitig ausschlagen).")
+        min_island = sc[2].slider("Min. saubere Insel (s)", 0.0, 15.0,
+                                  st.session_state.get("art_island", 5.0), 1.0, key="art_island",
+                                  help="Kürzere saubere Lücken zwischen Artefakten werden zu einem Block verschmolzen.")
+        region = sc[3].select_slider("Regions-Toleranz (Fp/F7/F8/T)", ["aus", "moderat", "kräftig"],
+                                     st.session_state.get("art_region", "moderat"), key="art_region",
+                                     help="Schützt augen-/muskelnahe Elektroden vor Fehlflags (Blinzeln/EMG).")
+        st.caption("Strenger (↑ Amplitude / ↑ Konsens) = weniger verworfen. Änderungen wirken "
+                   "**sofort** auf Maske, Canvas und Vorher/Nachher-Auswertung.")
+
+    res_auto = _cached_mask(edf_path, overrides_key, float(flag_sus), int(consensus_n),
+                            float(min_island), region)
     dur = res_auto.duration_s
     res = _effective_res(res_auto, dur)   # Auto-Maske + manuelle Overrides (A9a)
 
