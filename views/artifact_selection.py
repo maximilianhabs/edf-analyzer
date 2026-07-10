@@ -19,6 +19,7 @@ from views.eeg_spectrum import (
     _compute_psd, _band_power, _peak_freq, _spectral_edge, _highpass,
     _alpha_band, BANDS, BAND_COLOR,
 )
+from analysis.ecg import detect_r_peaks, build_rr_series, compute_hrv_time_domain
 
 
 def _mmss(s: float) -> str:
@@ -32,6 +33,18 @@ def _cached_mask(edf_path: str, overrides_key: str):
     manuellen Kanal-Korrekturen (Kanal-Identifikation)."""
     edf = apply_channel_overrides(load_and_prepare(edf_path))
     return mask_from_edf(edf, ArtifactParams())
+
+
+@st.cache_data(show_spinner="Erkenne R-Zacken …")
+def _cached_rr(edf_path: str, ecg_name: str, overrides_key: str):
+    """Gecachte R-Zacken-/RR-Erkennung für den HRV-Vergleich."""
+    edf = apply_channel_overrides(load_and_prepare(edf_path))
+    sig = edf["data"][edf["ch_idx"][ecg_name]].astype(float)
+    rp = detect_r_peaks(sig, edf["sfreq"])
+    rr = build_rr_series(rp, edf["sfreq"])
+    if rr is None:
+        return None
+    return {"rr_ms": rr.rr_ms, "times": rr.rr_times_s, "mask": rr.artifact_mask}
 
 
 def _timeline_figure(res, dur_s: float) -> go.Figure:
@@ -160,6 +173,64 @@ def _render_spectral_compare(edf, res):
                "identische PSD-Methode (Welch), nur der Zeitausschnitt unterscheidet sich.")
 
 
+def _render_hrv_compare(edf, edf_path, res, overrides_key):
+    """A7: HRV Gesamt vs. artefaktkorrigiert (Schläge in Artefakt-Segmenten ausgeschlossen)."""
+    ecg_channels = edf.get("ecg_channels") or []
+    section_header("HRV — Gesamt vs. artefaktkorrigiert",
+                   "RR-basierte Herzratenvariabilität, einmal komplett, einmal ohne Bewegungsfenster")
+    if not ecg_channels:
+        st.info("Kein EKG-Kanal identifiziert → HRV-Vergleich nicht möglich. Ggf. in der "
+                "Kanal-Identifikation einen EKG-Kanal festlegen.")
+        return
+
+    ecg_name = ecg_channels[0]
+    rr = _cached_rr(edf_path, ecg_name, overrides_key)
+    if rr is None or len(rr["rr_ms"]) < 10:
+        st.warning(f"Zu wenige R-Zacken auf **{ecg_name}** für eine HRV-Auswertung.")
+        return
+
+    rr_ms, times, ectopic = rr["rr_ms"], rr["times"], rr["mask"]
+    base_ok = ~ectopic                                   # ektopische/implausible RR raus (Standard)
+    in_seg = np.zeros(len(rr_ms), dtype=bool)            # Schläge in Artefakt-Segmenten
+    for s in res.segments:
+        in_seg |= (times >= s["start_s"]) & (times < s["end_s"])
+
+    full_rr = rr_ms[base_ok]
+    corr_rr = rr_ms[base_ok & ~in_seg]
+    n_removed = int((base_ok & in_seg).sum())
+
+    hrv_full = compute_hrv_time_domain(full_rr)
+    hrv_corr = compute_hrv_time_domain(corr_rr)
+    if not hrv_full or not hrv_corr:
+        st.warning("Zu wenige saubere RR-Intervalle für die HRV-Berechnung.")
+        return
+
+    labels = [("mean_hr_bpm", "Mittlere HF", "bpm"), ("sdnn_ms", "SDNN", "ms"),
+              ("rmssd_ms", "RMSSD", "ms"), ("pnn50_pct", "pNN50", "%"),
+              ("cv_pct", "CV", "%")]
+    rows, rel_change = [], 0.0
+    for key, name, unit in labels:
+        vf, vc = hrv_full.get(key), hrv_corr.get(key)
+        d = (vc - vf) if (vf is not None and vc is not None) else None
+        if key in ("sdnn_ms", "rmssd_ms") and vf:
+            rel_change = max(rel_change, abs(d) / vf * 100)
+        rows.append({"Parameter": name, "Gesamt": f"{vf} {unit}",
+                     "Korrigiert": f"{vc} {unit}", "Δ": ("—" if d is None else f"{d:+.1f}")})
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    st.caption(f"EKG-Kanal **{ecg_name}** · {n_removed} von {len(full_rr)} sauberen RR-Intervallen "
+               f"lagen in Artefakt-Segmenten und wurden für die korrigierte Auswertung entfernt. "
+               "Beide Werte zusätzlich um ektopische/implausible Schläge bereinigt (Standard).")
+    if rel_change < 5:
+        st.success(f"✅ **Geringer Artefakt-Impact auf die HRV** — SDNN/RMSSD ändern sich um "
+                   f"< {max(rel_change,0.1):.0f} %. Die Gesamt-HRV ist hier belastbar.")
+    elif rel_change < 15:
+        st.info(f"ℹ️ **Moderater Impact** — SDNN/RMSSD ändern sich um bis zu {rel_change:.0f} %.")
+    else:
+        st.warning(f"⚠️ **Deutlicher Impact** — SDNN/RMSSD ändern sich um bis zu {rel_change:.0f} % "
+                   "→ korrigierte HRV bevorzugen (Bewegung verzerrt die RR-Reihe).")
+
+
 def render():
     apply_global_style()
     edf, edf_path = get_edf_or_stop()
@@ -233,6 +304,9 @@ def render():
 
     # ── A6: Spektralanalyse Gesamt vs. korrigiert ────────────────────────────
     _render_spectral_compare(edf, res)
+
+    # ── A7: HRV Gesamt vs. korrigiert ────────────────────────────────────────
+    _render_hrv_compare(edf, edf_path, res, overrides_key)
 
     # ── Transparenz ──────────────────────────────────────────────────────────
     with st.expander("ℹ️ Wie funktioniert die Erkennung?", expanded=False):
