@@ -6,12 +6,17 @@ Nachgeschaltet nach der Kanal-Identifikation (nutzt deren Typ-Overrides).
 """
 
 import json
+import os
 from dataclasses import replace
 
 import numpy as np
 import streamlit as st
 import streamlit.components.v1 as components
 import plotly.graph_objects as go
+
+# Bidirektionales Custom-Component: Canvas-Review mit Klick-Interaktion (A9b)
+_ART_CANVAS = components.declare_component(
+    "artifact_canvas", path=os.path.join(os.path.dirname(__file__), "artifact_canvas"))
 
 from core.shared import (
     apply_global_style, section_header, get_edf_or_stop,
@@ -291,69 +296,6 @@ def _build_traces(edf, montage, i0, i1):
     return groups
 
 
-_REVIEW_HTML = """
-<div style="font-family:system-ui,-apple-system,sans-serif">
-  <canvas id="rev" style="width:100%;height:__HEIGHT__px;display:block;
-          background:#0f1115;border-radius:6px"></canvas>
-</div>
-<script>
-const D = __PAYLOAD__;
-const cv = document.getElementById("rev");
-const ctx = cv.getContext("2d");
-const dpr = window.devicePixelRatio || 1;
-const LEFT = 66;                                   // Platz für Labels links
-function draw() {
-  const W = cv.clientWidth, H = __HEIGHT__;
-  cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,W,H);
-  const nb = D.n_buckets, plotH = D.plotH, PW = W - LEFT;
-  const segX = s => [LEFT + s.x0*PW, (s.x1-s.x0)*PW];
-  // Spacer-Trennlinien zwischen den Ketten
-  ctx.strokeStyle = "rgba(255,255,255,0.10)"; ctx.lineWidth = 1;
-  (D.spacers||[]).forEach(y => { ctx.beginPath(); ctx.moveTo(LEFT,y); ctx.lineTo(W,y); ctx.stroke(); });
-  // Traces (kein Clipping — Overlap erlaubt, damit Artefakte sichtbar bleiben)
-  D.traces.forEach(tr => {
-    ctx.strokeStyle = tr.color; ctx.lineWidth = 1; ctx.globalAlpha = 0.95; ctx.beginPath();
-    for (let i=0;i<nb;i++){
-      const x = LEFT + i/(nb-1)*PW;
-      const yA = tr.yc + tr.pol*tr.mins[i]*tr.gain;
-      const yB = tr.yc + tr.pol*tr.maxs[i]*tr.gain;
-      ctx.moveTo(x, Math.min(yA,yB)); ctx.lineTo(x, Math.max(yA,yB));
-    }
-    ctx.stroke(); ctx.globalAlpha = 1;
-    ctx.fillStyle = tr.color; ctx.font = "11px system-ui";
-    ctx.fillText(tr.label, 4, tr.yc+3);
-  });
-  // Zeitachse
-  ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.font = "10px system-ui";
-  ctx.strokeStyle = "rgba(255,255,255,0.2)";
-  const dur = D.t1 - D.t0, step = dur > 80 ? 20 : 10;
-  for (let t=Math.ceil(D.t0/step)*step; t<=D.t1; t+=step){
-    const x = LEFT + (t-D.t0)/dur*PW;
-    ctx.beginPath(); ctx.moveTo(x,plotH); ctx.lineTo(x,plotH+4); ctx.stroke();
-    const mm = Math.floor(t/60), ss = String(Math.floor(t%60)).padStart(2,"0");
-    ctx.fillText(mm+":"+ss, x+2, plotH+14);
-  }
-  // ── VERWORFENE BEREICHE: Polaritäts-/Negativ-Umkehr (Weiß im difference-Modus
-  //    invertiert alle Pixel darunter → Schwarz↔Weiß, Farben komplementär) ──
-  ctx.globalCompositeOperation = "difference";
-  ctx.fillStyle = "#ffffff";
-  D.segments.forEach(s => { const [x,w] = segX(s); ctx.fillRect(x, 0, w, plotH); });
-  ctx.globalCompositeOperation = "source-over";
-  // Scharfer Rahmen + Label über den invertierten Blöcken
-  D.segments.forEach(s => {
-    const [x,w] = segX(s);
-    ctx.strokeStyle = "#ff2d2d"; ctx.lineWidth = 1.5;
-    ctx.strokeRect(x, 0.75, w, plotH-1.5);
-    ctx.fillStyle = "#ff2d2d"; ctx.font = "bold 9px system-ui";
-    if (w > 34) ctx.fillText("verworfen", x+3, 11);
-  });
-}
-draw();
-window.addEventListener("resize", draw);
-</script>
-"""
-
 
 def _minmax_decimate(sig: np.ndarray, n_buckets: int):
     """Min/Max-Dezimierung: erhält Spitzen (Artefakte) auch bei starker Verkleinerung."""
@@ -366,8 +308,9 @@ def _minmax_decimate(sig: np.ndarray, n_buckets: int):
     return mins.tolist(), maxs.tolist()
 
 
-def _render_review_viewer(edf, res):
-    """A8: All-Kanal-Review-Ansicht (Canvas) mit DGKN-Montage, Hemisphärenfarben, EKG, Spacern."""
+def _render_review_viewer(edf, res, res_auto):
+    """A8/A9b: All-Kanal-Review-Canvas (DGKN-Montage, Hemisphärenfarben, EKG, Spacer) mit
+    Klick-Interaktion — Block anklicken = raus/rein, ins EEG klicken = Artefakt hinzufügen."""
     section_header("Review-Ansicht — alle Kanäle",
                    "DGKN-Montage · 60–100 s/Screen · Artefakt-Segmente markiert")
 
@@ -448,21 +391,50 @@ def _render_review_viewer(edf, res):
                        "yc": y - lane_h / 2, "gain": round((lane_h * 0.55) / e95, 4),
                        "mins": [round(v, 2) for v in mins], "maxs": [round(v, 2) for v in maxs]})
 
+    # ── Segment-Zustände (aktiv / entfernt / manuell) für das klickbare Canvas ──
+    ov = st.session_state.setdefault("artifact_overrides", {"removed": [], "added": []})
     span = (t1 - t0) or 1.0
-    segs = [{"x0": max(0.0, s["start_s"] - t0) / span, "x1": (min(t1, s["end_s"]) - t0) / span,
-             "ecg": s["ecg_disturbed"]}
-            for s in res.segments if s["end_s"] > t0 and s["start_s"] < t1]
+    _vis = lambda a, b: b > t0 and a < t1
+    seg_state = []
+    for s in res_auto.segments:
+        if not _vis(s["start_s"], s["end_s"]):
+            continue
+        k = _seg_key(s)
+        seg_state.append({"x0": max(0.0, s["start_s"] - t0) / span,
+                          "x1": (min(t1, s["end_s"]) - t0) / span, "key": k,
+                          "state": "removed" if k in ov["removed"] else "active"})
+    for a in ov["added"]:
+        if not _vis(a["start_s"], a["end_s"]):
+            continue
+        seg_state.append({"x0": max(0.0, a["start_s"] - t0) / span,
+                          "x1": (min(t1, a["end_s"]) - t0) / span,
+                          "key": f"{a['start_s']:.1f}-{a['end_s']:.1f}", "state": "manual"})
 
     plot_h = int(y + 8)
-    payload = json.dumps({"traces": traces, "spacers": spacers, "segments": segs,
-                          "t0": t0, "t1": t1, "n_buckets": n_buckets, "plotH": plot_h})
-    height = plot_h + 26
-    components.html(_REVIEW_HTML.replace("__PAYLOAD__", payload).replace("__HEIGHT__", str(height)),
-                    height=height + 8, scrolling=False)
+    evt = _ART_CANVAS(traces=traces, spacers=spacers, segments=seg_state, t0=t0, t1=t1,
+                      n_buckets=n_buckets, plotH=plot_h, height=plot_h + 26,
+                      key="artcanvas", default=None)
+    # Klick-Event verarbeiten (nur neue Klicks → n-Guard gegen Doppelverarbeitung)
+    if evt and evt.get("n") != st.session_state.get("_art_last_evt"):
+        st.session_state["_art_last_evt"] = evt["n"]
+        act = evt.get("action")
+        if act == "toggle":
+            k = evt["key"]
+            ov["removed"].remove(k) if k in ov["removed"] else ov["removed"].append(k)
+        elif act == "add":
+            tt = float(evt["t"])
+            ov["added"].append({"start_s": round(max(0.0, tt - 2.5), 2),
+                                "end_s": round(min(dur, tt + 2.5), 2)})
+        elif act == "del_manual":
+            k = evt["key"]
+            ov["added"] = [a for a in ov["added"]
+                           if f"{a['start_s']:.1f}-{a['end_s']:.1f}" != k]
+        st.rerun()
+
     st.caption(f"⏱ {_mmss(t0)}–{_mmss(t1)} · Montage **{montage}** · rechts blau · links orange · "
-               "Mitte grün · EKG rot. **Negativ-invertierte Blöcke = verworfen** (Farb-/Polaritäts"
-               "umkehr, rot umrandet) → man sieht sofort, was drin bleibt und was raus fällt. "
-               "**Kein Clipping** — große Ausschläge dürfen überlappen. Manuelles Nachjustieren folgt.")
+               "Mitte grün · EKG rot. **Klick auf einen Block** = raus/wieder rein (bleibt markiert). "
+               "**Klick ins EEG** = ±2,5 s als Artefakt hinzufügen. Verworfen = negativ-invertiert, "
+               "inaktiv = gestrichelt. **Kein Clipping** — große Ausschläge dürfen überlappen.")
 
 
 # ── A9a: manuelle Bearbeitung der Maske (Override-Ebene, getrennt von der Auto-Maske) ──
@@ -631,8 +603,8 @@ def render():
                 "**Vorschlag:** diese Ableitung aus den Analysen ausblenden. (Noch nur Vorschlag.)"
             )
 
-    # ── A8: Review-Ansicht (alle Kanäle) ─────────────────────────────────────
-    _render_review_viewer(edf, res)
+    # ── A8/A9b: Review-Ansicht (alle Kanäle, klickbar) ───────────────────────
+    _render_review_viewer(edf, res, res_auto)
 
     # ── A6: Spektralanalyse Gesamt vs. korrigiert ────────────────────────────
     _render_spectral_compare(edf, res)
