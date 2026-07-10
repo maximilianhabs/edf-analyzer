@@ -358,7 +358,7 @@ def _render_review_viewer(edf, res, res_auto):
     t1 = min(dur, t0 + screen_s)
     i0, i1 = int(t0 * sfreq), int(t1 * sfreq)
     n_buckets = 1100
-    lane_h, spacer_h = 26, 12
+    lane_h, spacer_h, header_h = 26, 12, 18
 
     groups = _build_traces(edf, montage, i0, i1)
     # Uniforme EEG-Verstärkung (klinisch: gleiche µV/mm über alle Kanäle) aus 95. Perzentil.
@@ -367,7 +367,7 @@ def _render_review_viewer(edf, res, res_auto):
     g95 = float(np.percentile(all_abs, 95)) or 1.0
     g_eeg = (lane_h * 0.5) / g95 * sens
 
-    traces, spacers, y = [], [], 0.0
+    traces, spacers, y = [], [], float(header_h)   # Header-Platz oben für den Klick-Hinweis
     for gi, (gname, trs) in enumerate(groups):
         for tr in trs:
             y += lane_h
@@ -425,6 +425,9 @@ def _render_review_viewer(edf, res, res_auto):
             tt = float(evt["t"])
             ov["added"].append({"start_s": round(max(0.0, tt - 2.5), 2),
                                 "end_s": round(min(dur, tt + 2.5), 2)})
+            # Benachbarte/überlappende manuelle Blöcke zu EINEM großen Block verschmelzen:
+            # so verlängert man durch Klicken links/rechts einen Artefaktblock.
+            ov["added"] = _merge_added(ov["added"])
         elif act == "del_manual":
             k = evt["key"]
             ov["added"] = [a for a in ov["added"]
@@ -432,14 +435,27 @@ def _render_review_viewer(edf, res, res_auto):
         st.rerun()
 
     st.caption(f"⏱ {_mmss(t0)}–{_mmss(t1)} · Montage **{montage}** · rechts blau · links orange · "
-               "Mitte grün · EKG rot. **Klick auf einen Block** = raus/wieder rein (bleibt markiert). "
-               "**Klick ins EEG** = ±2,5 s als Artefakt hinzufügen. Verworfen = negativ-invertiert, "
-               "inaktiv = gestrichelt. **Kein Clipping** — große Ausschläge dürfen überlappen.")
+               "Mitte grün · EKG rot. **Klick ins EEG** = 5-s-Artefakt hinzufügen "
+               "(direkt daneben klicken verlängert den Block) · **Klick auf einen Block** = "
+               "entfernen bzw. wieder aktivieren. Verworfen = negativ-invertiert, inaktiv = gestrichelt.")
 
 
 # ── A9a: manuelle Bearbeitung der Maske (Override-Ebene, getrennt von der Auto-Maske) ──
 def _seg_key(s) -> str:
     return f"{s['start_s']:.1f}-{s['end_s']:.1f}"
+
+
+def _merge_added(added, tol=2.5):
+    """Verschmilzt manuelle Blöcke, die sich überlappen oder ≤ tol s auseinanderliegen,
+    zu einem großen Block (Klicken links/rechts verlängert)."""
+    ivs = sorted([[a["start_s"], a["end_s"]] for a in added])
+    out = []
+    for lo, hi in ivs:
+        if out and lo <= out[-1][1] + tol:
+            out[-1][1] = max(out[-1][1], hi)
+        else:
+            out.append([lo, hi])
+    return [{"start_s": round(lo, 2), "end_s": round(hi, 2)} for lo, hi in out]
 
 
 def _union_len(segs) -> float:
