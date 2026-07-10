@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html,body{margin:0;padding:0;background:transparent;font-family:system-ui,-apple-system,sans-serif}
+  #rev{width:100%;display:block;background:#0f1115;border-radius:6px;cursor:crosshair}
+</style>
+</head>
+<body>
+<canvas id="rev"></canvas>
+<script>
+const LEFT = 66;
+const cv = document.getElementById("rev");
+const ctx = cv.getContext("2d");
+const dpr = window.devicePixelRatio || 1;
+let D = null;
+
+function post(type, extra) {
+  window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, extra || {}), "*");
+}
+function sendValue(v) { post("streamlit:setComponentValue", {value: v, dataType: "json"}); }
+function setHeight(h) { post("streamlit:setFrameHeight", {height: h}); }
+
+function segX(s, W) { const PW = W - LEFT; return [LEFT + s.x0 * PW, (s.x1 - s.x0) * PW]; }
+
+function draw() {
+  if (!D) return;
+  const W = cv.clientWidth, H = D.height;
+  cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const nb = D.n_buckets, plotH = D.plotH, PW = W - LEFT;
+
+  // Spacer-Trennlinien
+  ctx.strokeStyle = "rgba(255,255,255,0.10)"; ctx.lineWidth = 1;
+  (D.spacers || []).forEach(y => { ctx.beginPath(); ctx.moveTo(LEFT, y); ctx.lineTo(W, y); ctx.stroke(); });
+
+  // Traces (kein Clipping)
+  D.traces.forEach(tr => {
+    ctx.strokeStyle = tr.color; ctx.lineWidth = 1; ctx.globalAlpha = 0.95; ctx.beginPath();
+    for (let i = 0; i < nb; i++) {
+      const x = LEFT + i / (nb - 1) * PW;
+      const yA = tr.yc + tr.pol * tr.mins[i] * tr.gain;
+      const yB = tr.yc + tr.pol * tr.maxs[i] * tr.gain;
+      ctx.moveTo(x, Math.min(yA, yB)); ctx.lineTo(x, Math.max(yA, yB));
+    }
+    ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillStyle = tr.color; ctx.font = "11px system-ui";
+    ctx.fillText(tr.label, 4, tr.yc + 3);
+  });
+
+  // Zeitachse
+  ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.font = "10px system-ui";
+  ctx.strokeStyle = "rgba(255,255,255,0.2)";
+  const dur = D.t1 - D.t0, step = dur > 80 ? 20 : (dur > 40 ? 10 : 5);
+  for (let t = Math.ceil(D.t0 / step) * step; t <= D.t1; t += step) {
+    const x = LEFT + (t - D.t0) / dur * PW;
+    ctx.beginPath(); ctx.moveTo(x, plotH); ctx.lineTo(x, plotH + 4); ctx.stroke();
+    const mm = Math.floor(t / 60), ss = String(Math.floor(t % 60)).padStart(2, "0");
+    ctx.fillText(mm + ":" + ss, x + 2, plotH + 14);
+  }
+
+  // Aktive/manuelle Blöcke: Negativ-Umkehr
+  ctx.globalCompositeOperation = "difference"; ctx.fillStyle = "#ffffff";
+  D.segments.forEach(s => { if (s.state !== "removed") { const [x, w] = segX(s, W); ctx.fillRect(x, 0, w, plotH); } });
+  ctx.globalCompositeOperation = "source-over";
+  // Rahmen + Label
+  D.segments.forEach(s => {
+    const [x, w] = segX(s, W);
+    if (s.state === "removed") {
+      ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
+      ctx.strokeRect(x, 0.5, w, plotH - 1); ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,255,255,0.75)"; ctx.font = "bold 9px system-ui";
+      if (w > 46) ctx.fillText("inaktiv – Klick aktiviert", x + 3, 11);
+    } else {
+      ctx.strokeStyle = s.state === "manual" ? "#f59e0b" : "#ff2d2d"; ctx.lineWidth = 1.5;
+      ctx.strokeRect(x, 0.75, w, plotH - 1.5);
+      ctx.fillStyle = ctx.strokeStyle; ctx.font = "bold 9px system-ui";
+      if (w > 34) ctx.fillText(s.state === "manual" ? "manuell" : "verworfen", x + 3, 11);
+    }
+  });
+}
+
+cv.addEventListener("click", ev => {
+  if (!D) return;
+  const rect = cv.getBoundingClientRect();
+  const W = cv.clientWidth, PW = W - LEFT;
+  const px = ev.clientX - rect.left;
+  if (px < LEFT) return;
+  const frac = (px - LEFT) / PW;
+  const t = D.t0 + frac * (D.t1 - D.t0);
+  let hit = null;
+  for (const s of D.segments) { if (frac >= s.x0 && frac <= s.x1) { hit = s; break; } }
+  if (hit) {
+    sendValue({action: hit.state === "manual" ? "del_manual" : "toggle", key: hit.key, n: Date.now()});
+  } else {
+    sendValue({action: "add", t: t, n: Date.now()});
+  }
+});
+
+window.addEventListener("message", e => {
+  if (!e.data || e.data.type !== "streamlit:render") return;
+  D = e.data.args;
+  cv.style.height = D.height + "px";
+  draw();
+  setHeight(D.height + 6);
+});
+window.addEventListener("resize", () => { if (D) draw(); });
+post("streamlit:componentReady", {apiVersion: 1});
+</script>
+</body>
+</html>
