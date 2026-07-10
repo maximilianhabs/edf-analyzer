@@ -195,6 +195,79 @@ def _render_fooof(edf, edf_path):
                "**Default** in den bestehenden Seiten — hier nur der validierte Vergleich.")
 
 
+@st.cache_data(show_spinner="Berechne HRV-Spektrum (Welch + Lomb-Scargle) …")
+def _hrv_spectrum_compare(edf_path, ch):
+    from views.ecg_hrv import compute_rr
+    from analysis.hrv_freq import compute_frequency_domain, resample_rr, psd_welch
+    from analysis.hrv_lombscargle import lombscargle_hrv
+    rr = compute_rr(edf_path, ch)
+    rr_ms, t = rr["rr_ms"], rr["times"]
+    if len(rr_ms) < 20:
+        return None
+    w = compute_frequency_domain(rr_ms, t, method="welch")
+    b = compute_frequency_domain(rr_ms, t, method="burg", burg_order=16)
+    ls = lombscargle_hrv(rr_ms, t)
+    rr_even, _ = resample_rr(rr_ms, t)
+    fw, pw = psd_welch(rr_even)
+    return {"welch": w, "burg": b, "lomb": ls,
+            "welch_curve": (np.asarray(fw), np.asarray(pw))}
+
+
+def _render_lombscargle(edf, edf_path):
+    section_header("HRV-Spektrum — Lomb-Scargle vs. Welch/Burg (W3)",
+                   "Interpolationsfrei aus den RR-Zeitpunkten — belastbarer bei Lücken/Ektopie")
+    ecg = edf.get("ecg_channels") or []
+    if not ecg:
+        st.info("Kein EKG-Kanal identifiziert.")
+        return
+    ch = st.selectbox("EKG-Kanal", ecg, key="ls_ch")
+    d = _hrv_spectrum_compare(edf_path, ch)
+    if not d or not d["lomb"]:
+        st.info("Zu wenige RR-Intervalle für ein HRV-Spektrum.")
+        return
+    w, b, ls = d["welch"], d["burg"], d["lomb"]
+
+    def _f(x, fmt=".2f"):
+        return format(x, fmt) if (x is not None and x == x) else "—"
+
+    rows = []
+    for name, src in [("Welch (Resampling)", w), ("Burg AR (Resampling)", b),
+                      ("Lomb-Scargle (interpolationsfrei)", ls)]:
+        if not src:
+            continue
+        rows.append({"Methode": name, "LF/HF": _f(src.get("lf_hf_ratio")),
+                     "LFnu (%)": _f(src.get("lf_norm"), ".1f"), "HFnu (%)": _f(src.get("hf_norm"), ".1f"),
+                     "LF-Gipfel (Hz)": _f(src.get("lf_peak_freq"), ".3f")})
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+    # ── Visuelle Kontrolle: Spektren überlagert, LF/HF-Bänder schattiert ─────
+    fw, pw = d["welch_curve"]
+    mw = fw <= 0.4
+
+    def _norm(p):
+        mx = float(np.max(p)) or 1.0
+        return p / mx
+
+    fig = go.Figure()
+    fig.add_vrect(x0=0.04, x1=0.15, fillcolor="rgba(41,128,185,0.09)", line_width=0,
+                  annotation_text="LF", annotation_position="top left")
+    fig.add_vrect(x0=0.15, x1=0.40, fillcolor="rgba(230,126,34,0.09)", line_width=0,
+                  annotation_text="HF", annotation_position="top left")
+    fig.add_trace(go.Scatter(x=fw[mw], y=_norm(pw[mw]), mode="lines", name="Welch (Resampling)",
+                             line=dict(color="#374151", width=1.5)))
+    fig.add_trace(go.Scatter(x=ls["freqs"], y=_norm(ls["psd"]), mode="lines",
+                             name="Lomb-Scargle", line=dict(color="#e67e22", width=1.8)))
+    fig.update_layout(height=320, xaxis_title="Frequenz (Hz)", yaxis_title="PSD (normiert)",
+                      xaxis=dict(range=[0, 0.4]), plot_bgcolor="#fafafa",
+                      margin=dict(t=6, b=36, l=55, r=10),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.caption("**Lomb-Scargle** rechnet direkt auf den ungleichmäßigen RR-Zeitpunkten (**kein "
+               "Resampling**) → bei Lücken/Ektopie belastbarer; Resampling kann LF überschätzen. "
+               "Methodenrobust vergleichbar sind v. a. **LF/HF** und **LFnu/HFnu**. Die bestehende "
+               "HRV-Frequenzanalyse (Welch/Burg) bleibt **Default**.")
+
+
 def render():
     apply_global_style()
     edf, edf_path = get_edf_or_stop()
@@ -209,3 +282,5 @@ def render():
     _render_rpeak_visual(edf, edf_path)
     st.divider()
     _render_fooof(edf, edf_path)
+    st.divider()
+    _render_lombscargle(edf, edf_path)
