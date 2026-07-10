@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 from scipy.signal import welch
 
-from core.shared import get_edf_or_stop
+from core.shared import get_edf_or_stop, load_and_prepare, apply_channel_overrides
 
 
 # ── Hilfsfunktionen ───────────────────────────────────────────────────────────
@@ -394,3 +394,30 @@ def render():
                                 ]), hide_index=True, use_container_width=True)
                         except Exception:
                             pass
+
+    # ── 4. Export: kompletter Report als PDF / Excel ──────────────────────────
+    st.divider()
+    st.subheader("⬇️ Gesamt-Report exportieren")
+    st.caption("Alle Werte kompakt und sortiert (Aufnahme · HRV · EEG-Spektrum · Aperiodik · "
+               "Asymmetrie) — je Zeile Wert, Einheit und kurze Norm. Ohne Kommentar.")
+
+    @st.cache_data(show_spinner="Erstelle Report-Dateien …")
+    def _export_bytes(_path, _disp):
+        from analysis.report_export import collect_sections, build_excel, build_pdf
+        e = apply_channel_overrides(load_and_prepare(_path))
+        secs = collect_sections(e, _path)
+        return build_pdf(secs, _disp), build_excel(secs, e, _disp)
+
+    _disp = st.session_state.get("edf_display_name", "report")
+    _base = _disp.rsplit(".", 1)[0] if _disp else "report"
+    try:
+        pdf_bytes, xlsx_bytes = _export_bytes(edf_path, _disp)
+        ec1, ec2 = st.columns(2)
+        ec1.download_button("📄 PDF herunterladen", pdf_bytes, file_name=f"{_base}_report.pdf",
+                            mime="application/pdf", use_container_width=True)
+        ec2.download_button(
+            "📊 Excel herunterladen", xlsx_bytes, file_name=f"{_base}_report.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True)
+    except Exception as e:
+        st.error(f"Report-Export fehlgeschlagen: {e}")
