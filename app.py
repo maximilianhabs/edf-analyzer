@@ -14,6 +14,11 @@ if not require_login():
     st.stop()
 
 from core.shared import apply_global_style, inject_arrow_key_nav, render_sidebar_status
+from core.cleanup import ensure_cleanup_daemon
+
+# Garantierter Hintergrund-Cleanup: keine hochgeladene EDF bleibt länger als die TTL liegen,
+# auch ohne neue Sessions (läuft einmal pro Prozess als Daemon).
+ensure_cleanup_daemon()
 
 apply_global_style()
 inject_arrow_key_nav()
