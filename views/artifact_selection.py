@@ -5,8 +5,11 @@ bestehenden Analysen (EEG-Spektrum, EKG & HRV laufen weiter über die Gesamtaufn
 Nachgeschaltet nach der Kanal-Identifikation (nutzt deren Typ-Overrides).
 """
 
+import json
+
 import numpy as np
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.graph_objects as go
 
 from core.shared import (
@@ -231,6 +234,140 @@ def _render_hrv_compare(edf, edf_path, res, overrides_key):
                    "→ korrigierte HRV bevorzugen (Bewegung verzerrt die RR-Reihe).")
 
 
+_REVIEW_HTML = """
+<div style="font-family:system-ui,-apple-system,sans-serif">
+  <canvas id="rev" style="width:100%;height:__HEIGHT__px;display:block;
+          background:#0f1115;border-radius:6px"></canvas>
+</div>
+<script>
+const D = __PAYLOAD__;
+const LANE = __LANE__;
+const cv = document.getElementById("rev");
+const ctx = cv.getContext("2d");
+const dpr = window.devicePixelRatio || 1;
+function draw() {
+  const W = cv.clientWidth, H = __HEIGHT__;
+  cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+  const chans = D.channels, nb = D.n_buckets;
+  const plotH = H - 26;                       // Platz für Zeitachse unten
+  // Artefakt-Segmente (rot) zuerst, als Hintergrund
+  D.segments.forEach(s => {
+    ctx.fillStyle = s.ecg === true ? "rgba(192,57,43,0.30)" : "rgba(192,57,43,0.18)";
+    ctx.fillRect(s.x0*W, 0, (s.x1-s.x0)*W, plotH);
+  });
+  // Kanäle
+  chans.forEach((c,ci) => {
+    const yc = ci*LANE + LANE/2;
+    const gain = (LANE*0.42) / (c.scale || 1);
+    // Lane-Trennlinie
+    ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0,(ci+1)*LANE); ctx.lineTo(W,(ci+1)*LANE); ctx.stroke();
+    // Signal (min/max je Bucket; negativ oben -> Vorzeichen invertiert)
+    ctx.strokeStyle = "#8fd0ff"; ctx.lineWidth = 1; ctx.beginPath();
+    for (let i=0;i<nb;i++){
+      const x = i/(nb-1)*W;
+      let top = yc - Math.max(-c.maxs[i]*gain,  -LANE*0.46);   // -max (neg oben)
+      let bot = yc - Math.min(-c.mins[i]*gain,   LANE*0.46);
+      top = Math.max(ci*LANE+1, Math.min((ci+1)*LANE-1, top));
+      bot = Math.max(ci*LANE+1, Math.min((ci+1)*LANE-1, bot));
+      ctx.moveTo(x, top); ctx.lineTo(x, bot);
+    }
+    ctx.stroke();
+    // Label
+    ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "11px system-ui";
+    ctx.fillText(c.label, 4, yc+3);
+  });
+  // Zeitachse
+  ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.font = "10px system-ui";
+  ctx.strokeStyle = "rgba(255,255,255,0.15)";
+  const dur = D.t1 - D.t0;
+  const step = dur > 80 ? 20 : 10;
+  for (let t=Math.ceil(D.t0/step)*step; t<=D.t1; t+=step){
+    const x = (t-D.t0)/dur*W;
+    ctx.beginPath(); ctx.moveTo(x,plotH); ctx.lineTo(x,plotH+4); ctx.stroke();
+    const mm = Math.floor(t/60), ss = String(Math.floor(t%60)).padStart(2,"0");
+    ctx.fillText(mm+":"+ss, x+2, plotH+14);
+  }
+}
+draw();
+window.addEventListener("resize", draw);
+</script>
+"""
+
+
+def _minmax_decimate(sig: np.ndarray, n_buckets: int):
+    """Min/Max-Dezimierung: erhält Spitzen (Artefakte) auch bei starker Verkleinerung."""
+    n = len(sig)
+    if n <= n_buckets:
+        return sig.tolist(), sig.tolist()
+    edges = np.linspace(0, n, n_buckets + 1).astype(int)
+    mins = np.array([sig[edges[i]:edges[i + 1]].min() for i in range(n_buckets)])
+    maxs = np.array([sig[edges[i]:edges[i + 1]].max() for i in range(n_buckets)])
+    return mins.tolist(), maxs.tolist()
+
+
+def _render_review_viewer(edf, res):
+    """A8: All-Kanal-Review-Ansicht (Canvas), 60–100 s/Screen, Artefakt-Maske als Overlay."""
+    section_header("Review-Ansicht — alle Kanäle",
+                   "Grobe Übersicht (60–100 s/Screen) mit markierten Artefakt-Segmenten")
+
+    eeg_map = edf["eeg_map"]
+    sfreq = edf["sfreq"]
+    dur = res.duration_s
+
+    c1, c2, c3 = st.columns([2, 3, 3])
+    with c1:
+        screen_s = st.selectbox("Screen-Länge", [60, 100], index=0,
+                                format_func=lambda s: f"{s} s / Screen")
+    n_screens = max(1, int(np.ceil(dur / screen_s)))
+    key = "artifact_screen_idx"
+    idx = st.session_state.get(key, 0)
+    idx = max(0, min(idx, n_screens - 1))
+    with c2:
+        nav_prev, nav_lbl, nav_next = st.columns([1, 2, 1])
+        if nav_prev.button("◀", use_container_width=True, disabled=(idx == 0)):
+            idx -= 1
+        if nav_next.button("▶", use_container_width=True, disabled=(idx >= n_screens - 1)):
+            idx += 1
+        nav_lbl.markdown(f"<div style='text-align:center;padding-top:6px'>Screen "
+                         f"<b>{idx+1}</b> / {n_screens}</div>", unsafe_allow_html=True)
+    st.session_state[key] = idx
+
+    t0 = idx * screen_s
+    t1 = min(dur, t0 + screen_s)
+    with c3:
+        st.markdown(f"<div style='padding-top:6px;color:#555'>⏱ {_mmss(t0)} – {_mmss(t1)} "
+                    f"<span style='color:#888'>({t1-t0:.0f}s)</span></div>", unsafe_allow_html=True)
+
+    i0, i1 = int(t0 * sfreq), int(t1 * sfreq)
+    n_buckets = 1100
+    channels = []
+    for name, ch_idx in eeg_map.items():
+        seg = edf["data"][ch_idx, i0:i1] * 1e6
+        seg = _highpass(seg, sfreq, 1.0) if len(seg) > 20 else seg
+        scale = float(np.percentile(np.abs(seg), 95)) or 1.0   # robuste Skala je Kanal
+        mins, maxs = _minmax_decimate(seg.astype(float), n_buckets)
+        channels.append({"label": name, "mins": [round(v, 1) for v in mins],
+                         "maxs": [round(v, 1) for v in maxs], "scale": round(scale, 1)})
+
+    span = (t1 - t0) or 1.0
+    segs = [{"x0": max(0.0, s["start_s"] - t0) / span,
+             "x1": (min(t1, s["end_s"]) - t0) / span,
+             "ecg": s["ecg_disturbed"]}
+            for s in res.segments if s["end_s"] > t0 and s["start_s"] < t1]
+
+    payload = json.dumps({"channels": channels, "segments": segs,
+                          "t0": t0, "t1": t1, "n_buckets": n_buckets})
+    lane_h = 30
+    height = len(channels) * lane_h + 46
+    components.html(_REVIEW_HTML.replace("__PAYLOAD__", payload).replace("__HEIGHT__", str(height))
+                    .replace("__LANE__", str(lane_h)), height=height + 10, scrolling=False)
+    st.caption("Rot schattiert = markiertes Artefakt-Segment (Auto-Vorschlag). Negativ oben "
+               "(EEG-Konvention), Amplitude je Kanal robust skaliert. Manuelles Nachjustieren "
+               "(Segmente ziehen/löschen) folgt im nächsten Schritt.")
+
+
 def render():
     apply_global_style()
     edf, edf_path = get_edf_or_stop()
@@ -301,6 +438,9 @@ def render():
                 f"({b['frac']*100:.0f}% der Fenster) — möglicherweise gelöste/defekte Elektrode. "
                 "**Vorschlag:** diese Ableitung aus den Analysen ausblenden. (Noch nur Vorschlag.)"
             )
+
+    # ── A8: Review-Ansicht (alle Kanäle) ─────────────────────────────────────
+    _render_review_viewer(edf, res)
 
     # ── A6: Spektralanalyse Gesamt vs. korrigiert ────────────────────────────
     _render_spectral_compare(edf, res)
