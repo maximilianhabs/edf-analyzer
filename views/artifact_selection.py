@@ -11,9 +11,14 @@ import plotly.graph_objects as go
 
 from core.shared import (
     apply_global_style, section_header, get_edf_or_stop,
-    load_and_prepare, apply_channel_overrides,
+    load_and_prepare, apply_channel_overrides, get_patient_info,
 )
 from analysis.artifacts import ArtifactParams, mask_from_edf
+# Reuse der bestehenden Spektrum-Logik OHNE eeg_spectrum.py zu verändern (nur Import).
+from views.eeg_spectrum import (
+    _compute_psd, _band_power, _peak_freq, _spectral_edge, _highpass,
+    _alpha_band, BANDS, BAND_COLOR,
+)
 
 
 def _mmss(s: float) -> str:
@@ -57,6 +62,102 @@ def _timeline_figure(res, dur_s: float) -> go.Figure:
         plot_bgcolor="#fafafa", showlegend=False,
     )
     return fig
+
+
+def _clean_signal(sig: np.ndarray, sfreq: float, segments: list) -> np.ndarray:
+    """Entfernt die Artefakt-Segmente aus dem Signal (behält nur saubere Samples)."""
+    keep = np.ones(len(sig), dtype=bool)
+    for s in segments:
+        i0, i1 = int(s["start_s"] * sfreq), int(s["end_s"] * sfreq)
+        keep[max(0, i0):min(len(sig), i1)] = False
+    return sig[keep]
+
+
+def _spectral_metrics(sig: np.ndarray, sfreq: float, alpha_band) -> dict:
+    """Relative Bandpower + Alpha-Peak + SEF95 für ein Signal (kein Extra-Artefaktfilter)."""
+    f, p = _compute_psd(sig, sfreq, amp_thresh_uv=9999.0)
+    if f is None:
+        return {}
+    bp = {name: _band_power(f, p, lo, hi) for name, (lo, hi), _ in BANDS}
+    tot = sum(bp.values()) or 1.0
+    out = {name: bp[name] / tot * 100 for name in bp}
+    out["Alpha-Peak"] = _peak_freq(f, p, alpha_band[0], alpha_band[1])
+    out["SEF95"] = _spectral_edge(f, p, 0.95)
+    return out
+
+
+def _render_spectral_compare(edf, res):
+    """A6: Spektralanalyse Gesamt vs. artefaktkorrigiert (nebeneinander)."""
+    eeg_map = edf["eeg_map"]
+    section_header("Spektralanalyse — Gesamt vs. artefaktkorrigiert",
+                   "Gleiche Analyse einmal über die ganze Aufnahme, einmal nur auf sauberen Segmenten")
+
+    if not res.segments:
+        st.info("Keine Artefakt-Segmente markiert → korrigiert = Gesamt (nichts zu entfernen).")
+        return
+    if res.clean_s < 30:
+        st.warning(f"Nur {res.clean_s:.0f}s sauberes EEG — Korrektur-Spektrum wenig belastbar.")
+
+    posterior = [c for c in ("O2", "O1", "Pz", "P4", "P3") if c in eeg_map]
+    options = posterior + [c for c in eeg_map if c not in posterior]
+    ch = st.selectbox("Kanal für den Vergleich", options, index=0,
+                      help="Posteriore Kanäle (O1/O2) zeigen den Alpha-Grundrhythmus am klarsten.")
+
+    age, _ = get_patient_info()
+    ab = _alpha_band(age)
+    sfreq = edf["sfreq"]
+    sig = _highpass(edf["data"][eeg_map[ch], :] * 1e6, sfreq, 1.0)
+    sig_clean = _clean_signal(sig, sfreq, res.segments)
+
+    full = _spectral_metrics(sig, sfreq, ab)
+    corr = _spectral_metrics(sig_clean, sfreq, ab)
+    if not full or not corr:
+        st.warning("Segment zu kurz für eine stabile Spektralschätzung.")
+        return
+
+    # Vergleichstabelle
+    def _fmt(k, v):
+        if v != v:
+            return "—"
+        return f"{v:.1f} Hz" if k in ("Alpha-Peak", "SEF95") else f"{v:.1f} %"
+
+    rows, max_delta = [], 0.0
+    for k in ["Delta", "Theta", "Alpha", "Beta", "Alpha-Peak", "SEF95"]:
+        vf, vc = full.get(k, float("nan")), corr.get(k, float("nan"))
+        d = (vc - vf) if (vf == vf and vc == vc) else float("nan")
+        if k in ("Delta", "Theta", "Alpha", "Beta") and d == d:
+            max_delta = max(max_delta, abs(d))
+        rows.append({"Parameter": k, "Gesamt": _fmt(k, vf), "Korrigiert": _fmt(k, vc),
+                     "Δ": ("—" if d != d else f"{d:+.1f}")})
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    # Gruppierter Balken: relative Bandpower Gesamt vs. korrigiert
+    fig = go.Figure()
+    bands = ["Delta", "Theta", "Alpha", "Beta"]
+    fig.add_trace(go.Bar(x=bands, y=[full[b] for b in bands], name="Gesamt",
+                         marker_color="#95a5a6"))
+    fig.add_trace(go.Bar(x=bands, y=[corr[b] for b in bands], name="Artefaktkorrigiert",
+                         marker_color=[BAND_COLOR[b] for b in bands]))
+    fig.update_layout(height=230, margin=dict(t=8, b=30, l=45, r=10), barmode="group",
+                      yaxis_title="Rel. Power (%)", plot_bgcolor="#fafafa",
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    # Impact-Einordnung
+    if max_delta < 1.0:
+        st.success(f"✅ **Geringer Artefakt-Impact** — größte Änderung der relativen Bandpower "
+                   f"nur **{max_delta:.1f} Prozentpunkte**. Über die lange Aufnahme mitteln sich die "
+                   "kurzen Artefakte weitgehend heraus; die Gesamt-Auswertung ist hier belastbar.")
+    elif max_delta < 3.0:
+        st.info(f"ℹ️ **Moderater Artefakt-Impact** — bis **{max_delta:.1f} Prozentpunkte** Unterschied. "
+                "Die korrigierte Auswertung lohnt den Blick.")
+    else:
+        st.warning(f"⚠️ **Deutlicher Artefakt-Impact** — bis **{max_delta:.1f} Prozentpunkte** "
+                   "Unterschied. Hier verändern die Artefakte das Spektrum spürbar → korrigierte "
+                   "Auswertung bevorzugen.")
+    st.caption(f"Gesamt: ganze Aufnahme ({_mmss(res.duration_s)} min:s) · "
+               f"Korrigiert: {_mmss(res.clean_s)} min:s saubere Segmente · Kanal {ch} · "
+               "identische PSD-Methode (Welch), nur der Zeitausschnitt unterscheidet sich.")
 
 
 def render():
@@ -129,6 +230,9 @@ def render():
                 f"({b['frac']*100:.0f}% der Fenster) — möglicherweise gelöste/defekte Elektrode. "
                 "**Vorschlag:** diese Ableitung aus den Analysen ausblenden. (Noch nur Vorschlag.)"
             )
+
+    # ── A6: Spektralanalyse Gesamt vs. korrigiert ────────────────────────────
+    _render_spectral_compare(edf, res)
 
     # ── Transparenz ──────────────────────────────────────────────────────────
     with st.expander("ℹ️ Wie funktioniert die Erkennung?", expanded=False):
