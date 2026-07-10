@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 from core.shared import (
     apply_global_style, section_header, get_edf_or_stop,
-    load_and_prepare, apply_channel_overrides, get_patient_info,
+    load_and_prepare, apply_channel_overrides, get_patient_info, ELECTRODE_POS,
 )
 from analysis.artifacts import ArtifactParams, mask_from_edf
 # Reuse der bestehenden Spektrum-Logik OHNE eeg_spectrum.py zu verändern (nur Import).
@@ -234,6 +234,62 @@ def _render_hrv_compare(edf, edf_path, res, overrides_key):
                    "→ korrigierte HRV bevorzugen (Bewegung verzerrt die RR-Reihe).")
 
 
+# ── DGKN-Montagen für die Review-Ansicht ─────────────────────────────────────
+# Hemisphären-Farben: rechts bläulich · links orange · Mittellinie grün · EKG rot.
+_COL_R, _COL_L, _COL_M, _COL_ECG = "#3b82f6", "#e67e22", "#16a34a", "#c0392b"
+
+# Bipolare Längsreihe (DGKN „Doppelte Banane") — nach Ketten gruppiert (Spacer dazwischen).
+_LONG_GROUPS = [
+    ("re. temporal",      [("Fp2", "F8"), ("F8", "T4"), ("T4", "T6"), ("T6", "O2")], _COL_R),
+    ("li. temporal",      [("Fp1", "F7"), ("F7", "T3"), ("T3", "T5"), ("T5", "O1")], _COL_L),
+    ("re. parasagittal",  [("Fp2", "F4"), ("F4", "C4"), ("C4", "P4"), ("P4", "O2")], _COL_R),
+    ("li. parasagittal",  [("Fp1", "F3"), ("F3", "C3"), ("C3", "P3"), ("P3", "O1")], _COL_L),
+    ("Mittellinie",       [("Fz", "Cz"), ("Cz", "Pz")], _COL_M),
+]
+# Referenzielle Ketten (für Cz-Ref & Average) — nach Hemisphäre geordnet.
+_REF_GROUPS = [
+    ("rechts",      ["Fp2", "F8", "F4", "T4", "C4", "T6", "P4", "O2"], _COL_R),
+    ("links",       ["Fp1", "F7", "F3", "T3", "C3", "T5", "P3", "O1"], _COL_L),
+    ("Mittellinie", ["Fz", "Cz", "Pz"], _COL_M),
+]
+
+_MONTAGES = ["Bipolare Längsreihe", "Cz-Referenz", "Average-Referenz"]
+
+
+def _build_traces(edf, montage, i0, i1):
+    """Baut die Ableitungen der gewählten Montage → geordnete Trace-Liste mit Gruppen (Spacer)."""
+    eeg_map = edf["eeg_map"]
+    sf = edf["sfreq"]
+    present = {e: edf["data"][eeg_map[e], i0:i1] * 1e6 for e in ELECTRODE_POS if e in eeg_map}
+    present = {e: _highpass(v, sf, 1.0) if len(v) > 20 else v for e, v in present.items()}
+    avg = np.mean(list(present.values()), axis=0) if present else None
+
+    groups = []  # [(group_label, [ {label,sig,color} ... ])]
+    if montage == "Bipolare Längsreihe":
+        for gname, pairs, col in _LONG_GROUPS:
+            traces = [{"label": f"{a}–{b}", "sig": present[a] - present[b], "color": col}
+                      for a, b in pairs if a in present and b in present]
+            if traces:
+                groups.append((gname, traces))
+    else:
+        ref_ok = montage == "Average-Referenz" or "Cz" in present
+        for gname, elecs, col in _REF_GROUPS:
+            traces = []
+            for e in elecs:
+                if e not in present:
+                    continue
+                if montage == "Cz-Referenz":
+                    if e == "Cz" or "Cz" not in present:
+                        continue
+                    sig, lab = present[e] - present["Cz"], f"{e}–Cz"
+                else:  # Average
+                    sig, lab = present[e] - avg, f"{e}–avg"
+                traces.append({"label": lab, "sig": sig, "color": col})
+            if traces:
+                groups.append((gname, traces))
+    return groups
+
+
 _REVIEW_HTML = """
 <div style="font-family:system-ui,-apple-system,sans-serif">
   <canvas id="rev" style="width:100%;height:__HEIGHT__px;display:block;
@@ -241,54 +297,56 @@ _REVIEW_HTML = """
 </div>
 <script>
 const D = __PAYLOAD__;
-const LANE = __LANE__;
 const cv = document.getElementById("rev");
 const ctx = cv.getContext("2d");
 const dpr = window.devicePixelRatio || 1;
+const LEFT = 66;                                   // Platz für Labels links
 function draw() {
   const W = cv.clientWidth, H = __HEIGHT__;
   cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,W,H);
-  const chans = D.channels, nb = D.n_buckets;
-  const plotH = H - 26;                       // Platz für Zeitachse unten
-  // Artefakt-Segmente (rot) zuerst, als Hintergrund
-  D.segments.forEach(s => {
-    ctx.fillStyle = s.ecg === true ? "rgba(192,57,43,0.30)" : "rgba(192,57,43,0.18)";
-    ctx.fillRect(s.x0*W, 0, (s.x1-s.x0)*W, plotH);
-  });
-  // Kanäle
-  chans.forEach((c,ci) => {
-    const yc = ci*LANE + LANE/2;
-    const gain = (LANE*0.42) / (c.scale || 1);
-    // Lane-Trennlinie
-    ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(0,(ci+1)*LANE); ctx.lineTo(W,(ci+1)*LANE); ctx.stroke();
-    // Signal (min/max je Bucket; negativ oben -> Vorzeichen invertiert)
-    ctx.strokeStyle = "#8fd0ff"; ctx.lineWidth = 1; ctx.beginPath();
+  const nb = D.n_buckets, plotH = D.plotH, PW = W - LEFT;
+  const segX = s => [LEFT + s.x0*PW, (s.x1-s.x0)*PW];
+  // Spacer-Trennlinien zwischen den Ketten
+  ctx.strokeStyle = "rgba(255,255,255,0.10)"; ctx.lineWidth = 1;
+  (D.spacers||[]).forEach(y => { ctx.beginPath(); ctx.moveTo(LEFT,y); ctx.lineTo(W,y); ctx.stroke(); });
+  // Traces (kein Clipping — Overlap erlaubt, damit Artefakte sichtbar bleiben)
+  D.traces.forEach(tr => {
+    ctx.strokeStyle = tr.color; ctx.lineWidth = 1; ctx.globalAlpha = 0.95; ctx.beginPath();
     for (let i=0;i<nb;i++){
-      const x = i/(nb-1)*W;
-      let top = yc - Math.max(-c.maxs[i]*gain,  -LANE*0.46);   // -max (neg oben)
-      let bot = yc - Math.min(-c.mins[i]*gain,   LANE*0.46);
-      top = Math.max(ci*LANE+1, Math.min((ci+1)*LANE-1, top));
-      bot = Math.max(ci*LANE+1, Math.min((ci+1)*LANE-1, bot));
-      ctx.moveTo(x, top); ctx.lineTo(x, bot);
+      const x = LEFT + i/(nb-1)*PW;
+      const yA = tr.yc + tr.pol*tr.mins[i]*tr.gain;
+      const yB = tr.yc + tr.pol*tr.maxs[i]*tr.gain;
+      ctx.moveTo(x, Math.min(yA,yB)); ctx.lineTo(x, Math.max(yA,yB));
     }
-    ctx.stroke();
-    // Label
-    ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.font = "11px system-ui";
-    ctx.fillText(c.label, 4, yc+3);
+    ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillStyle = tr.color; ctx.font = "11px system-ui";
+    ctx.fillText(tr.label, 4, tr.yc+3);
   });
   // Zeitachse
-  ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.font = "10px system-ui";
-  ctx.strokeStyle = "rgba(255,255,255,0.15)";
-  const dur = D.t1 - D.t0;
-  const step = dur > 80 ? 20 : 10;
+  ctx.fillStyle = "rgba(255,255,255,0.6)"; ctx.font = "10px system-ui";
+  ctx.strokeStyle = "rgba(255,255,255,0.2)";
+  const dur = D.t1 - D.t0, step = dur > 80 ? 20 : 10;
   for (let t=Math.ceil(D.t0/step)*step; t<=D.t1; t+=step){
-    const x = (t-D.t0)/dur*W;
+    const x = LEFT + (t-D.t0)/dur*PW;
     ctx.beginPath(); ctx.moveTo(x,plotH); ctx.lineTo(x,plotH+4); ctx.stroke();
     const mm = Math.floor(t/60), ss = String(Math.floor(t%60)).padStart(2,"0");
     ctx.fillText(mm+":"+ss, x+2, plotH+14);
   }
+  // ── VERWORFENE BEREICHE: Polaritäts-/Negativ-Umkehr (Weiß im difference-Modus
+  //    invertiert alle Pixel darunter → Schwarz↔Weiß, Farben komplementär) ──
+  ctx.globalCompositeOperation = "difference";
+  ctx.fillStyle = "#ffffff";
+  D.segments.forEach(s => { const [x,w] = segX(s); ctx.fillRect(x, 0, w, plotH); });
+  ctx.globalCompositeOperation = "source-over";
+  // Scharfer Rahmen + Label über den invertierten Blöcken
+  D.segments.forEach(s => {
+    const [x,w] = segX(s);
+    ctx.strokeStyle = "#ff2d2d"; ctx.lineWidth = 1.5;
+    ctx.strokeRect(x, 0.75, w, plotH-1.5);
+    ctx.fillStyle = "#ff2d2d"; ctx.font = "bold 9px system-ui";
+    if (w > 34) ctx.fillText("verworfen", x+3, 11);
+  });
 }
 draw();
 window.addEventListener("resize", draw);
@@ -308,64 +366,87 @@ def _minmax_decimate(sig: np.ndarray, n_buckets: int):
 
 
 def _render_review_viewer(edf, res):
-    """A8: All-Kanal-Review-Ansicht (Canvas), 60–100 s/Screen, Artefakt-Maske als Overlay."""
+    """A8: All-Kanal-Review-Ansicht (Canvas) mit DGKN-Montage, Hemisphärenfarben, EKG, Spacern."""
     section_header("Review-Ansicht — alle Kanäle",
-                   "Grobe Übersicht (60–100 s/Screen) mit markierten Artefakt-Segmenten")
+                   "DGKN-Montage · 60–100 s/Screen · Artefakt-Segmente markiert")
 
-    eeg_map = edf["eeg_map"]
     sfreq = edf["sfreq"]
     dur = res.duration_s
 
-    c1, c2, c3 = st.columns([2, 3, 3])
+    c1, c2, c3, c4 = st.columns([2.2, 1.4, 3, 2.4])
     with c1:
-        screen_s = st.selectbox("Screen-Länge", [60, 100], index=0,
-                                format_func=lambda s: f"{s} s / Screen")
+        montage = st.selectbox("Montage", _MONTAGES, index=0)
+    with c2:
+        screen_s = st.selectbox("Screen", [60, 100], index=0, format_func=lambda s: f"{s} s")
+    with c4:
+        sens = st.select_slider("Empfindlichkeit", options=[0.25, 0.5, 1.0, 2.0, 4.0],
+                                value=1.0, format_func=lambda v: f"{v:g}×")
+
     n_screens = max(1, int(np.ceil(dur / screen_s)))
     key = "artifact_screen_idx"
-    idx = st.session_state.get(key, 0)
-    idx = max(0, min(idx, n_screens - 1))
-    with c2:
+    idx = max(0, min(st.session_state.get(key, 0), n_screens - 1))
+    with c3:
         nav_prev, nav_lbl, nav_next = st.columns([1, 2, 1])
         if nav_prev.button("◀", use_container_width=True, disabled=(idx == 0)):
             idx -= 1
         if nav_next.button("▶", use_container_width=True, disabled=(idx >= n_screens - 1)):
             idx += 1
-        nav_lbl.markdown(f"<div style='text-align:center;padding-top:6px'>Screen "
-                         f"<b>{idx+1}</b> / {n_screens}</div>", unsafe_allow_html=True)
+        nav_lbl.markdown(f"<div style='text-align:center;padding-top:6px;font-size:13px'>Screen "
+                         f"<b>{idx+1}</b>/{n_screens}</div>", unsafe_allow_html=True)
     st.session_state[key] = idx
 
     t0 = idx * screen_s
     t1 = min(dur, t0 + screen_s)
-    with c3:
-        st.markdown(f"<div style='padding-top:6px;color:#555'>⏱ {_mmss(t0)} – {_mmss(t1)} "
-                    f"<span style='color:#888'>({t1-t0:.0f}s)</span></div>", unsafe_allow_html=True)
-
     i0, i1 = int(t0 * sfreq), int(t1 * sfreq)
     n_buckets = 1100
-    channels = []
-    for name, ch_idx in eeg_map.items():
-        seg = edf["data"][ch_idx, i0:i1] * 1e6
-        seg = _highpass(seg, sfreq, 1.0) if len(seg) > 20 else seg
-        scale = float(np.percentile(np.abs(seg), 95)) or 1.0   # robuste Skala je Kanal
-        mins, maxs = _minmax_decimate(seg.astype(float), n_buckets)
-        channels.append({"label": name, "mins": [round(v, 1) for v in mins],
-                         "maxs": [round(v, 1) for v in maxs], "scale": round(scale, 1)})
+    lane_h, spacer_h = 26, 12
+
+    groups = _build_traces(edf, montage, i0, i1)
+    # Uniforme EEG-Verstärkung (klinisch: gleiche µV/mm über alle Kanäle) aus 95. Perzentil.
+    all_abs = np.concatenate([np.abs(tr["sig"]) for _, trs in groups for tr in trs]) \
+        if groups else np.array([1.0])
+    g95 = float(np.percentile(all_abs, 95)) or 1.0
+    g_eeg = (lane_h * 0.5) / g95 * sens
+
+    traces, spacers, y = [], [], 0.0
+    for gi, (gname, trs) in enumerate(groups):
+        for tr in trs:
+            y += lane_h
+            mins, maxs = _minmax_decimate(tr["sig"].astype(float), n_buckets)
+            traces.append({"label": tr["label"], "color": tr["color"], "pol": 1, "yc": y - lane_h / 2,
+                           "gain": round(g_eeg, 4),
+                           "mins": [round(v, 1) for v in mins], "maxs": [round(v, 1) for v in maxs]})
+        y += spacer_h
+        spacers.append(y - spacer_h / 2)
+
+    # EKG-Spur (rot, R-Zacke oben, eigene Verstärkung)
+    ecg_channels = edf.get("ecg_channels") or []
+    if ecg_channels and ecg_channels[0] in edf.get("ch_idx", {}):
+        esig = edf["data"][edf["ch_idx"][ecg_channels[0]], i0:i1] * 1000.0  # mV
+        if len(esig) > 20:
+            esig = _highpass(esig, sfreq, 0.5)
+        e95 = float(np.percentile(np.abs(esig), 95)) or 1.0
+        y += lane_h
+        mins, maxs = _minmax_decimate(esig.astype(float), n_buckets)
+        traces.append({"label": f"EKG ({ecg_channels[0]})", "color": _COL_ECG, "pol": -1,
+                       "yc": y - lane_h / 2, "gain": round((lane_h * 0.55) / e95, 4),
+                       "mins": [round(v, 2) for v in mins], "maxs": [round(v, 2) for v in maxs]})
 
     span = (t1 - t0) or 1.0
-    segs = [{"x0": max(0.0, s["start_s"] - t0) / span,
-             "x1": (min(t1, s["end_s"]) - t0) / span,
+    segs = [{"x0": max(0.0, s["start_s"] - t0) / span, "x1": (min(t1, s["end_s"]) - t0) / span,
              "ecg": s["ecg_disturbed"]}
             for s in res.segments if s["end_s"] > t0 and s["start_s"] < t1]
 
-    payload = json.dumps({"channels": channels, "segments": segs,
-                          "t0": t0, "t1": t1, "n_buckets": n_buckets})
-    lane_h = 30
-    height = len(channels) * lane_h + 46
-    components.html(_REVIEW_HTML.replace("__PAYLOAD__", payload).replace("__HEIGHT__", str(height))
-                    .replace("__LANE__", str(lane_h)), height=height + 10, scrolling=False)
-    st.caption("Rot schattiert = markiertes Artefakt-Segment (Auto-Vorschlag). Negativ oben "
-               "(EEG-Konvention), Amplitude je Kanal robust skaliert. Manuelles Nachjustieren "
-               "(Segmente ziehen/löschen) folgt im nächsten Schritt.")
+    plot_h = int(y + 8)
+    payload = json.dumps({"traces": traces, "spacers": spacers, "segments": segs,
+                          "t0": t0, "t1": t1, "n_buckets": n_buckets, "plotH": plot_h})
+    height = plot_h + 26
+    components.html(_REVIEW_HTML.replace("__PAYLOAD__", payload).replace("__HEIGHT__", str(height)),
+                    height=height + 8, scrolling=False)
+    st.caption(f"⏱ {_mmss(t0)}–{_mmss(t1)} · Montage **{montage}** · rechts blau · links orange · "
+               "Mitte grün · EKG rot. **Negativ-invertierte Blöcke = verworfen** (Farb-/Polaritäts"
+               "umkehr, rot umrandet) → man sieht sofort, was drin bleibt und was raus fällt. "
+               "**Kein Clipping** — große Ausschläge dürfen überlappen. Manuelles Nachjustieren folgt.")
 
 
 def render():

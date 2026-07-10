@@ -74,7 +74,11 @@ class ArtifactParams:
     # nur geringer posteriorer Beteiligung.
     min_nonfrontal: int = 1
     guard_s: float = 0.5         # Sicherheitsrand um jedes Segment
-    gap_merge_s: float = 1.0     # kleinere Lücken zwischen Flags zusammenfassen
+    # Minimale saubere Insel: liegt zwischen zwei Artefakt-Segmenten weniger als so viel
+    # sauberes EEG, wird die Lücke absorbiert (ein Block statt vieler Schnipsel). Verhindert
+    # sinnlose Fragmentierung, wenn es real ein großer Artefaktblock ist. Kurze Inseln (<5 s)
+    # tragen spektral ohnehin kaum bei (Minuten-Literatur).
+    min_clean_island_s: float = 5.0
     # EKG (bestätigend, positiv-only) — Segment gilt als „EKG mitgestört", wenn die
     # Amplitude des EKG-Kanals im Segment über dieser x-Baseline liegt:
     ecg_ptp_ratio: float = 2.5
@@ -203,7 +207,7 @@ def compute_artifact_mask(
 
 
 def _build_segments(t, artifact_win, max_ratio, ecg_hot, p: ArtifactParams) -> list:
-    win_s, guard, gap = p.win_s, p.guard_s, p.gap_merge_s
+    win_s, guard, gap = p.win_s, p.guard_s, p.min_clean_island_s
     segs: list = []
     for i, flag in enumerate(artifact_win):
         if not flag:
