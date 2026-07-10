@@ -6,6 +6,7 @@ Nachgeschaltet nach der Kanal-Identifikation (nutzt deren Typ-Overrides).
 """
 
 import json
+from dataclasses import replace
 
 import numpy as np
 import streamlit as st
@@ -378,7 +379,7 @@ def _render_review_viewer(edf, res):
         montage = st.selectbox("Montage", _MONTAGES, index=0)
     with c2:
         screen_s = st.selectbox("Screen", [10, 30, 60, 100], index=2,
-                                format_func=lambda s: f"{s} s")
+                                format_func=lambda s: f"{s} s", key="artifact_screen_len")
     with c4:
         st.markdown("<div style='font-size:13px;color:#555'>Empfindlichkeit</div>",
                     unsafe_allow_html=True)
@@ -464,6 +465,110 @@ def _render_review_viewer(edf, res):
                "**Kein Clipping** — große Ausschläge dürfen überlappen. Manuelles Nachjustieren folgt.")
 
 
+# ── A9a: manuelle Bearbeitung der Maske (Override-Ebene, getrennt von der Auto-Maske) ──
+def _seg_key(s) -> str:
+    return f"{s['start_s']:.1f}-{s['end_s']:.1f}"
+
+
+def _union_len(segs) -> float:
+    """Gesamtdauer der (ggf. überlappenden) Segmente per Intervall-Vereinigung."""
+    ivs = sorted((s["start_s"], s["end_s"]) for s in segs)
+    tot, lo, hi = 0.0, None, None
+    for a, b in ivs:
+        if hi is None:
+            lo, hi = a, b
+        elif a <= hi:
+            hi = max(hi, b)
+        else:
+            tot += hi - lo; lo, hi = a, b
+    if hi is not None:
+        tot += hi - lo
+    return tot
+
+
+def _effective_res(res_auto, dur):
+    """Effektive Maske = Auto-Segmente (minus vom User entfernte) + manuell hinzugefügte."""
+    ov = st.session_state.setdefault("artifact_overrides", {"removed": [], "added": []})
+    removed = set(ov["removed"])
+    eff = [dict(s, manual=False) for s in res_auto.segments if _seg_key(s) not in removed]
+    for a in ov["added"]:
+        eff.append({"start_s": a["start_s"], "end_s": a["end_s"],
+                    "dur_s": round(a["end_s"] - a["start_s"], 2),
+                    "max_ratio": None, "ecg_disturbed": None, "manual": True})
+    eff.sort(key=lambda s: s["start_s"])
+    clean_s = max(0.0, dur - _union_len(eff)) if eff else dur
+    return replace(res_auto, segments=eff, clean_s=clean_s,
+                   clean_frac=clean_s / dur if dur else 1.0)
+
+
+def _render_segment_editor(res_auto, dur):
+    """A9a: Auto-Segmente entfernen (kein Artefakt) / manuell Bereiche hinzufügen (übersehen)."""
+    ov = st.session_state.setdefault("artifact_overrides", {"removed": [], "added": []})
+    n_add, n_rem = len(ov["added"]), len(ov["removed"])
+    section_header("Artefakt-Segmente — bearbeiten",
+                   "Auto-Vorschlag anpassen · fließt sofort in Vorher/Nachher-Auswertung")
+    if n_add or n_rem:
+        cc1, cc2 = st.columns([4, 1])
+        cc1.info(f"✏️ Manuell: **{n_add}** hinzugefügt · **{n_rem}** als kein Artefakt entfernt.")
+        if cc2.button("Zurücksetzen", use_container_width=True):
+            st.session_state["artifact_overrides"] = {"removed": [], "added": []}
+            st.rerun()
+
+    hdr = st.columns([3, 1.4, 2, 2, 2.2])
+    for c, t in zip(hdr, ["Bereich", "Dauer", "max. Amplitude", "EKG", ""]):
+        c.markdown(f"<span style='font-size:11px;color:#888;font-weight:700'>{t}</span>",
+                   unsafe_allow_html=True)
+
+    # Auto-Segmente
+    for s in res_auto.segments:
+        k = _seg_key(s)
+        removed = k in ov["removed"]
+        col = st.columns([3, 1.4, 2, 2, 2.2])
+        strike = "text-decoration:line-through;opacity:0.5;" if removed else ""
+        col[0].markdown(f"<span style='{strike}'>🔴 {_mmss(s['start_s'])}–{_mmss(s['end_s'])}</span>",
+                        unsafe_allow_html=True)
+        col[1].markdown(f"<span style='{strike}'>{s['dur_s']}s</span>", unsafe_allow_html=True)
+        col[2].markdown(f"<span style='{strike}'>{s['max_ratio']}×</span>"
+                        if s["max_ratio"] else "—", unsafe_allow_html=True)
+        col[3].markdown("✓" if s["ecg_disturbed"] else ("–" if s["ecg_disturbed"] is not None else ""))
+        if removed:
+            if col[4].button("↩︎ doch Artefakt", key=f"reart_{k}", use_container_width=True):
+                ov["removed"].remove(k); st.rerun()
+        else:
+            if col[4].button("✗ kein Artefakt", key=f"keep_{k}", use_container_width=True):
+                ov["removed"].append(k); st.rerun()
+
+    # Manuell hinzugefügte
+    for i, a in enumerate(ov["added"]):
+        col = st.columns([3, 1.4, 2, 2, 2.2])
+        col[0].markdown(f"🖐 **{_mmss(a['start_s'])}–{_mmss(a['end_s'])}** "
+                        "<span style='font-size:10px;color:#e67e22'>manuell</span>",
+                        unsafe_allow_html=True)
+        col[1].markdown(f"{round(a['end_s']-a['start_s'],1)}s")
+        col[2].markdown("—"); col[3].markdown("")
+        if col[4].button("🗑 löschen", key=f"del_{i}", use_container_width=True):
+            ov["added"].pop(i); st.rerun()
+
+    if not res_auto.segments and not ov["added"]:
+        st.success("✅ Keine Artefakt-Segmente — die Aufnahme läuft ruhig durch.")
+
+    # Bereich hinzufügen
+    with st.expander("➕ Artefakt-Bereich hinzufügen (übersehenen Bereich ausklammern)"):
+        idx = st.session_state.get("artifact_screen_idx", 0)
+        slen = st.session_state.get("artifact_screen_len", 60)
+        def_start = float(min(idx * slen, max(0.0, dur - 10)))
+        ca, cb, cd = st.columns([2, 2, 1.4])
+        s0 = ca.number_input("Start (s)", 0.0, float(dur), def_start, step=1.0, key="add_start")
+        s1 = cb.number_input("Ende (s)", 0.0, float(dur), min(def_start + 10, float(dur)),
+                             step=1.0, key="add_end")
+        if cd.button("Hinzufügen", type="primary", use_container_width=True):
+            if s1 > s0:
+                ov["added"].append({"start_s": round(s0, 2), "end_s": round(s1, 2)})
+                st.rerun()
+            else:
+                st.error("Ende muss nach Start liegen.")
+
+
 def render():
     apply_global_style()
     edf, edf_path = get_edf_or_stop()
@@ -473,7 +578,9 @@ def render():
         "Markiert **grobe Bewegungs-/Globalartefakte** — bewusst **konservativ** (nur klar "
         "Artefaktbelastetes, kein Blinzeln/Slow-Wave-Sleep). Diese Seite ist ein **zweites Gleis**: "
         "die bestehenden Analysen (EEG-Spektrum, EKG & HRV) laufen unverändert über die "
-        "**Gesamtaufnahme** weiter. Hier siehst du **nur die Maske** — noch wird nichts verworfen."
+        "**Gesamtaufnahme** weiter. Hier siehst du den **Auto-Vorschlag**, kannst ihn **manuell "
+        "anpassen** (Segmente entfernen/hinzufügen) und die Auswertung **mit vs. ohne** Artefakte "
+        "vergleichen. Die Originalanalysen bleiben unberührt."
     )
 
     if not edf.get("eeg_map"):
@@ -484,8 +591,9 @@ def render():
         return
 
     overrides_key = str(sorted(st.session_state.get("channel_overrides", {}).items()))
-    res = _cached_mask(edf_path, overrides_key)
-    dur = res.duration_s
+    res_auto = _cached_mask(edf_path, overrides_key)
+    dur = res_auto.duration_s
+    res = _effective_res(res_auto, dur)   # Auto-Maske + manuelle Overrides (A9a)
 
     # ── Zusammenfassung ──────────────────────────────────────────────────────
     section_header("Übersicht", "Auto-Vorschlag — read-only")
@@ -510,20 +618,8 @@ def render():
     st.plotly_chart(_timeline_figure(res, dur), use_container_width=True,
                     config={"displayModeBar": False})
 
-    # ── Segmentliste ─────────────────────────────────────────────────────────
-    if res.segments:
-        section_header("Artefakt-Segmente", f"{len(res.segments)} markiert")
-        rows = [{
-            "Start": _mmss(s["start_s"]), "Ende": _mmss(s["end_s"]),
-            "Dauer (s)": s["dur_s"], "max. Amplitude (× Baseline)": s["max_ratio"],
-            "EKG mitgestört": ("—" if s["ecg_disturbed"] is None
-                               else ("ja ✓" if s["ecg_disturbed"] else "nein")),
-        } for s in res.segments]
-        st.dataframe(rows, use_container_width=True, hide_index=True)
-        st.caption("EKG mitgestört = ja stützt eine echte Körperbewegung; nein heißt nicht "
-                   "sauber, sondern nur: die Bewegung hat die EKG-Elektrode nicht mit erfasst.")
-    else:
-        st.success("✅ Keine groben Artefakt-Segmente erkannt — die Aufnahme läuft ruhig durch.")
+    # ── A9a: Segment-Editor (entfernen / hinzufügen) ─────────────────────────
+    _render_segment_editor(res_auto, dur)
 
     # ── Bad-Channel-Vorschläge ───────────────────────────────────────────────
     if res.bad_channels:
