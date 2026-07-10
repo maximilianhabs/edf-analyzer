@@ -96,6 +96,50 @@ def detect_r_peaks(signal: np.ndarray, sfreq: float) -> np.ndarray:
     return np.array(refined, dtype=int)
 
 
+# ── W1: validierte R-Zacken-Detektion (publizierte Algorithmen) ────────────────
+def refine_peaks(signal: np.ndarray, peaks, sfreq: float, win_ms: float = 50.0) -> np.ndarray:
+    """Schiebt jede Detektion auf das echte R-Zacken-Maximum im ±win_ms-Fenster.
+
+    Entscheidend für HRV: konsistente Fiducial-Punkte reduzieren Timing-Jitter (sonst
+    stark überschätztes RMSSD/pNN50). Wird auf ALLE Detektoren gleich angewandt.
+    """
+    w = int(sfreq * win_ms / 1000.0)
+    out = []
+    for p in peaks:
+        p = int(p)
+        lo, hi = max(0, p - w), min(len(signal), p + w + 1)
+        if hi > lo:
+            out.append(lo + int(np.argmax(signal[lo:hi])))
+    return np.array(sorted(set(out)), dtype=int)
+
+
+def detect_r_peaks_validated(signal: np.ndarray, sfreq: float,
+                             method: str = "hamilton") -> np.ndarray:
+    """R-Zacken über einen **validierten, publizierten** Detektor (py-ecg-detectors) +
+    konsistente Maximum-Verfeinerung. Fällt bei fehlender Lib/Fehler auf detect_r_peaks zurück.
+
+    Methoden: 'hamilton' (Hamilton 2002, robust — Default), 'pan_tompkins' (Pan-Tompkins 1985),
+    'christov' (Christov 2004), 'engzee' (Engelse-Zeelenberg), 'two_average' (Elgendi 2013).
+    """
+    try:
+        from ecgdetectors import Detectors
+    except Exception:
+        return detect_r_peaks(signal, sfreq)
+    det = Detectors(float(sfreq))
+    fn = {
+        "hamilton": det.hamilton_detector, "pan_tompkins": det.pan_tompkins_detector,
+        "christov": det.christov_detector, "engzee": det.engzee_detector,
+        "two_average": det.two_average_detector,
+    }.get(method, det.hamilton_detector)
+    try:
+        raw = fn(np.asarray(signal, dtype=float))
+    except Exception:
+        return detect_r_peaks(signal, sfreq)
+    if len(raw) < 3:
+        return detect_r_peaks(signal, sfreq)
+    return refine_peaks(signal, raw, sfreq)
+
+
 def compute_rr_intervals(r_peaks: np.ndarray, sfreq: float) -> np.ndarray:
     """Convert R-peak sample indices to RR intervals in milliseconds."""
     rr_ms = np.diff(r_peaks) / sfreq * 1000
