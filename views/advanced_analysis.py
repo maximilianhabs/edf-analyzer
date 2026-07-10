@@ -119,6 +119,82 @@ def _render_rpeak_visual(edf, edf_path):
                "vertraut.")
 
 
+@st.cache_data(show_spinner="Berechne Aperiodik (eigen + FOOOF) …")
+def _fooof_compare(edf_path, ch, hi, knee):
+    from analysis.aperiodic import welch_psd, fit_aperiodic
+    from analysis.aperiodic_fooof import fit_fooof
+    from views.eeg_spectrum import _highpass
+    e = apply_channel_overrides(load_and_prepare(edf_path))
+    sf = e["sfreq"]; dur = e["duration_s"]
+    ana = min(dur, 300.0); t0 = max(0.0, (dur - ana) / 2)
+    sig = _highpass(e["data"][e["eeg_map"][ch]] * 1e6, sf, 1.0)
+    f, p = welch_psd(sig[int(t0 * sf):int((t0 + ana) * sf)], sf, fmax=45.0)
+    own = fit_aperiodic(f, p, 1, hi)
+    ff = fit_fooof(f, p, 1, hi, knee=knee)
+    return {"f": np.asarray(f), "p": np.asarray(p),
+            "own": {"freqs": np.asarray(own["freqs"]), "aper": np.asarray(own["aper_psd"]),
+                    "exponent": own["exponent"], "offset": own["offset"], "r2": own["r2"]},
+            "ff": ff, "win": (t0, t0 + ana)}
+
+
+def _render_fooof(edf, edf_path):
+    section_header("Aperiodik 1/f — FOOOF vs. eigener Fit (W2)",
+                   "Validierte Referenz-Implementierung (Donoghue 2020) parallel + visuelle Kontrolle")
+    eeg_map = edf.get("eeg_map", {})
+    if not eeg_map:
+        st.info("Keine EEG-Kanäle.")
+        return
+    posterior = [c for c in ("O2", "O1", "Pz", "P4", "P3") if c in eeg_map]
+    opts = posterior + [c for c in eeg_map if c not in posterior]
+    c1, c2, c3 = st.columns([2, 2, 2])
+    ch = c1.selectbox("Kanal", opts, key="fooof_ch")
+    hi = c2.select_slider("Fit-Obergrenze (Hz)", options=[20, 30, 40], value=40, key="fooof_hi")
+    knee = c3.toggle("Knee-Modell", value=False, key="fooof_knee",
+                     help="FOOOF mit Knick (aperiodic_mode='knee') — sinnvoll über breite Bereiche.")
+
+    d = _fooof_compare(edf_path, ch, int(hi), bool(knee))
+    own, ff = d["own"], d["ff"]
+
+    rows = [{"Methode": "eigen (Sigma-Clip-Geradenfit)", "Exponent": f"{own['exponent']:.2f}",
+             "Offset": f"{own['offset']:.2f}", "R²": f"{own['r2']:.3f}", "Knee": "—", "Gipfel": "—"}]
+    if ff:
+        rows.append({"Methode": f"FOOOF ({ff['mode']})", "Exponent": f"{ff['exponent']:.2f}",
+                     "Offset": f"{ff['offset']:.2f}", "R²": f"{ff['r2']:.3f}",
+                     "Knee": (f"{ff['knee']:.1f}" if ff['knee'] is not None else "—"),
+                     "Gipfel": str(len(ff["peaks"]))})
+    else:
+        st.warning("FOOOF nicht verfügbar (Lib fehlt) — nur eigener Fit angezeigt.")
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+    # ── Visuelle Kontrolle: Log-Log-PSD mit beiden 1/f-Fits ──────────────────
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=d["f"], y=d["p"], mode="lines", name="PSD",
+                             line=dict(color="#374151", width=1)))
+    fig.add_trace(go.Scatter(x=own["freqs"], y=own["aper"], mode="lines", name="eigen 1/f",
+                             line=dict(color="#2980b9", width=2, dash="dash")))
+    if ff:
+        fig.add_trace(go.Scatter(x=ff["fit_freqs"], y=ff["ap_fit_lin"], mode="lines",
+                                 name="FOOOF 1/f", line=dict(color="#e67e22", width=2)))
+        for pk in ff["peaks"]:
+            fig.add_vline(x=pk[0], line=dict(color="#16a34a", width=1, dash="dot"))
+    fig.update_layout(height=340, xaxis_type="log", yaxis_type="log",
+                      xaxis_title="Frequenz (Hz)", yaxis_title="PSD (µV²/Hz)",
+                      plot_bgcolor="#fafafa", margin=dict(t=6, b=36, l=58, r=10),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    if ff and ff["peaks"]:
+        st.markdown("**FOOOF-Gipfel (parametrisiert, aperiodik-bereinigt):**")
+        st.dataframe(pd.DataFrame(
+            [{"Mittenfrequenz (Hz)": round(cf, 1), "Power (log)": round(pw, 2),
+              "Bandbreite (Hz)": round(bw, 1)} for cf, pw, bw in ff["peaks"]]),
+            hide_index=True, use_container_width=True)
+    st.caption("**FOOOF** (Donoghue 2020) trennt Oszillationsgipfel vom 1/f-Untergrund und liefert "
+               "meist einen **höheren R²** (unser Fit wird durch Restgipfel leicht verzerrt). Grün "
+               "gepunktet = erkannte Gipfel. Fenster: mittlere ≤5 min, Welch. Der eigene Fit bleibt "
+               "**Default** in den bestehenden Seiten — hier nur der validierte Vergleich.")
+
+
 def render():
     apply_global_style()
     edf, edf_path = get_edf_or_stop()
@@ -131,3 +207,5 @@ def render():
     _render_methods_table()
     st.divider()
     _render_rpeak_visual(edf, edf_path)
+    st.divider()
+    _render_fooof(edf, edf_path)
