@@ -394,6 +394,72 @@ def _render_dfa(edf, edf_path):
                "bestehende HRV-Seite nutzt weiterhin die eigene α1-Variante als Default.")
 
 
+@st.cache_data(show_spinner="Berechne Spektrum (Welch + Multitaper) …")
+def _mt_compare(edf_path, ch):
+    from views.eeg_spectrum import (_compute_psd, _highpass, _band_power, _peak_freq,
+                                    _spectral_edge, BANDS)
+    e = apply_channel_overrides(load_and_prepare(edf_path))
+    sf, dur = e["sfreq"], e["duration_s"]
+    ana = min(dur, 300.0); t0 = max(0.0, (dur - ana) / 2)
+    sig = _highpass(e["data"][e["eeg_map"][ch]] * 1e6, sf, 1.0)
+    seg = sig[int(t0 * sf):int((t0 + ana) * sf)]
+    out = {}
+    for name, mt in [("Welch", False), ("Multitaper", True)]:
+        f, p = _compute_psd(seg, sf, multitaper=mt, amp_thresh_uv=9999.0)
+        if f is None:
+            continue
+        bp = {bn: _band_power(f, p, lo, hi) for bn, (lo, hi), _ in BANDS}
+        tot = sum(bp.values()) or 1
+        out[name] = {"f": np.asarray(f), "p": np.asarray(p),
+                     "rel": {k: v / tot * 100 for k, v in bp.items()},
+                     "alpha_peak": _peak_freq(f, p, 8.0, 13.0),
+                     "sef95": _spectral_edge(f, p, 0.95)}
+    return out
+
+
+def _render_multitaper(edf, edf_path):
+    section_header("EEG-Spektrum — Multitaper vs. Welch (G7)",
+                   "DPSS-Multitaper (Thomson 1982): weniger Leakage, schärfere Gipfel")
+    em = edf.get("eeg_map", {})
+    if not em:
+        st.info("Keine EEG-Kanäle.")
+        return
+    posterior = [c for c in ("O2", "O1", "Pz", "P4", "P3") if c in em]
+    opts = posterior + [c for c in em if c not in posterior]
+    ch = st.selectbox("Kanal", opts, key="mt_ch")
+    d = _mt_compare(edf_path, ch)
+    if "Welch" not in d or "Multitaper" not in d:
+        st.info("Spektrum nicht berechenbar.")
+        return
+    w, m = d["Welch"], d["Multitaper"]
+
+    def _f(v, fmt=".1f"):
+        return format(v, fmt) if (v is not None and v == v) else "—"
+
+    rows = [{"Parameter": f"{bn} relativ", "Welch": _f(w["rel"].get(bn)),
+             "Multitaper": _f(m["rel"].get(bn)), "Einheit": "%"}
+            for bn in ("Delta", "Theta", "Alpha", "Beta")]
+    rows += [{"Parameter": "Alpha-Peak", "Welch": _f(w["alpha_peak"], ".2f"),
+              "Multitaper": _f(m["alpha_peak"], ".2f"), "Einheit": "Hz"},
+             {"Parameter": "SEF95", "Welch": _f(w["sef95"]), "Multitaper": _f(m["sef95"]), "Einheit": "Hz"}]
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=w["f"], y=w["p"], mode="lines", name="Welch",
+                             line=dict(color="#374151", width=1.4)))
+    fig.add_trace(go.Scatter(x=m["f"], y=m["p"], mode="lines", name="Multitaper (DPSS)",
+                             line=dict(color="#e67e22", width=1.8)))
+    fig.update_layout(height=320, yaxis_type="log", xaxis_title="Frequenz (Hz)",
+                      yaxis_title="PSD (µV²/Hz)", plot_bgcolor="#fafafa",
+                      margin=dict(t=6, b=36, l=58, r=10),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.caption("**Multitaper** (DPSS, NW=3/K=5) reduziert Spectral Leakage → **schärferer, besser "
+               "aufgelöster Alpha-Gipfel** und stabilere Bandwerte, besonders bei kurzen/verrauschten "
+               "Abschnitten. Die bestehenden Seiten nutzen **Welch als Default** (Multitaper dort als "
+               "Option); hier der direkte Vergleich.")
+
+
 def render():
     apply_global_style()
     edf, edf_path = get_edf_or_stop()
@@ -410,6 +476,8 @@ def render():
     _render_fooof(edf, edf_path)
     st.divider()
     _render_lombscargle(edf, edf_path)
+    st.divider()
+    _render_multitaper(edf, edf_path)
     st.divider()
     _render_dfa(edf, edf_path)
     st.divider()
