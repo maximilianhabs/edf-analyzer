@@ -156,3 +156,29 @@ def lziv_complexity(signal: np.ndarray, fs: float, seg_sec: float = 5.0,
         ph_vals.append(c0 / ph_m)
 
     return {"shuffle": float(np.mean(sh_vals)), "phase": float(np.mean(ph_vals))}
+
+
+def permutation_entropy(x: np.ndarray, m: int = 3, tau: int = 1, normalize: bool = True) -> float:
+    """Permutationsentropie (Bandt & Pompe 2002) — robustes Komplexitätsmaß über die
+    Häufigkeit ordinaler Muster (Ordnungsbeziehungen) der eingebetteten Zeitreihe.
+
+    m = Einbettungsdimension (Musterlänge), tau = Zeitverzögerung. normalize=True →
+    Wert in [0,1] (durch log(m!) geteilt). Niedrig = regelmäßig/vorhersagbar, hoch = komplex.
+    Quelle: Bandt & Pompe (2002), Phys Rev Lett 88:174102.
+    """
+    x = np.asarray(x, dtype=float)
+    n = len(x)
+    if n < m * tau + 1 or m < 2:
+        return float("nan")
+    from math import factorial, log
+    patterns = {}
+    for i in range(n - (m - 1) * tau):
+        window = x[i:i + m * tau:tau]
+        order = tuple(np.argsort(window, kind="stable"))
+        patterns[order] = patterns.get(order, 0) + 1
+    total = sum(patterns.values())
+    if total == 0:
+        return float("nan")
+    probs = np.array([c / total for c in patterns.values()])
+    pe = -float(np.sum(probs * np.log(probs)))
+    return pe / log(factorial(m)) if normalize else pe
