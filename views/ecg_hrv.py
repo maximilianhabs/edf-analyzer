@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from scipy.signal import find_peaks as _fp
 
-from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info, section_header
+from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info, section_header, safe_slider
 
 
 def _section(title: str, subtitle: str = "") -> None:
@@ -1023,7 +1023,7 @@ def render():
                 st.session_state.ecg_sens_idx += 1; st.rerun()
 
         if include_slider:
-            _new_ep = st.slider(
+            _new_ep = safe_slider(
                 "Epoche direkt anspringen", 1, _n,
                 min(st.session_state.get("ep_ecg", 0), _n - 1) + 1,
                 key=f"ep_ecg_slider_{EPOCH_SEC}",

@@ -11,7 +11,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 from core.shared import (apply_global_style, section_header, get_edf_or_stop,
-                         load_and_prepare, apply_channel_overrides)
+                         load_and_prepare, apply_channel_overrides, safe_slider)
 
 
 _DET_STYLE = {
@@ -92,8 +92,8 @@ def _render_rpeak_visual(edf, edf_path):
     st.markdown("**Visuelle Kontrolle — passt die R-Zacken-Erkennung?**")
     win = st.select_slider("Fensterbreite", options=[5, 10, 20, 30], value=10,
                            format_func=lambda s: f"{s} s")
-    t0 = st.slider("Position (s)", 0.0, float(max(0.0, dur - win)),
-                   min(30.0, float(max(0.0, dur - win))), step=1.0)
+    t0 = safe_slider("Position (s)", 0.0, float(max(0.0, dur - win)),
+                     min(30.0, float(max(0.0, dur - win))), step=1.0)
     i0, i1 = int(t0 * sf), int((t0 + win) * sf)
     tvec = np.arange(i0, i1) / sf
 

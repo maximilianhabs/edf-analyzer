@@ -8,7 +8,7 @@ from scipy.signal import spectrogram
 from scipy.signal import butter, filtfilt
 from scipy.signal.windows import dpss
 
-from core.shared import load_and_prepare, section_header, get_patient_info
+from core.shared import load_and_prepare, section_header, get_patient_info, safe_slider
 
 # ── Frequenzbänder ────────────────────────────────────────────────────────────
 # Delta-Untergrenze 1.0 Hz — konsistent mit dem 1-Hz-Hochpass und der 1-Hz-PSD-Maske
@@ -787,7 +787,7 @@ def render():
 
     wc1, wc2, wc3 = st.columns([5, 2, 3])
     with wc1:
-        t_start = st.slider(
+        t_start = safe_slider(
             "Fenster-Start (s)", 0, max(0, dur_s - 10), 0, step=5,
             key="spec_t_start",
             format="%d s",
@@ -1170,9 +1170,9 @@ def render():
         unsafe_allow_html=True,
     )
     _def_g = max(0, min(dur_s - 10, (t_start + t_end) // 2 - 5))
-    ref_start_g = st.slider(
+    ref_start_g = safe_slider(
         "Position im Recording (s)", 0, max(0, dur_s - 10),
-        value=_def_g, step=1, key="val_start_global",
+        _def_g, step=1, key="val_start_global",
     )
     ref_end_g = ref_start_g + 10
     _position_bar(ref_start_g, ref_end_g, dur_s, ch_col_g, "global")

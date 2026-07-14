@@ -614,6 +614,24 @@ def inject_arrow_key_nav():
     """, height=0, width=0)
 
 
+def safe_slider(label, lo, hi, value=None, **kwargs):
+    """st.slider, das bei **entartetem Bereich** (lo >= hi) nicht abstürzt.
+
+    Streamlit verlangt zwingend min_value < max_value. Bei sehr kurzen Aufnahmen
+    (z. B. eine 10-s-EDF → genau EINE Epoche; oder Fenster-Start-Slider mit
+    max = dauer − 10 = 0) fallen Minimum und Maximum zusammen und Streamlit wirft
+    `StreamlitAPIException: Slider min_value must be less than the max_value`.
+    In dem Fall gibt es schlicht nichts zu navigieren → wir rendern keinen Slider
+    und liefern den einzigen möglichen Wert zurück.
+    """
+    if hi <= lo:
+        return lo
+    if value is None:
+        value = lo
+    value = min(max(value, lo), hi)
+    return st.slider(label, lo, hi, value, **kwargs)
+
+
 def epoch_nav(edf, key, label="EEG", epoch_sec=None):
     """Rendert prominente Navigationszeile, gibt aktuellen Epochenindex zurück."""
     e_sec = epoch_sec or EPOCH_SEC
@@ -670,8 +688,8 @@ div[data-testid="stHorizontalBlock"]:has(> div > div > button[kind="secondary"])
             st.session_state[key] = n_eps - 1
             st.rerun()
 
-    new_ep = st.slider(f"Epoche auswählen ({label})", 1, n_eps, ep + 1,
-                       key=f"{key}_slider_{e_sec}", label_visibility="collapsed")
+    new_ep = safe_slider(f"Epoche auswählen ({label})", 1, n_eps, ep + 1,
+                         key=f"{key}_slider_{e_sec}", label_visibility="collapsed")
     if new_ep - 1 != ep:
         st.session_state[key] = new_ep - 1
         st.rerun()
