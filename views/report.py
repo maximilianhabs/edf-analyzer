@@ -410,14 +410,31 @@ def render():
 
     _disp = st.session_state.get("edf_display_name", "report")
     _base = _disp.rsplit(".", 1)[0] if _disp else "report"
+    @st.cache_data(show_spinner="Erstelle Visual Report …")
+    def _glory_bytes(_path, _disp):
+        from analysis.glory_report import build_glory_pdf
+        e = apply_channel_overrides(load_and_prepare(_path))
+        return build_glory_pdf(e, _path, _disp)
+
     try:
         pdf_bytes, xlsx_bytes = _export_bytes(edf_path, _disp)
-        ec1, ec2 = st.columns(2)
+        ec1, ec2, ec3 = st.columns(3)
         ec1.download_button("📄 PDF herunterladen", pdf_bytes, file_name=f"{_base}_report.pdf",
                             mime="application/pdf", use_container_width=True)
         ec2.download_button(
             "📊 Excel herunterladen", xlsx_bytes, file_name=f"{_base}_report.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True)
+        with ec3:
+            try:
+                ec3.download_button("🎨 Visual Report (PDF)", _glory_bytes(edf_path, _disp),
+                                    file_name=f"{_base}_visual.pdf", mime="application/pdf",
+                                    type="primary", use_container_width=True)
+            except Exception as ex:
+                st.caption(f"Visual Report nicht verfügbar: {ex}")
+        st.caption("**🎨 Visual Report** = grafischer Abstract (A4 quer, 6 Seiten): Roh-EEG, "
+                   "Spektrogramm, Bandverteilung, A/P-Gradient, Asymmetrie, EKG mit QRS-Erkennung, "
+                   "RR vor/nach Bereinigung, Poincaré & HRV-Spektrum — nur robuste Marker, "
+                   "zum Zeigen und Präsentieren.")
     except Exception as e:
         st.error(f"Report-Export fehlgeschlagen: {e}")
