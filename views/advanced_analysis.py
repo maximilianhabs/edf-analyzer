@@ -183,6 +183,25 @@ def _render_fooof(edf, edf_path):
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
+    # ── G2: Alpha-Peak aperiodik-bereinigt (FOOOF-Gipfel) vs. lineare Baseline ──
+    from views.eeg_spectrum import _peak_freq_cog
+    own_alpha = _peak_freq_cog(d["f"], d["p"], 8.0, 13.0)
+    foof_alpha = None
+    if ff:
+        band_pk = [pk for pk in ff["peaks"] if 8.0 <= pk[0] <= 13.0]
+        if band_pk:
+            foof_alpha = max(band_pk, key=lambda x: x[1])[0]
+    st.markdown(
+        f"**Alpha-Peak (G2):** eigen (CoG, **lineare** 1/f-Baseline) "
+        f"**{own_alpha:.2f} Hz**" if own_alpha == own_alpha else "**Alpha-Peak (G2):** eigen —"
+    )
+    st.caption(
+        (f"FOOOF (aperiodik-bereinigt, Gipfel-Mittenfrequenz): **{foof_alpha:.2f} Hz** — "
+         if foof_alpha else "FOOOF: kein Alpha-Gipfel im 8–13-Hz-Band erkannt — ")
+        + "der FOOOF-Gipfel ist **echt** vom 1/f-Untergrund getrennt (kein linearer "
+        "Baseline-Näherungsabzug), daher belastbarer, wenn Theta-Flanke/Untergrund den "
+        "Schwerpunkt verzerren.")
+
     if ff and ff["peaks"]:
         st.markdown("**FOOOF-Gipfel (parametrisiert, aperiodik-bereinigt):**")
         st.dataframe(pd.DataFrame(
@@ -268,6 +287,57 @@ def _render_lombscargle(edf, edf_path):
                "HRV-Frequenzanalyse (Welch/Burg) bleibt **Default**.")
 
 
+@st.cache_data(show_spinner="Berechne Asymmetrie (absolut + relativ) …")
+def _asym_compute(edf_path):
+    from views.report import _compute_bandpower
+    from views.eeg_spectrum import _highpass
+    e = apply_channel_overrides(load_and_prepare(edf_path))
+    sf = e["sfreq"]; dur = e["duration_s"]; em = e["eeg_map"]
+    ana = min(dur, 300.0); t0 = max(0.0, (dur - ana) / 2); t1 = t0 + ana
+    out = {}
+    for ch in ("O1", "O2", "F3", "F4"):
+        if ch in em:
+            sig = _highpass(e["data"][em[ch]] * 1e6, sf, 1.0)
+            bp = _compute_bandpower(sig, sf, t0, t1)[0]
+            if bp:
+                out[ch] = bp
+    return out
+
+
+def _render_asymmetry(edf, edf_path):
+    section_header("Hemisphärische Asymmetrie — relativ vs. absolut (G1)",
+                   "AI zusätzlich auf relativer Bandpower — robuster gegen Impedanz/Amplitude")
+    bps = _asym_compute(edf_path)
+    BK = ["Delta (1–4 Hz)", "Theta (4–8 Hz)", "Alpha (8–13 Hz)", "Beta (13–30 Hz)"]
+    BN = ["Delta", "Theta", "Alpha", "Beta"]
+
+    def _ai(l, r):
+        s = l + r
+        return (l - r) / s * 100 if s > 1e-9 else float("nan")
+
+    rows = []
+    for lbl, lch, rch in [("okzipital O1/O2", "O1", "O2"), ("frontal F3/F4", "F3", "F4")]:
+        if lch not in bps or rch not in bps:
+            continue
+        bl, br = bps[lch], bps[rch]
+        tl, tr = (sum(bl.values()) or 1), (sum(br.values()) or 1)
+        for bk, bn in zip(BK, BN):
+            a_abs = _ai(bl.get(bk, 0), br.get(bk, 0))
+            a_rel = _ai(bl.get(bk, 0) / tl, br.get(bk, 0) / tr)
+            flag = " ⚠" if (a_rel == a_rel and abs(a_rel) > 20) else ""
+            rows.append({"Region": lbl, "Band": bn,
+                         "AI absolut (%)": (round(a_abs) if a_abs == a_abs else "—"),
+                         "AI relativ (%)": (f"{round(a_rel)}{flag}" if a_rel == a_rel else "—")})
+    if not rows:
+        st.info("O1/O2 bzw. F3/F4 nicht verfügbar.")
+        return
+    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+    st.caption("Der **relative** AI (Bandpower als Anteil je Kanal) ist robuster gegen "
+               "Impedanz-/Amplituden-Unterschiede zwischen den Elektroden. |AI| ≤ 20 % normal "
+               "(Nuwer 1997, ⚠ = darüber). Die bestehende Asymmetrie-Ansicht (EEG-Spektrum) nutzt "
+               "weiterhin die **absolute** Variante als Default.")
+
+
 def render():
     apply_global_style()
     edf, edf_path = get_edf_or_stop()
@@ -284,3 +354,5 @@ def render():
     _render_fooof(edf, edf_path)
     st.divider()
     _render_lombscargle(edf, edf_path)
+    st.divider()
+    _render_asymmetry(edf, edf_path)
