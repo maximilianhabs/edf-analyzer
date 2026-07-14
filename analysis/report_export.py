@@ -358,6 +358,21 @@ def _add_validated(sections, edf, edf_path, has_ecg, em):
                 ["RMSSD (R-Zacken-Detektor)", _f(hf.get("rmssd")), _f(ham.get("rmssd_ms")), "ms", "sensibel für Timing-Präzision"],
                 ["pNN50 (R-Zacken-Detektor)", _f(hf.get("pnn50")), _f(ham.get("pnn50_pct")), "%", "Hamilton"],
             ]
+        # DFA: eigen (nicht überlappend, nur α1) vs Standard-DFA (überlappend, α1+α2)
+        try:
+            from views.ecg_hrv import compute_rr as _crr
+            from analysis.ecg import dfa_alpha12
+            _rrm = _crr(edf_path, edf["ecg_channels"][0])["rr_ms"]
+            a12 = dfa_alpha12(_rrm)
+            if a12 and hf:
+                rows += [
+                    ["DFA α1", _f(hf.get("dfa_a1"), ".2f"), _f(a12["alpha1"], ".2f"), "—",
+                     "eigen (nicht überlappend) vs Standard-DFA (überlappend)"],
+                    ["DFA α2 (16–64 Schläge)", "—", _f(a12["alpha2"], ".2f"), "—",
+                     "Langzeit-Steigung — nur im Standard-DFA (neu)"],
+                ]
+        except Exception:
+            pass
         # HRV-Spektrum: Welch vs Lomb-Scargle
         try:
             from views.ecg_hrv import compute_rr
