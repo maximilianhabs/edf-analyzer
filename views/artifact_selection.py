@@ -722,8 +722,8 @@ def render():
         from analysis.report_export import collect_sections, build_pdf, build_excel
         e = apply_channel_overrides(load_and_prepare(_path))
         segs = [{"start_s": a, "end_s": b} for a, b in _seg_tuple]
-        secs = collect_sections(e, _path, segments=segs)
-        return build_pdf(secs, _disp + " (artefaktkorrigiert)"), build_excel(secs, e, _disp)
+        secs = collect_sections(e, _path, corr_segments=segs)
+        return build_pdf(secs, _disp + " (mit deiner Maske)"), build_excel(secs, e, _disp)
 
     _disp = st.session_state.get("edf_display_name", "report")
     _base = (_disp.rsplit(".", 1)[0] if _disp else "report") + "_artefaktkorrigiert"

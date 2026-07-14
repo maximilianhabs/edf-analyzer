@@ -1,17 +1,26 @@
-"""Kompakter Gesamt-Report-Export (PDF + Excel).
+"""Kompakter Gesamt-Report-Export (PDF + Excel) — vereinheitlicht.
 
-Sammelt ALLE berechneten Parameter ultrakompakt und sortiert: Aufnahme, HRV (Zeit/vagal/
-nichtlinear/Frequenz), EEG-Bandpower (post/ant), Alpha-Gipfel & A/P-Gradient, klinische Ratios,
-spektrale Verlangsamung/Aperiodik/Komplexität, Asymmetrie-Indizes. Je Zeile: Wert · Einheit ·
-kurze Norm/Hinweis. Kein Fließtext. Ausgabe als Excel (openpyxl) und PDF (reportlab).
+Eine zentrale Stelle, wo ALLES zusammenläuft:
+  • bestehende Parameter (HRV Zeit/vagal/nichtlinear/Frequenz Welch, EEG Bandpower abs+rel,
+    Alpha-Gipfel/PAR, Ratios, Verlangsamung/Aperiodik/Komplexität, Asymmetrie),
+  • je Wert eine **Korrigiert**-Spalte (artefaktkorrigiert, Auto- oder übergebene Maske),
+  • eine Sektion **Validierte Zusatzverfahren** (eigen vs. validiert: Hamilton-R-Zacken, FOOOF,
+    Lomb-Scargle, relative Asymmetrie, aperiodik-bereinigter Alpha-Peak, Permutationsentropie).
+
+Je Zeile Wert · Einheit · Norm/Richtungsdeutung. Ausgabe Excel (openpyxl) + PDF (reportlab,
+Unicode-Font DejaVu → α₁, ≤, ↑↓, − korrekt). Verändert die bestehenden Analyse-Seiten NICHT.
 """
 
 from __future__ import annotations
 
 import io
 import math
+import os
 
 import numpy as np
+
+_BK = ["Delta (1–4 Hz)", "Theta (4–8 Hz)", "Alpha (8–13 Hz)", "Beta (13–30 Hz)"]
+_BN = ["Delta", "Theta", "Alpha", "Beta"]
 
 
 def _f(v, fmt=".1f"):
@@ -23,107 +32,113 @@ def _f(v, fmt=".1f"):
         return "—"
 
 
-def _row(p, val, unit="", norm=""):
-    return {"Parameter": p, "Wert": val, "Einheit": unit, "Norm / Hinweis": norm}
-
-
 # ──────────────────────────────────────────────────────────────────────────────
-# Parameter sammeln → [(Bereich, [rows])]
+# Signal-/Metrik-Helfer
 # ──────────────────────────────────────────────────────────────────────────────
-def collect_sections(edf: dict, edf_path: str, segments=None):
-    """segments=None → Auswertung über die Gesamtaufnahme. segments=[{start_s,end_s}] →
-    artefaktkorrigiert: diese Bereiche werden aus EEG (Sample-Ebene) und HRV (Schläge) entfernt."""
-    corrected = bool(segments)
-    sections = []
-    sfreq = edf["sfreq"]
-    dur_s = edf["duration_s"]
-    eeg_map = edf.get("eeg_map", {})
-
-    # ── Aufnahme ──────────────────────────────────────────────────────────────
-    phi = "PHI im Header" if (edf.get("has_patient_id") or edf.get("has_rec_id")) else "anonymisiert"
-    aufnahme = [
-        _row("Dauer", f"{dur_s/60:.1f}", "min", f"{int(dur_s)} s"),
-        _row("Abtastrate", _f(sfreq, ".0f"), "Hz", ""),
-        _row("Kanäle gesamt", str(len(edf["ch_names"])), "", ""),
-        _row("EEG-Kanäle (10-20)", str(len(eeg_map)), "", ""),
-        _row("EKG erkannt", "ja" if edf.get("ecg_channels") else "nein", "",
-             (edf["ecg_channels"][0] if edf.get("ecg_channels") else "")),
-        _row("Datenschutz", phi, "", ""),
-    ]
-    if corrected:
-        disc = sum(s["end_s"] - s["start_s"] for s in segments)
-        aufnahme.append(_row("Modus", "artefaktkorrigiert", "",
-                             f"{len(segments)} Segmente entfernt · {disc:.0f}s"))
-        aufnahme.append(_row("Sauberes EEG", f"{max(0.0, dur_s-disc):.0f}", "s",
-                             f"{max(0.0, dur_s-disc)/dur_s*100:.0f}% der Aufnahme"))
-    else:
-        aufnahme.append(_row("Modus", "Gesamtaufnahme", "", "ohne Artefaktkorrektur"))
-    sections.append(("Aufnahme & Erkennung", aufnahme))
-
-    # ── HRV ───────────────────────────────────────────────────────────────────
-    if edf.get("ecg_channels"):
-        try:
-            if corrected:
-                hrv = _compute_hrv_corrected(edf_path, edf, segments)
-            else:
-                from views.report import _compute_hrv
-                hrv = _compute_hrv(edf_path, edf)
-        except Exception:
-            hrv = None
-        if hrv:
-            sections.append(("HRV — Zeitbereich", [
-                _row("Herzfrequenz", _f(hrv["mean_hr"]), "bpm", "60–100"),
-                _row("Mittleres RR", _f(hrv["mean_rr"], ".0f"), "ms", "600–1000"),
-                _row("SDNN", _f(hrv["sdnn"]), "ms", "37 (IQR 27–54)"),
-                _row("CV", _f(hrv["cv"]), "%", "HF-unabhängig"),
-            ]))
-            sections.append(("HRV — vagale Marker", [
-                _row("RMSSD", _f(hrv["rmssd"]), "ms", "27 (IQR 17–44)"),
-                _row("pNN50", _f(hrv["pnn50"]), "%", "~12 (5–28)"),
-                _row("pNN20", _f(hrv["pnn20"]), "%", "sensitiver als pNN50"),
-                _row("NN50", _f(hrv["nn50"], ".0f"), "Anzahl", "längenabhängig"),
-            ]))
-            sections.append(("HRV — nichtlinear & Atmung", [
-                _row("SD1", _f(hrv["sd1"]), "ms", "kurzfristig/vagal"),
-                _row("SD2", _f(hrv["sd2"]), "ms", "langfristig"),
-                _row("SD2/SD1", _f(hrv["sd2_sd1"], ".2f"), "Ratio", "Balance"),
-                _row("DFA α₁", _f(hrv["dfa_a1"], ".2f"), "—", "~1,0 gesund (0,75–1,25)"),
-                _row("Sample Entropy", _f(hrv["samp_en"], ".2f"), "—", "↓ = regelmäßig"),
-                _row("Atemfrequenz (EDR)", _f(hrv["edr_rate"]), "/min", "12–20"),
-                _row("Artefaktrate RR", _f(hrv["pct_removed"]), "%", "< 5 % gut"),
-            ]))
-            fd = hrv.get("fd_welch")
-            if fd:
-                sections.append(("HRV — Frequenzbereich (Welch)", [
-                    _row("Total Power", _f(fd.get("total_power"), ".0f"), "ms²", "235–1033"),
-                    _row("LF-Leistung", _f(fd.get("lf_power"), ".0f"), "ms²", "67–368"),
-                    _row("HF-Leistung", _f(fd.get("hf_power"), ".0f"), "ms²", "38–263"),
-                    _row("LF/HF-Ratio", _f(fd.get("lf_hf_ratio"), ".2f"), "Ratio", "0,5–5,0"),
-                    _row("LF normiert", _f(fd.get("lf_norm")), "%", "40–70"),
-                    _row("HF normiert", _f(fd.get("hf_norm")), "%", "20–50"),
-                    _row("LF-Gipfel", _f(fd.get("lf_peak_freq"), ".3f"), "Hz", "0,04–0,15"),
-                    _row("HF-Gipfel", _f(fd.get("hf_peak_freq"), ".3f"), "Hz", "0,15–0,40"),
-                ]))
-
-    # ── EEG-Spektrum ──────────────────────────────────────────────────────────
-    if eeg_map:
-        _collect_eeg(sections, edf, edf_path, sfreq, dur_s, eeg_map, segments)
-
-    return sections
-
-
 def _clean_sig(sig, fs, segments):
-    """Entfernt die Artefakt-Segmente aus einem Signal (behält nur saubere Samples)."""
     keep = np.ones(len(sig), dtype=bool)
     for s in segments:
         keep[max(0, int(s["start_s"] * fs)):min(len(sig), int(s["end_s"] * fs))] = False
     return sig[keep]
 
 
+def _ai(l, r):
+    s = l + r
+    return (l - r) / s * 100 if s > 1e-9 else float("nan")
+
+
+def _eeg_metrics(edf, edf_path, segments=None):
+    """Alle EEG-Spektral-Kennzahlen als flaches Dict — einmal Gesamt (segments=None),
+    einmal artefaktkorrigiert (segments=Liste, Signale sample-bereinigt)."""
+    from views.report import _compute_bandpower
+    from views.eeg_spectrum import _highpass, _spectral_edge, _peak_freq_cog
+    corrected = bool(segments)
+    sf, dur, em = edf["sfreq"], edf["duration_s"], edf["eeg_map"]
+
+    def raw(ch):
+        if ch not in em:
+            return None
+        s = _highpass(edf["data"][em[ch]] * 1e6, sf, 1.0)
+        return _clean_sig(s, sf, segments) if corrected else s
+
+    o1, o2, f3, f4 = raw("O1"), raw("O2"), raw("F3"), raw("F4")
+    post = (o1 + o2) / 2 if o1 is not None and o2 is not None else (o1 if o1 is not None else o2)
+    ant = (f3 + f4) / 2 if f3 is not None and f4 is not None else (f3 if f3 is not None else f4)
+    m = {}
+    if post is None:
+        return m
+    if corrected:
+        t0, t1 = 0.0, None
+    else:
+        ana = min(dur, 300.0); t0 = max(0.0, (dur - ana) / 2); t1 = t0 + ana
+
+    bp_p, fp, pp, ap_p = _compute_bandpower(post, sf, t0, t1)
+    if not bp_p:
+        return m
+    res_a = _compute_bandpower(ant, sf, t0, t1) if ant is not None else (None,)
+    bp_a = res_a[0] if res_a and res_a[0] else {}
+    ap_a = res_a[3] if res_a and res_a[0] else float("nan")
+    tp = sum(bp_p.values()) or 1
+    ta = sum(bp_a.values()) or 1
+
+    m["rel_post"] = {bn: bp_p.get(bk, 0) / tp * 100 for bk, bn in zip(_BK, _BN)}
+    m["abs_post"] = {bn: bp_p.get(bk, 0) for bk, bn in zip(_BK, _BN)}
+    m["rel_ant"] = {bn: bp_a.get(bk, 0) / ta * 100 for bk, bn in zip(_BK, _BN)} if bp_a else {}
+    m["abs_ant"] = {bn: bp_a.get(bk, 0) for bk, bn in zip(_BK, _BN)} if bp_a else {}
+    m["ap_post"], m["ap_ant"] = ap_p, ap_a
+    m["cog_post"] = _peak_freq_cog(fp, pp, 8.0, 13.0)
+    a_p = bp_p.get("Alpha (8–13 Hz)", 0)
+    a_a = bp_a.get("Alpha (8–13 Hz)", 0) if bp_a else 0
+    m["ap_ratio"] = a_p / (a_a or 1e-9) if bp_a else float("nan")
+    d = bp_p.get("Delta (1–4 Hz)", 0); t = bp_p.get("Theta (4–8 Hz)", 0)
+    a = a_p or 1e-9; b = bp_p.get("Beta (13–30 Hz)", 0) or 1e-9
+    m["dar"], m["tar"] = d / a, t / a
+    m["atr"], m["tbr"], m["dtab"] = a / (t or 1e-9), t / b, (d + t) / (a + b)
+
+    m["sef95"] = _spectral_edge(fp, pp, 0.95)
+    m["medf"] = _spectral_edge(fp, pp, 0.50)
+    try:
+        from analysis.aperiodic import fit_aperiodic, band_power_defs
+        from analysis.complexity import sample_entropy, lziv_complexity, permutation_entropy
+        rap = fit_aperiodic(fp, pp, 1, 20)
+        m["exp_own"] = rap["exponent"] if rap else float("nan")
+        m["r2_own"] = rap["r2"] if rap else float("nan")
+        m["flat_alpha"] = band_power_defs(fp, pp, 8, 13, res=rap)["flattened"]
+        seg = post if corrected else post[int(t0 * sf):int(t1 * sf)]
+        m["sampen"] = sample_entropy(seg, max_n=4000) if len(seg) >= 100 else float("nan")
+        m["permen"] = permutation_entropy(seg) if len(seg) >= 100 else float("nan")
+        m["lzc"] = lziv_complexity(seg, sf) if len(seg) >= int(5 * sf) else {"shuffle": float("nan"), "phase": float("nan")}
+    except Exception:
+        m["lzc"] = {"shuffle": float("nan"), "phase": float("nan")}
+
+    m["par"], m["exp_grad"] = float("nan"), float("nan")
+    if not corrected:
+        try:
+            from views.eeg_spectrum import _compute_par
+            par = _compute_par(edf_path, t0, t1, 8.0, 13.0, False, 9999.0)
+            if par["n_post"] >= 2 and par["n_ant"] >= 2:
+                m["par"], m["exp_grad"] = par["par"], par["exp_grad"]
+        except Exception:
+            pass
+
+    m["ai"] = {}
+    for lbl, lch, rch in [("O1/O2", "O1", "O2"), ("F3/F4", "F3", "F4")]:
+        sl, sr = raw(lch), raw(rch)
+        if sl is None or sr is None:
+            continue
+        bl = _compute_bandpower(sl, sf, t0, t1)[0]
+        br = _compute_bandpower(sr, sf, t0, t1)[0]
+        if not bl or not br:
+            continue
+        tl, tr = (sum(bl.values()) or 1), (sum(br.values()) or 1)
+        for bk, bn in zip(_BK, _BN):
+            m["ai"][(lbl, bn, "abs")] = _ai(bl.get(bk, 0), br.get(bk, 0))
+            m["ai"][(lbl, bn, "rel")] = _ai(bl.get(bk, 0) / tl, br.get(bk, 0) / tr)
+    return m
+
+
 def _compute_hrv_corrected(edf_path, edf, segments):
-    """Wie views.report._compute_hrv, aber ohne Schläge in den Artefakt-Segmenten."""
-    from analysis.ecg import (detect_r_peaks, build_rr_series, compute_hrv_time_domain,
-                              dfa_alpha1)
+    from analysis.ecg import detect_r_peaks, build_rr_series, compute_hrv_time_domain, dfa_alpha1
     from analysis.complexity import sample_entropy
     from analysis.hrv_freq import compute_frequency_domain
     ch = edf["ecg_channels"][0]
@@ -144,147 +159,257 @@ def _compute_hrv_corrected(edf_path, edf, segments):
         return None
     td = compute_hrv_time_domain(rr_c)
     _dfa = dfa_alpha1(rr_c)
-    fd_welch = None
+    fd = None
     try:
-        fd_welch = compute_frequency_domain(rr_c, times_c, method="welch")
+        fd = compute_frequency_domain(rr_c, times_c, method="welch")
     except Exception:
         pass
-    n_removed = int((~keep).sum())
-    return {
-        "mean_hr": td["mean_hr_bpm"], "mean_rr": td["mean_rr_ms"], "sdnn": td["sdnn_ms"],
-        "cv": td["cv_pct"], "rmssd": td["rmssd_ms"], "pnn50": td["pnn50_pct"],
-        "pnn20": td["pnn20_pct"], "nn50": td["nn50_count"], "sd1": td["sd1_ms"],
-        "sd2": td["sd2_ms"], "sd2_sd1": td["sd2_sd1_ratio"],
-        "dfa_a1": _dfa["alpha1"] if _dfa else float("nan"),
-        "samp_en": sample_entropy(rr_c) if len(rr_c) >= 20 else float("nan"),
-        "edr_rate": float("nan"),  # EDR braucht durchgehende R-Zacken → im korrigierten Modus n/v
-        "pct_removed": n_removed / max(len(rr_ms), 1) * 100,
-        "fd_welch": fd_welch, "fd_burg": None,
-    }
+    return {"mean_hr": td["mean_hr_bpm"], "mean_rr": td["mean_rr_ms"], "sdnn": td["sdnn_ms"],
+            "cv": td["cv_pct"], "rmssd": td["rmssd_ms"], "pnn50": td["pnn50_pct"],
+            "pnn20": td["pnn20_pct"], "nn50": td["nn50_count"], "sd1": td["sd1_ms"],
+            "sd2": td["sd2_ms"], "sd2_sd1": td["sd2_sd1_ratio"],
+            "dfa_a1": _dfa["alpha1"] if _dfa else float("nan"),
+            "samp_en": sample_entropy(rr_c) if len(rr_c) >= 20 else float("nan"),
+            "edr_rate": float("nan"), "pct_removed": float("nan"),
+            "fd_welch": fd, "fd_burg": None}
 
 
-def _collect_eeg(sections, edf, edf_path, sfreq, dur_s, eeg_map, segments=None):
-    from views.report import _compute_bandpower
-    corrected = bool(segments)
+def _hrv_hamilton(edf):
+    """HRV-Zeitbereich mit validiertem R-Zacken-Detektor (Hamilton 2002)."""
+    from analysis.ecg import detect_r_peaks_validated, build_rr_series, compute_hrv_time_domain
+    ch = edf["ecg_channels"][0]
+    if ch not in edf.get("ch_idx", {}):
+        return None
+    fs = edf["sfreq"]
+    sig = edf["data"][edf["ch_idx"][ch]].astype(float)
+    rr = build_rr_series(detect_r_peaks_validated(sig, fs, "hamilton"), fs)
+    if rr is None:
+        return None
+    return compute_hrv_time_domain(rr.rr_ms[~rr.artifact_mask])
 
-    def _get(ch):
-        if ch not in eeg_map:
-            return None
-        s = edf["data"][eeg_map[ch]] * 1e6
-        return _clean_sig(s, sfreq, segments) if corrected else s
 
-    o1, o2, f3, f4 = _get("O1"), _get("O2"), _get("F3"), _get("F4")
-    sig_post = (o1 + o2) / 2 if o1 is not None and o2 is not None else (o1 if o1 is not None else o2)
-    sig_ant = (f3 + f4) / 2 if f3 is not None and f4 is not None else (f3 if f3 is not None else f4)
-    if sig_post is None:
-        return
-    if corrected:
-        t0, t1 = 0.0, None
-        win_lbl = f"{len(sig_post)/sfreq:.0f}s sauber (artefaktkorrigiert)"
-    else:
-        ana = min(dur_s, 300.0)
-        t0 = max(0.0, (dur_s - ana) / 2)
-        t1 = t0 + ana
-        win_lbl = f"{int(t0)}–{int(t1)} s"
+# ──────────────────────────────────────────────────────────────────────────────
+# Sektionen zusammenstellen  →  [{name, columns, rows}]
+# ──────────────────────────────────────────────────────────────────────────────
+def collect_sections(edf: dict, edf_path: str, corr_segments=None):
+    sections = []
+    sf, dur, em = edf["sfreq"], edf["duration_s"], edf.get("eeg_map", {})
+    has_ecg = bool(edf.get("ecg_channels"))
 
-    bp_p, freqs_p, psd_p, ap_post = _compute_bandpower(sig_post, sfreq, t0, t1)
-    if not bp_p:
-        return
-    res_a = _compute_bandpower(sig_ant, sfreq, t0, t1) if sig_ant is not None else (None,)
-    bp_a = res_a[0] if res_a and res_a[0] else {}
-    ap_ant = res_a[3] if res_a and res_a[0] else float("nan")
-    tp = sum(bp_p.values()) or 1
-    ta = sum(bp_a.values()) or 1
-    BK = ["Delta (1–4 Hz)", "Theta (4–8 Hz)", "Alpha (8–13 Hz)", "Beta (13–30 Hz)"]
-    BN = ["Delta", "Theta", "Alpha", "Beta"]
-
-    sections.append((f"EEG-Bandpower posterior O1/O2 · {win_lbl}", [
-        _row(f"{bn} relativ", _f(bp_p.get(bk, 0) / tp * 100), "%", "rel. Anteil")
-        for bk, bn in zip(BK, BN)
-    ]))
-    if bp_a:
-        sections.append(("EEG-Bandpower anterior F3/F4", [
-            _row(f"{bn} relativ", _f(bp_a.get(bk, 0) / ta * 100), "%", "rel. Anteil")
-            for bk, bn in zip(BK, BN)
-        ]))
-
-    ap_ratio = bp_p.get("Alpha (8–13 Hz)", 0) / (bp_a.get("Alpha (8–13 Hz)", 0) or 1e-9) if bp_a else float("nan")
-    grad = [
-        _row("Alpha-Gipfel posterior", _f(ap_post, ".2f"), "Hz", "8–13 (Norm 9–11)"),
-        _row("Alpha-Gipfel anterior", _f(ap_ant, ".2f"), "Hz", "< posterior"),
-        _row("Post/Ant Alpha-Ratio", _f(ap_ratio, ".2f"), "Ratio", "> 1 posterior-dominant"),
-    ]
-    # A/P-Gradient (ganzer Kopf, PAR) — nur unkorrigiert (PAR rechnet auf der Rohdatei über
-    # ein Zeitfenster; auf sample-bereinigten Daten nicht ohne Weiteres anwendbar).
-    if not corrected:
+    # Artefakt-Maske für die Korrigiert-Spalte (übergeben oder automatisch)
+    if corr_segments is None:
         try:
-            from views.eeg_spectrum import _compute_par
-            par = _compute_par(edf_path, t0, t1, 8.0, 13.0, False, 9999.0)
-            if par["n_post"] >= 2 and par["n_ant"] >= 2:
-                grad.append(_row("Alpha-PAR (ganzer Kopf)", _f(par["par"], ".2f"), "—", "> 1 posterior-dominant"))
-                grad.append(_row("Exponent-Gradient post−ant", _f(par["exp_grad"], "+.2f"), "—",
-                                 f"{par['n_post']} post / {par['n_ant']} ant"))
+            from analysis.artifacts import mask_from_edf
+            corr_segments = mask_from_edf(edf).segments
+        except Exception:
+            corr_segments = []
+    disc = sum(s["end_s"] - s["start_s"] for s in corr_segments) if corr_segments else 0.0
+
+    # ── Aufnahme ──────────────────────────────────────────────────────────────
+    phi = "PHI im Header" if (edf.get("has_patient_id") or edf.get("has_rec_id")) else "anonymisiert"
+    sections.append({"name": "Aufnahme & Erkennung",
+                     "columns": ["Parameter", "Wert", "Einheit", "Hinweis"], "rows": [
+        ["Dauer", f"{dur/60:.1f}", "min", f"{int(dur)} s"],
+        ["Abtastrate", _f(sf, ".0f"), "Hz", ""],
+        ["Kanäle gesamt", str(len(edf["ch_names"])), "", ""],
+        ["EEG-Kanäle (10-20)", str(len(em)), "", ""],
+        ["EKG erkannt", "ja" if has_ecg else "nein", "", edf["ecg_channels"][0] if has_ecg else ""],
+        ["Datenschutz", phi, "", ""],
+        ["Artefakt-Korrektur", f"{len(corr_segments)} Segmente", "",
+         f"{disc:.0f}s entfernt · {max(0.0, dur-disc)/dur*100:.0f}% sauber" if dur else ""],
+    ]})
+
+    # ── HRV ───────────────────────────────────────────────────────────────────
+    if has_ecg:
+        try:
+            from views.report import _compute_hrv
+            hf = _compute_hrv(edf_path, edf)
+        except Exception:
+            hf = None
+        hc = _compute_hrv_corrected(edf_path, edf, corr_segments) if (hf and corr_segments) else None
+        if hf:
+            def _g(src, k, fmt=".1f"):
+                return _f(src.get(k), fmt) if src else "—"
+            gc = ["Parameter", "Gesamt", "Korrigiert", "Einheit", "Norm / Deutung"]
+            sections.append({"name": "HRV — Zeitbereich", "columns": gc, "rows": [
+                ["Herzfrequenz", _g(hf, "mean_hr"), _g(hc, "mean_hr"), "bpm", "60–100 · ↓ athlet. Bradykardie mögl."],
+                ["Mittleres RR", _g(hf, "mean_rr", ".0f"), _g(hc, "mean_rr", ".0f"), "ms", "600–1000 · ↑ bei niedriger HF"],
+                ["SDNN", _g(hf, "sdnn"), _g(hc, "sdnn"), "ms", "37 (27–54) · ↑ = günstig (Gesamt-Vagotonie)"],
+                ["CV", _g(hf, "cv"), _g(hc, "cv"), "%", "SDNN/RR · HF-unabhängig"],
+            ]})
+            sections.append({"name": "HRV — vagale Marker", "columns": gc, "rows": [
+                ["RMSSD", _g(hf, "rmssd"), _g(hc, "rmssd"), "ms", "27 (17–44) · ↑ = günstig (vagal)"],
+                ["pNN50", _g(hf, "pnn50"), _g(hc, "pnn50"), "%", "~12 (5–28) · ↑ = günstig"],
+                ["pNN20", _g(hf, "pnn20"), _g(hc, "pnn20"), "%", "sensitiver als pNN50 · ↑ günstig"],
+                ["NN50", _g(hf, "nn50", ".0f"), _g(hc, "nn50", ".0f"), "Anzahl", "längenabhängig"],
+            ]})
+            sections.append({"name": "HRV — nichtlinear & Atmung", "columns": gc, "rows": [
+                ["SD1", _g(hf, "sd1"), _g(hc, "sd1"), "ms", "kurzfristig/vagal (≈RMSSD/√2)"],
+                ["SD2", _g(hf, "sd2"), _g(hc, "sd2"), "ms", "langfristig (≈SDNN)"],
+                ["SD2/SD1", _g(hf, "sd2_sd1", ".2f"), _g(hc, "sd2_sd1", ".2f"), "Ratio", "Balance lang/kurz"],
+                ["DFA α1", _g(hf, "dfa_a1", ".2f"), _g(hc, "dfa_a1", ".2f"), "—", "~1,0 gesund (0,75–1,25)"],
+                ["Sample Entropy", _g(hf, "samp_en", ".2f"), _g(hc, "samp_en", ".2f"), "—", "↓ = regelmäßig"],
+                ["Atemfrequenz (EDR)", _g(hf, "edr_rate"), "—", "/min", "12–20 · aus R-Amplitude, unsicher"],
+                ["Artefaktrate RR", _g(hf, "pct_removed"), "—", "%", "< 5 % gut"],
+            ]})
+            fw, fwc = (hf.get("fd_welch") or {}), (hc.get("fd_welch") if hc else {}) or {}
+            sections.append({"name": "HRV — Frequenzbereich (Welch)", "columns": gc, "rows": [
+                ["Total Power", _f(fw.get("total_power"), ".0f"), _f(fwc.get("total_power"), ".0f"), "ms²", "235–1033 · ↑ bei hoher HRV günstig"],
+                ["LF-Leistung", _f(fw.get("lf_power"), ".0f"), _f(fwc.get("lf_power"), ".0f"), "ms²", "67–368"],
+                ["HF-Leistung", _f(fw.get("hf_power"), ".0f"), _f(fwc.get("hf_power"), ".0f"), "ms²", "38–263 · ↑ = vagal"],
+                ["LF/HF-Ratio", _f(fw.get("lf_hf_ratio"), ".2f"), _f(fwc.get("lf_hf_ratio"), ".2f"), "Ratio", "0,5–5,0 · Sympatho-vagale Balance"],
+                ["LF normiert", _f(fw.get("lf_norm")), _f(fwc.get("lf_norm")), "%", "40–70"],
+                ["HF normiert", _f(fw.get("hf_norm")), _f(fwc.get("hf_norm")), "%", "20–50"],
+                ["LF-Gipfel", _f(fw.get("lf_peak_freq"), ".3f"), _f(fwc.get("lf_peak_freq"), ".3f"), "Hz", "0,04–0,15 (Mayer)"],
+                ["HF-Gipfel", _f(fw.get("hf_peak_freq"), ".3f"), _f(fwc.get("hf_peak_freq"), ".3f"), "Hz", "0,15–0,40 (Atmung)"],
+            ]})
+
+    # ── EEG ───────────────────────────────────────────────────────────────────
+    if em:
+        ef = _eeg_metrics(edf, edf_path, None)
+        ec = _eeg_metrics(edf, edf_path, corr_segments) if corr_segments else {}
+        if ef:
+            _add_eeg_sections(sections, ef, ec)
+
+    # ── Validierte Zusatzverfahren (eigen vs. validiert) ──────────────────────
+    _add_validated(sections, edf, edf_path, has_ecg, em)
+    return sections
+
+
+def _add_eeg_sections(sections, ef, ec):
+    gc = ["Parameter", "Gesamt", "Korrigiert", "Einheit", "Norm / Deutung"]
+
+    def pair(dfull, dcorr, key, sub=None, fmt=".1f"):
+        gv = (dfull.get(key, {}).get(sub) if sub else dfull.get(key)) if dfull else None
+        cv = (dcorr.get(key, {}).get(sub) if sub else dcorr.get(key)) if dcorr else None
+        return _f(gv, fmt), _f(cv, fmt)
+
+    rows = []
+    for bn in _BN:
+        g, c = pair(ef, ec, "rel_post", bn)
+        rows.append([f"{bn} relativ", g, c, "%", "rel. Anteil (posterior O1/O2)"])
+    for bn in _BN:
+        g, c = pair(ef, ec, "abs_post", bn, ".2f")
+        rows.append([f"{bn} absolut", g, c, "µV²", "posterior"])
+    sections.append({"name": "EEG-Bandpower posterior O1/O2", "columns": gc, "rows": rows})
+
+    if ef.get("rel_ant"):
+        rows = []
+        for bn in _BN:
+            g, c = pair(ef, ec, "rel_ant", bn)
+            note = "↑ Delta anterior oft EOG-Artefakt" if bn == "Delta" else "anterior"
+            rows.append([f"{bn} relativ", g, c, "%", note])
+        sections.append({"name": "EEG-Bandpower anterior F3/F4", "columns": gc, "rows": rows})
+
+    sections.append({"name": "EEG — Alpha-Gipfel & A/P-Gradient", "columns": gc, "rows": [
+        ["Alpha-Gipfel posterior", *pair(ef, ec, "ap_post", fmt=".2f"), "Hz", "8–13 (Norm 9–11)"],
+        ["Alpha-Peak CoG posterior", *pair(ef, ec, "cog_post", fmt=".2f"), "Hz", "Schwerpunkt, robuster"],
+        ["Alpha-Gipfel anterior", *pair(ef, ec, "ap_ant", fmt=".2f"), "Hz", "< posterior"],
+        ["Post/Ant Alpha-Ratio", *pair(ef, ec, "ap_ratio", fmt=".2f"), "Ratio", "> 1 posterior-dominant"],
+        ["Alpha-PAR (ganzer Kopf)", _f(ef.get("par"), ".2f"), "—", "—", "> 1 posterior-dominant (nur Gesamt)"],
+        ["Exponent-Gradient post−ant", _f(ef.get("exp_grad"), "+.2f"), "—", "—", "+ = posterior steiler (nur Gesamt)"],
+    ]})
+    sections.append({"name": "EEG — klinische Frequenzratios (posterior)", "columns": gc, "rows": [
+        ["Delta/Alpha (DAR)", *pair(ef, ec, "dar", fmt=".3f"), "Ratio", "0–1,5 · ↑ Verlangsamung"],
+        ["Theta/Alpha (TAR)", *pair(ef, ec, "tar", fmt=".3f"), "Ratio", "0,2–0,7 · Frühmarker"],
+        ["Alpha/Theta", *pair(ef, ec, "atr", fmt=".3f"), "Ratio", "1,5–6 · Vigilanz (↑ = wach)"],
+        ["Theta/Beta (TBR)", *pair(ef, ec, "tbr", fmt=".3f"), "Ratio", "0,5–2 · Schläfrigkeit"],
+        ["DTAB (D+T)/(A+B)", *pair(ef, ec, "dtab", fmt=".3f"), "Ratio", "< 0,5 · kort. Funktion"],
+    ]})
+    lzf = ef.get("lzc", {}); lzc = ec.get("lzc", {}) if ec else {}
+    sections.append({"name": "EEG — Verlangsamung, Aperiodik (1/f) & Komplexität", "columns": gc, "rows": [
+        ["SEF95", *pair(ef, ec, "sef95"), "Hz", "↓ = Verlangsamung"],
+        ["Medianfrequenz (SEF50)", *pair(ef, ec, "medf"), "Hz", "↓ = Verlangsamung"],
+        ["Aperiod. Exponent 1–20 Hz (eigen)", *pair(ef, ec, "exp_own", fmt=".2f"), "—", f"R²={_f(ef.get('r2_own'), '.2f')} · flach=aktiviert"],
+        ["Alpha flattened", *pair(ef, ec, "flat_alpha", fmt=".2f"), "—", "> 0 = echter Gipfel"],
+        ["Sample Entropy", *pair(ef, ec, "sampen", fmt=".2f"), "—", "↓ = regelmäßig"],
+        ["Permutationsentropie", *pair(ef, ec, "permen", fmt=".2f"), "—", "Bandt-Pompe · ↓ = regelmäßig"],
+        ["LZC (shuffle)", _f(lzf.get("shuffle"), ".2f"), _f(lzc.get("shuffle"), ".2f"), "—", "↑ = komplex"],
+        ["LZC (phase)", _f(lzf.get("phase"), ".2f"), _f(lzc.get("phase"), ".2f"), "—", "> 1 = spektral-unabh."],
+    ]})
+
+    # Asymmetrie: Gesamt(abs) + Korrigiert(abs); relative Variante in Validiert-Sektion
+    rows = []
+    for lbl in ("O1/O2", "F3/F4"):
+        for bn in _BN:
+            gv = ef.get("ai", {}).get((lbl, bn, "abs"))
+            cv = ec.get("ai", {}).get((lbl, bn, "abs")) if ec else None
+            flag = " ⚠" if (gv == gv and abs(gv) > 20) else ""
+            rows.append([f"AI {bn} ({lbl})", (f"{_f(gv, '.0f')}{flag}"), _f(cv, ".0f"), "%", "|AI| ≤ 20 normal (Nuwer)"])
+    sections.append({"name": "EEG — Hemisphärische Asymmetrie (absolut)", "columns": gc, "rows": rows})
+
+
+def _add_validated(sections, edf, edf_path, has_ecg, em):
+    gc = ["Parameter", "Standard (eigen)", "Validiert", "Einheit", "Referenz / Hinweis"]
+    rows = []
+    # R-Zacken: eigen vs Hamilton (HRV-Zeit)
+    if has_ecg:
+        try:
+            from views.report import _compute_hrv
+            hf = _compute_hrv(edf_path, edf)
+        except Exception:
+            hf = None
+        ham = _hrv_hamilton(edf)
+        if hf and ham:
+            rows += [
+                ["SDNN (R-Zacken-Detektor)", _f(hf.get("sdnn")), _f(ham.get("sdnn_ms")), "ms", "Hamilton 2002 (py-ecg-detectors)"],
+                ["RMSSD (R-Zacken-Detektor)", _f(hf.get("rmssd")), _f(ham.get("rmssd_ms")), "ms", "sensibel für Timing-Präzision"],
+                ["pNN50 (R-Zacken-Detektor)", _f(hf.get("pnn50")), _f(ham.get("pnn50_pct")), "%", "Hamilton"],
+            ]
+        # HRV-Spektrum: Welch vs Lomb-Scargle
+        try:
+            from views.ecg_hrv import compute_rr
+            from analysis.hrv_freq import compute_frequency_domain
+            from analysis.hrv_lombscargle import lombscargle_hrv
+            rr = compute_rr(edf_path, edf["ecg_channels"][0])
+            w = compute_frequency_domain(rr["rr_ms"], rr["times"], method="welch")
+            ls = lombscargle_hrv(rr["rr_ms"], rr["times"])
+            if w and ls:
+                rows += [
+                    ["LF/HF-Ratio (HRV-Spektrum)", _f(w.get("lf_hf_ratio"), ".2f"), _f(ls.get("lf_hf_ratio"), ".2f"), "Ratio", "Lomb-Scargle: interpolationsfrei"],
+                    ["LF normiert (HRV-Spektrum)", _f(w.get("lf_norm")), _f(ls.get("lf_norm")), "%", "Welch vs Lomb-Scargle"],
+                    ["HF normiert (HRV-Spektrum)", _f(w.get("hf_norm")), _f(ls.get("hf_norm")), "%", "Welch vs Lomb-Scargle"],
+                ]
         except Exception:
             pass
-    sections.append(("EEG — Alpha-Gipfel & A/P-Gradient", grad))
-
-    # Klinische Ratios
-    d = bp_p.get("Delta (1–4 Hz)", 0); t = bp_p.get("Theta (4–8 Hz)", 0)
-    a = bp_p.get("Alpha (8–13 Hz)", 0) or 1e-9; b = bp_p.get("Beta (13–30 Hz)", 0) or 1e-9
-    sections.append(("EEG — klinische Frequenzratios (posterior)", [
-        _row("Delta/Alpha (DAR)", _f(d / a, ".3f"), "Ratio", "0–1,5 · ↑ Verlangsamung"),
-        _row("Theta/Alpha (TAR)", _f(t / a, ".3f"), "Ratio", "0,2–0,7 · Frühmarker"),
-        _row("Alpha/Theta", _f(a / (t or 1e-9), ".3f"), "Ratio", "1,5–6 · Vigilanz"),
-        _row("Theta/Beta (TBR)", _f(t / b, ".3f"), "Ratio", "0,5–2 · Schläfrigkeit"),
-        _row("DTAB (D+T)/(A+B)", _f((d + t) / (a + b), ".3f"), "Ratio", "< 0,5 · kort. Funktion"),
-    ]))
-
-    # Verlangsamung / Aperiodik / Komplexität
-    if freqs_p is not None and len(freqs_p) > 2:
+    # Aperiodik: eigen vs FOOOF; Alpha-Peak CoG vs FOOOF
+    if em:
         try:
-            from views.eeg_spectrum import _spectral_edge
-            from analysis.aperiodic import fit_aperiodic, band_power_defs
-            from analysis.complexity import sample_entropy, lziv_complexity
-            sef95 = _spectral_edge(freqs_p, psd_p, 0.95)
-            medf = _spectral_edge(freqs_p, psd_p, 0.50)
-            rap = fit_aperiodic(freqs_p, psd_p, 1, 20)
-            exp20 = rap["exponent"] if rap else float("nan")
-            r2 = rap["r2"] if rap else float("nan")
-            flat_a = band_power_defs(freqs_p, psd_p, 8, 13, res=rap)["flattened"]
-            seg = sig_post if corrected else sig_post[int(t0 * sfreq):int(t1 * sfreq)]
-            sampen = sample_entropy(seg, max_n=4000) if len(seg) >= 100 else float("nan")
-            lzc = lziv_complexity(seg, sfreq) if len(seg) >= int(5 * sfreq) else {"shuffle": float("nan"), "phase": float("nan")}
-            sections.append(("EEG — Verlangsamung, Aperiodik (1/f) & Komplexität", [
-                _row("SEF95", _f(sef95), "Hz", "↓ = Verlangsamung"),
-                _row("Medianfrequenz (SEF50)", _f(medf), "Hz", "↓ = Verlangsamung"),
-                _row("Aperiod. Exponent 1–20 Hz", _f(exp20, ".2f"), "—", f"R²={_f(r2, '.2f')} · flach=aktiviert"),
-                _row("Alpha flattened", _f(flat_a, ".2f"), "—", "> 0 = echter Gipfel"),
-                _row("Sample Entropy", _f(sampen, ".2f"), "—", "↓ = regelmäßig"),
-                _row("LZC (shuffle)", _f(lzc.get("shuffle"), ".2f"), "—", "↑ = komplex"),
-                _row("LZC (phase)", _f(lzc.get("phase"), ".2f"), "—", "> 1 = spektral-unabh."),
-            ]))
+            from views.eeg_spectrum import _highpass, _peak_freq_cog
+            from analysis.aperiodic import welch_psd, fit_aperiodic
+            from analysis.aperiodic_fooof import fit_fooof
+            sf, dur = edf["sfreq"], edf["duration_s"]
+            ch = "O2" if "O2" in em else ("O1" if "O1" in em else list(em)[0])
+            ana = min(dur, 300.0); t0 = max(0.0, (dur - ana) / 2)
+            sig = _highpass(edf["data"][em[ch]] * 1e6, sf, 1.0)
+            f, p = welch_psd(sig[int(t0 * sf):int((t0 + ana) * sf)], sf, fmax=45.0)
+            own = fit_aperiodic(f, p, 1, 40)
+            ff = fit_fooof(f, p, 1, 40, knee=False)
+            if own and ff:
+                rows += [
+                    [f"Aperiod. Exponent 1–40 Hz ({ch})", _f(own["exponent"], ".2f"), _f(ff["exponent"], ".2f"), "—", f"FOOOF R²={_f(ff['r2'], '.2f')} vs eigen R²={_f(own['r2'], '.2f')}"],
+                ]
+                own_a = _peak_freq_cog(f, p, 8, 13)
+                fa = [pk for pk in ff["peaks"] if 8 <= pk[0] <= 13]
+                fa_v = max(fa, key=lambda x: x[1])[0] if fa else float("nan")
+                rows += [[f"Alpha-Peak ({ch})", _f(own_a, ".2f"), _f(fa_v, ".2f"), "Hz", "eigen CoG (linear) vs FOOOF (aperiodik-bereinigt)"]]
         except Exception:
             pass
-
-    # Asymmetrie-Indizes (AI = (L−R)/(L+R)×100)
-    def _ai(l, r):
-        s = l + r
-        return (l - r) / s * 100 if s > 1e-9 else float("nan")
-
-    asym = []
-    for pair_label, lch, rch in [("okzipital O1/O2", "O1", "O2"), ("frontal F3/F4", "F3", "F4")]:
-        sl, sr = _get(lch), _get(rch)
-        if sl is None or sr is None:
-            continue
-        bl = _compute_bandpower(sl, sfreq, t0, t1)[0]
-        br = _compute_bandpower(sr, sfreq, t0, t1)[0]
-        if not bl or not br:
-            continue
-        for bk, bn in zip(BK, BN):
-            asym.append(_row(f"AI {bn} ({pair_label})", _f(_ai(bl.get(bk, 0), br.get(bk, 0)), "+.0f"),
-                             "%", "|AI| ≤ 20 normal (Nuwer)"))
-    if asym:
-        sections.append(("EEG — Hemisphärische Asymmetrie", asym))
+        # relative Asymmetrie (validiert gegen absolute)
+        try:
+            ef = _eeg_metrics(edf, edf_path, None)
+            for lbl in ("O1/O2", "F3/F4"):
+                for bn in _BN:
+                    a_abs = ef.get("ai", {}).get((lbl, bn, "abs"))
+                    a_rel = ef.get("ai", {}).get((lbl, bn, "rel"))
+                    if a_abs is None or a_rel is None:
+                        continue
+                    rows.append([f"AI {bn} ({lbl})", _f(a_abs, ".0f"), _f(a_rel, ".0f"), "%", "absolut vs relativ (impedanz-robust)"])
+        except Exception:
+            pass
+    if rows:
+        sections.append({"name": "Validierte Zusatzverfahren (eigen vs. validiert)",
+                         "columns": gc, "rows": rows})
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -292,39 +417,63 @@ def _collect_eeg(sections, edf, edf_path, sfreq, dur_s, eeg_map, segments=None):
 # ──────────────────────────────────────────────────────────────────────────────
 def build_excel(sections, edf, disp_name: str) -> bytes:
     import pandas as pd
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Report"
+    ws.append([f"EDF-Analyzer — Gesamt-Report · {disp_name}"])
+    ws["A1"].font = Font(bold=True, size=13)
+    ws.append([])
+    for sec in sections:
+        r = ws.max_row + 1
+        ws.cell(row=r, column=1, value=sec["name"]).font = Font(bold=True, color="1F4E79")
+        ws.append(sec["columns"])
+        for c in ws[ws.max_row]:
+            c.font = Font(bold=True)
+        for row in sec["rows"]:
+            ws.append(list(row))
+        ws.append([])
+    for col in ws.columns:
+        width = max((len(str(c.value)) for c in col if c.value is not None), default=10)
+        ws.column_dimensions[col[0].column_letter].width = min(max(width + 2, 12), 52)
+
+    # Kanäle + Ereignisse
+    ch = wb.create_sheet("Kanäle")
+    ch.append(["Nr", "Kanal", "Min", "Max", "RMS", "Einheit"])
+    for i, name in enumerate(edf["ch_names"]):
+        sig = edf["data"][i] - edf["data"][i].mean()
+        unit = "µV" if name.startswith("EEG") else "mV"
+        fac = 1e6 if name.startswith("EEG") else 1e3
+        ch.append([i, name, round(float(sig.min() * fac), 1), round(float(sig.max() * fac), 1),
+                   round(float(np.sqrt(np.mean(sig ** 2)) * fac), 1), unit])
+    if edf.get("annotations"):
+        ev = wb.create_sheet("Ereignisse")
+        ev.append(["Zeit (s)", "Ereignis"])
+        for a in edf["annotations"]:
+            ev.append([round(a["onset_s"], 1), a["description"]])
+
     buf = io.BytesIO()
-    flat = []
-    for name, rows in sections:
-        for r in rows:
-            flat.append({"Bereich": name, **r})
-    df = pd.DataFrame(flat, columns=["Bereich", "Parameter", "Wert", "Einheit", "Norm / Hinweis"])
-
-    ch_rows = []
-    for i, ch in enumerate(edf["ch_names"]):
-        sig = edf["data"][i]; sig = sig - sig.mean()
-        unit = "µV" if ch.startswith("EEG") else "mV"
-        fac = 1e6 if ch.startswith("EEG") else 1e3
-        ch_rows.append({"Nr": i, "Kanal": ch, f"Min ({unit})": round(float(sig.min() * fac), 1),
-                        f"Max ({unit})": round(float(sig.max() * fac), 1),
-                        f"RMS ({unit})": round(float(np.sqrt(np.mean(sig ** 2)) * fac), 1)})
-    ann = [{"Zeit (s)": round(a["onset_s"], 1), "Ereignis": a["description"]}
-           for a in edf.get("annotations", [])]
-
-    with pd.ExcelWriter(buf, engine="openpyxl") as xl:
-        df.to_excel(xl, sheet_name="Parameter", index=False)
-        pd.DataFrame(ch_rows).to_excel(xl, sheet_name="Kanäle", index=False)
-        if ann:
-            pd.DataFrame(ann).to_excel(xl, sheet_name="Ereignisse", index=False)
-        for ws in xl.book.worksheets:
-            for col in ws.columns:
-                width = max((len(str(c.value)) for c in col if c.value is not None), default=8)
-                ws.column_dimensions[col[0].column_letter].width = min(max(width + 2, 10), 48)
+    wb.save(buf)
     return buf.getvalue()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PDF
+# PDF (DejaVu-Font → volle Unicode-Unterstützung)
 # ──────────────────────────────────────────────────────────────────────────────
+def _register_font():
+    try:
+        import matplotlib
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        base = os.path.join(matplotlib.get_data_path(), "fonts", "ttf")
+        pdfmetrics.registerFont(TTFont("RepSans", os.path.join(base, "DejaVuSans.ttf")))
+        pdfmetrics.registerFont(TTFont("RepSans-Bold", os.path.join(base, "DejaVuSans-Bold.ttf")))
+        return "RepSans", "RepSans-Bold"
+    except Exception:
+        return "Helvetica", "Helvetica-Bold"
+
+
 def build_pdf(sections, disp_name: str) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -332,30 +481,39 @@ def build_pdf(sections, disp_name: str) -> bytes:
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
+    font, font_b = _register_font()
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=14 * mm, bottomMargin=12 * mm,
-                            leftMargin=14 * mm, rightMargin=14 * mm, title="EDF-Report")
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=13 * mm, bottomMargin=12 * mm,
+                            leftMargin=12 * mm, rightMargin=12 * mm, title="EDF-Report")
     styles = getSampleStyleSheet()
-    h_sec = ParagraphStyle("sec", parent=styles["Heading4"], spaceBefore=8, spaceAfter=3,
-                           textColor=colors.HexColor("#2471a3"))
-    story = [Paragraph("EDF-Analyzer — Gesamt-Report", styles["Title"]),
-             Paragraph(f"Datei: {disp_name}", styles["Normal"]), Spacer(1, 6)]
-    header = ["Parameter", "Wert", "Einheit", "Norm / Hinweis"]
-    col_w = [58 * mm, 24 * mm, 20 * mm, 78 * mm]
-    for name, rows in sections:
-        story.append(Paragraph(name, h_sec))
-        data = [header] + [[r["Parameter"], r["Wert"], r["Einheit"], r["Norm / Hinweis"]] for r in rows]
-        tbl = Table(data, colWidths=col_w, repeatRows=1)
-        tbl.setStyle(TableStyle([
+    title = ParagraphStyle("t", parent=styles["Title"], fontName=font_b)
+    normal = ParagraphStyle("n", parent=styles["Normal"], fontName=font)
+    h_sec = ParagraphStyle("sec", parent=styles["Heading4"], fontName=font_b, spaceBefore=7,
+                           spaceAfter=2, textColor=colors.HexColor("#2471a3"))
+    story = [Paragraph("EDF-Analyzer — Gesamt-Report", title),
+             Paragraph(f"Datei: {disp_name}", normal), Spacer(1, 5)]
+    # Spaltenbreiten je nach Spaltenzahl (4 oder 5)
+    widths = {4: [60 * mm, 40 * mm, 22 * mm, 64 * mm],
+              5: [56 * mm, 27 * mm, 27 * mm, 18 * mm, 58 * mm]}
+    for sec in sections:
+        cols = sec["columns"]
+        story.append(Paragraph(sec["name"], h_sec))
+        data = [cols] + [list(r) for r in sec["rows"]]
+        tbl = Table(data, colWidths=widths.get(len(cols)), repeatRows=1)
+        style = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef3fb")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#333333")),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("ALIGN", (1, 0), (2, -1), "RIGHT"),
+            ("FONTNAME", (0, 0), (-1, -1), font),
+            ("FONTNAME", (0, 0), (-1, 0), font_b),
+            ("FONTSIZE", (0, 0), (-1, -1), 7.5),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7f9fc")]),
             ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.HexColor("#c4ccd6")),
             ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ]))
+        ]
+        if len(cols) == 5:
+            style.append(("ALIGN", (1, 0), (3, -1), "RIGHT"))
+        else:
+            style.append(("ALIGN", (1, 0), (2, -1), "RIGHT"))
+        tbl.setStyle(TableStyle(style))
         story.append(tbl)
     doc.build(story)
     return buf.getvalue()
