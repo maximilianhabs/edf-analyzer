@@ -253,15 +253,17 @@ def collect_sections(edf: dict, edf_path: str, corr_segments=None):
                 ["Artefaktrate RR", _g(hf, "pct_removed"), "—", "%", "< 5 % gut"],
             ]})
             fw, fwc = (hf.get("fd_welch") or {}), (hc.get("fd_welch") if hc else {}) or {}
-            sections.append({"name": "HRV — Frequenzbereich (Welch)", "columns": gc, "rows": [
+            sections.append({"name": "HRV — Frequenzbereich (Welch, Task Force 1996)", "columns": gc, "rows": [
                 ["Total Power", _f(fw.get("total_power"), ".0f"), _f(fwc.get("total_power"), ".0f"), "ms²", "235–1033 · ↑ bei hoher HRV günstig"],
-                ["LF-Leistung", _f(fw.get("lf_power"), ".0f"), _f(fwc.get("lf_power"), ".0f"), "ms²", "67–368"],
-                ["HF-Leistung", _f(fw.get("hf_power"), ".0f"), _f(fwc.get("hf_power"), ".0f"), "ms²", "38–263 · ↑ = vagal"],
+                ["VLF-Leistung", _f(fw.get("vlf_power"), ".0f"), _f(fwc.get("vlf_power"), ".0f"), "ms²", "0,0033–0,04 Hz · bei Kurzzeit unsicher"],
+                ["LF-Leistung", _f(fw.get("lf_power"), ".0f"), _f(fwc.get("lf_power"), ".0f"), "ms²", "67–368 · 0,04–0,15 Hz"],
+                ["HF-Leistung", _f(fw.get("hf_power"), ".0f"), _f(fwc.get("hf_power"), ".0f"), "ms²", "38–263 · 0,15–0,40 Hz · ↑ = vagal"],
                 ["LF/HF-Ratio", _f(fw.get("lf_hf_ratio"), ".2f"), _f(fwc.get("lf_hf_ratio"), ".2f"), "Ratio", "0,5–5,0 · Sympatho-vagale Balance"],
-                ["LF normiert", _f(fw.get("lf_norm")), _f(fwc.get("lf_norm")), "%", "40–70"],
-                ["HF normiert", _f(fw.get("hf_norm")), _f(fwc.get("hf_norm")), "%", "20–50"],
-                ["LF-Gipfel", _f(fw.get("lf_peak_freq"), ".3f"), _f(fwc.get("lf_peak_freq"), ".3f"), "Hz", "0,04–0,15 (Mayer)"],
-                ["HF-Gipfel", _f(fw.get("hf_peak_freq"), ".3f"), _f(fwc.get("hf_peak_freq"), ".3f"), "Hz", "0,15–0,40 (Atmung)"],
+                ["LF normiert", _f(fw.get("lf_norm")), _f(fwc.get("lf_norm")), "%", "40–70 · LF/(LF+HF) = Task Force"],
+                ["HF normiert", _f(fw.get("hf_norm")), _f(fwc.get("hf_norm")), "%", "20–50 · HF/(LF+HF) = Task Force"],
+                ["LF-Gipfel", _f(fw.get("lf_peak_freq"), ".3f"), _f(fwc.get("lf_peak_freq"), ".3f"), "Hz", "0,04–0,15 (Mayer-Wellen)"],
+                ["HF-Gipfel", _f(fw.get("hf_peak_freq"), ".3f"), _f(fwc.get("hf_peak_freq"), ".3f"), "Hz", "0,15–0,40 (Atmung/RSA)"],
+                ["Atemfrequenz (HF-Gipfel)", _f(fw.get("hf_resp_rate")), _f(fwc.get("hf_resp_rate")), "/min", "12–20 · Quervergleich zur EDR!"],
             ]})
 
     # ── EEG ───────────────────────────────────────────────────────────────────
