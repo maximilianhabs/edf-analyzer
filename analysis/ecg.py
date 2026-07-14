@@ -385,3 +385,47 @@ def run_ecg_analysis(signal: np.ndarray, sfreq: float) -> dict:
         "hrv_time": time_domain,
         "hrv_freq": freq_domain,
     }
+
+
+def dfa_alpha12(rr_ms: np.ndarray, scales1=(4, 16), scales2=(16, 64), overlap: float = 0.5):
+    """DFA mit **überlappenden** Fenstern und BEIDEN Skalensteigungen (G6, Goldstandard).
+
+    Ergänzt `dfa_alpha1` (nicht überlappend, nur α₁) — diese bleibt Default in den
+    bestehenden Seiten. Hier:
+      α₁ = Kurzzeit-Steigung (4–16 Schläge)  · vagale/schnelle Regulation
+      α₂ = Langzeit-Steigung (16–64 Schläge) · langsame/sympathische & humorale Anteile
+    Überlappende Fenster (50 %) verbessern die Statistik je Skala (Peng 1995; Standard-DFA).
+
+    Rückgabe: {alpha1, alpha2, scales, F} oder None (zu kurze Reihe; α₂ braucht ~≥256 Schläge).
+    """
+    x = np.asarray(rr_ms, dtype=float)
+    n_beats = len(x)
+    if n_beats < 32:
+        return None
+    y = np.cumsum(x - x.mean())
+
+    def _F(n: int) -> float:
+        step = max(1, int(round(n * (1.0 - overlap))))
+        idx = np.arange(n)
+        res = []
+        for s in range(0, n_beats - n + 1, step):
+            seg = y[s:s + n]
+            p = np.polyfit(idx, seg, 1)
+            res.append(np.mean((seg - np.polyval(p, idx)) ** 2))
+        return float(np.sqrt(np.mean(res))) if res else float("nan")
+
+    scales = sorted(set(list(range(scales1[0], scales1[1] + 1)) +
+                        list(range(scales2[0], scales2[1] + 1, 2))))
+    scales = [n for n in scales if n <= n_beats // 4]
+    if len(scales) < 4:
+        return None
+    F = {n: _F(n) for n in scales}
+
+    def _slope(lo, hi):
+        ns = [n for n in scales if lo <= n <= hi and F[n] == F[n] and F[n] > 0]
+        if len(ns) < 3:
+            return float("nan")
+        return float(np.polyfit(np.log10(ns), np.log10([F[n] for n in ns]), 1)[0])
+
+    return {"alpha1": _slope(*scales1), "alpha2": _slope(*scales2),
+            "scales": scales, "F": [F[n] for n in scales]}

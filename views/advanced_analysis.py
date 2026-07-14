@@ -338,6 +338,62 @@ def _render_asymmetry(edf, edf_path):
                "weiterhin die **absolute** Variante als Default.")
 
 
+@st.cache_data(show_spinner="Berechne DFA (α1 + α2) …")
+def _dfa_compare(edf_path, ch):
+    from views.ecg_hrv import compute_rr
+    from analysis.ecg import dfa_alpha1, dfa_alpha12
+    rr = compute_rr(edf_path, ch)["rr_ms"]
+    return {"n": len(rr), "own": dfa_alpha1(rr), "std": dfa_alpha12(rr)}
+
+
+def _render_dfa(edf, edf_path):
+    section_header("DFA — α1 + α2 mit überlappenden Fenstern (G6)",
+                   "Standard-DFA (Peng 1995) neben unserer nicht-überlappenden α1-Variante")
+    ecg = edf.get("ecg_channels") or []
+    if not ecg:
+        st.info("Kein EKG-Kanal identifiziert.")
+        return
+    ch = st.selectbox("EKG-Kanal", ecg, key="dfa_ch")
+    d = _dfa_compare(edf_path, ch)
+    own, std = d["own"], d["std"]
+    if not std:
+        st.info("Zu wenige Schläge für DFA (α2 braucht ~≥256).")
+        return
+
+    def _f(v, fmt=".2f"):
+        return format(v, fmt) if (v is not None and v == v) else "—"
+
+    st.dataframe(pd.DataFrame([
+        {"Parameter": "α1 (4–16 Schläge)", "eigen (nicht überlappend)": _f(own["alpha1"] if own else float("nan")),
+         "Standard-DFA (überlappend)": _f(std["alpha1"]), "Deutung": "~1,0 gesund · ↓0,5 Zufälligkeit"},
+        {"Parameter": "α2 (16–64 Schläge)", "eigen (nicht überlappend)": "— (nicht berechnet)",
+         "Standard-DFA (überlappend)": _f(std["alpha2"]), "Deutung": "Langzeit-Korrelation (neu)"},
+    ]), hide_index=True, use_container_width=True)
+
+    sc = np.asarray(std["scales"], float)
+    F = np.asarray(std["F"], float)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=sc, y=F, mode="markers+lines", name="F(n)",
+                             line=dict(color="#374151", width=1),
+                             marker=dict(size=6, color="#374151")))
+    for lo, hi, col, nm, a in [(4, 16, "#2980b9", "α1-Fit", std["alpha1"]),
+                               (16, 64, "#e67e22", "α2-Fit", std["alpha2"])]:
+        m = (sc >= lo) & (sc <= hi) & (F > 0)
+        if m.sum() >= 3 and a == a:
+            c = np.polyfit(np.log10(sc[m]), np.log10(F[m]), 1)
+            fig.add_trace(go.Scatter(x=sc[m], y=10 ** np.polyval(c, np.log10(sc[m])), mode="lines",
+                                     name=f"{nm} (α={a:.2f})", line=dict(color=col, width=2.5, dash="dash")))
+    fig.update_layout(height=320, xaxis_type="log", yaxis_type="log",
+                      xaxis_title="Fenstergröße n (Schläge)", yaxis_title="F(n)",
+                      plot_bgcolor="#fafafa", margin=dict(t=6, b=36, l=55, r=10),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.caption(f"{d['n']} RR-Intervalle · **Standard-DFA** nutzt **überlappende** Fenster (50 %) → "
+               "bessere Statistik je Skala, und liefert zusätzlich **α2** (langsame/sympathisch-"
+               "humorale Anteile). Validiert: weißes Rauschen α≈0,5 · Random Walk α≈1,5. Die "
+               "bestehende HRV-Seite nutzt weiterhin die eigene α1-Variante als Default.")
+
+
 def render():
     apply_global_style()
     edf, edf_path = get_edf_or_stop()
@@ -354,5 +410,7 @@ def render():
     _render_fooof(edf, edf_path)
     st.divider()
     _render_lombscargle(edf, edf_path)
+    st.divider()
+    _render_dfa(edf, edf_path)
     st.divider()
     _render_asymmetry(edf, edf_path)
