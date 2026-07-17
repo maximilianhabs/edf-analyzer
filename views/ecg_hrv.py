@@ -426,6 +426,10 @@ def render():
     )
 
     def render_psd_chart(fd_x, title, line_color):
+        # Bei zu kurzer Aufnahme liefert compute_frequency_domain None (< 20 RR-Intervalle)
+        # → kein Spektrum zeichenbar. Aufrufer zeigt stattdessen einen Hinweis.
+        if not fd_x:
+            return None
         from analysis.hrv_freq import VLF_BAND, LF_BAND, HF_BAND
         fig = go.Figure()
         for band, color, blabel in [
@@ -1161,6 +1165,14 @@ def render():
     fd_welch = compute_frequency_domain(rr_ms_analysis, r_times_analysis, method="welch")
     fd_burg  = compute_frequency_domain(rr_ms_analysis, r_times_analysis,
                                         method="burg", burg_order=BURG_ORDER_DEFAULT)
+    # Zu kurze Aufnahme (< 20 RR-Intervalle) → compute_frequency_domain gibt None zurück.
+    # Das ist korrekt (HRV-Frequenzanalyse braucht Minuten, nicht Sekunden), muss aber
+    # überall abgefangen werden, sonst crasht die Seite mit AttributeError auf None.
+    _fd_ok = bool(fd_welch or fd_burg)
+
+    def _fdget(fd, key, default=float("nan")):
+        """None-sicherer Zugriff auf ein Frequenzdomänen-Dict."""
+        return fd.get(key, default) if fd else default
 
     # ── Steuerelemente (vor Tabs — beeinflussen Figure-Bau) ───────────────────
     freq_method = st.radio(
@@ -1713,8 +1725,23 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
         if has_hv:
             st.caption("PSD-Analyse basiert ausschließlich auf dem Prä-HV-Segment (Ruhebedingung).")
 
-        if len(rr_ms_analysis) < 30:
-            st.warning(f"Zu wenige Schläge im {seg_label}-Segment (mind. ~30 nötig).")
+        if len(rr_ms_analysis) < 30 or not _fd_ok:
+            _dur_min = edf["duration_s"] / 60
+            st.warning(
+                f"⚠️ **HRV-Frequenzanalyse hier nicht möglich** — nur "
+                f"**{len(rr_ms_analysis)} RR-Intervalle** im {seg_label}-Segment "
+                f"(Aufnahme {_dur_min:.1f} min). Nötig sind mindestens ~30, für belastbare "
+                f"Werte deutlich mehr."
+            )
+            st.info(
+                "**Warum?** Die Frequenzanalyse zerlegt die Herzschlag-Schwankungen in "
+                "**langsame Rhythmen**: LF 0,04–0,15 Hz (eine Welle alle 7–25 s) und "
+                "HF 0,15–0,40 Hz (Atmung). Um solche Rhythmen überhaupt messen zu können, "
+                "braucht man **Minuten, nicht Sekunden** — die **Task Force 1996** empfiehlt "
+                "**5 Minuten** für die Kurzzeit-HRV.\n\n"
+                "✅ **Die Zeitbereichs-Werte** (SDNN, RMSSD, pNN50 …) im Tab **RR & Zeitdomäne** "
+                "**bleiben nutzbar** — sie brauchen keine Minuten-Rhythmen."
+            )
             if has_hv:
                 st.caption("Prä-HV-Phase ggf. zu kurz für Frequenzanalyse.")
         else:
@@ -1748,10 +1775,13 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                 )
             col_psd_w, col_psd_b = st.columns(2)
             with col_psd_w:
-                st.plotly_chart(fig_psd_welch_obj, use_container_width=True)
-                _lf_w  = fd_welch.get("lf_peak_freq")
-                _hf_w  = fd_welch.get("hf_peak_freq")
-                _resp_w = fd_welch.get("hf_resp_rate")
+                if fig_psd_welch_obj is None:
+                    st.info("Kein Welch-Spektrum berechenbar (zu wenige RR-Intervalle).")
+                else:
+                    st.plotly_chart(fig_psd_welch_obj, use_container_width=True)
+                _lf_w  = _fdget(fd_welch, "lf_peak_freq")
+                _hf_w  = _fdget(fd_welch, "hf_peak_freq")
+                _resp_w = _fdget(fd_welch, "hf_resp_rate")
                 if _lf_w == _lf_w and _hf_w == _hf_w:
                     st.caption(
                         f"LF-Gipfel: **{_lf_w:.3f} Hz** (Mayer-Wellen, Norm ~0.07–0.12 Hz) · "
@@ -1759,10 +1789,13 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                         f"(Norm 12–20 /min = 0.20–0.33 Hz)"
                     )
             with col_psd_b:
-                st.plotly_chart(fig_psd_burg_obj, use_container_width=True)
-                _lf_b  = fd_burg.get("lf_peak_freq")
-                _hf_b  = fd_burg.get("hf_peak_freq")
-                _resp_b = fd_burg.get("hf_resp_rate")
+                if fig_psd_burg_obj is None:
+                    st.info("Kein Burg-Spektrum berechenbar (zu wenige RR-Intervalle).")
+                else:
+                    st.plotly_chart(fig_psd_burg_obj, use_container_width=True)
+                _lf_b  = _fdget(fd_burg, "lf_peak_freq")
+                _hf_b  = _fdget(fd_burg, "hf_peak_freq")
+                _resp_b = _fdget(fd_burg, "hf_resp_rate")
                 if _lf_b == _lf_b and _hf_b == _hf_b:
                     st.caption(
                         f"LF-Gipfel: **{_lf_b:.3f} Hz** · "
@@ -1784,11 +1817,11 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                 "<b>HF</b> 0,15–0,40 Hz (vagal, atemgekoppelt = RSA). Power in ms² = "
                 "Stärke der Schwankung im jeweiligen Rhythmusband.</div>",
                 unsafe_allow_html=True)
-            _lf = fd_welch.get("lf_power", float("nan"))
-            _hf = fd_welch.get("hf_power", float("nan"))
-            _tp = fd_welch.get("total_power", float("nan"))
-            _lhr = fd_welch.get("lf_hf_ratio", float("nan"))
-            _hfn = fd_welch.get("hf_norm", float("nan"))
+            _lf = _fdget(fd_welch, "lf_power")
+            _hf = _fdget(fd_welch, "hf_power")
+            _tp = _fdget(fd_welch, "total_power")
+            _lhr = _fdget(fd_welch, "lf_hf_ratio")
+            _hfn = _fdget(fd_welch, "hf_norm")
             fq = st.columns(5)
             def _fq(col, label, val, unit, sub):
                 col.markdown(
