@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+title: EDF-Analyzer
+message: >-
+  Wenn Sie diese Software in wissenschaftlichen Arbeiten verwenden,
+  zitieren Sie sie bitte wie folgt.
+type: software
+authors:
+  - family-names: Habs
+    given-names: Maximilian
+repository-code: "https://github.com/maximilianhabs/edf-analyzer"
+abstract: >-
+  Browserbasiertes Forschungs- und Lehrwerkzeug zur quantitativen
+  Auswertung von EEG- und EKG-Aufzeichnungen im European Data Format
+  (EDF). Ableitung neurophysiologischer und autonomer (HRV-)Kennwerte
+  mit transparenter Methodik und Trennung zwischen validierten und
+  vereinfachten Verfahren. Kein Medizinprodukt.
+keywords:
+  - EEG
+  - ECG
+  - HRV
+  - EDF
+  - quantitative EEG
+  - heart rate variability
+  - research software
+license: Apache-2.0
