@@ -62,6 +62,41 @@ def _hp(sig, fs, cut=1.0):
     return filtfilt(b, a, sig)
 
 
+def _clean_concat(sig, fs, segments):
+    """Entfernt die Artefakt-Segmente aus einem Signal (behält nur saubere Samples).
+    So spiegelt das Spektrum den echten Grundrhythmus des Patienten wider, nicht
+    muskel-/bewegungskontaminierte Abschnitte."""
+    if not segments:
+        return sig
+    keep = np.ones(len(sig), dtype=bool)
+    for s in segments:
+        keep[max(0, int(s["start_s"] * fs)):min(len(sig), int(s["end_s"] * fs))] = False
+    return sig[keep] if keep.any() else sig
+
+
+def _best_alpha_window(post, sf, dur, segments, win=60.0):
+    """Wählt das saubere Fenster mit dem **klarsten Alpha-Grundrhythmus** (höchste relative
+    Alpha-Power posterior). Das entspricht der klinischen Definition des posterioren
+    Grundrhythmus (entspannte Wachheit, Augen zu) — statt blind über die ganze Aufnahme zu
+    mitteln, wo Augen-auf-/Wachheitswechsel den Peak verwaschen. Gibt den PSD-Segment-Ausschnitt
+    zurück (bereits gewählt), plus Startzeit."""
+    from views.eeg_spectrum import _compute_psd, _band_power
+    win = min(win, dur)
+    gaps = _clean_gaps(dur, segments, min(20.0, win))
+    best_t, best_score = None, -1.0
+    for lo, hi in gaps:
+        t = lo
+        while t + win <= hi + 1e-6:
+            f, p = _compute_psd(post[int(t * sf):int((t + win) * sf)], sf, amp_thresh_uv=9999.0)
+            if f is not None:
+                a = _band_power(f, p, 8, 13)
+                score = a / ((sum(_band_power(f, p, lo2, hi2) for _, lo2, hi2, _ in BANDS)) or 1e-9)
+                if score > best_score:
+                    best_t, best_score = t, score
+            t += max(10.0, win / 2)
+    return best_t, win                        # best_t=None → Aufrufer nutzt bereinigte Gesamtaufnahme
+
+
 def _clean_gaps(dur, segments, win=10.0):
     if not segments:
         return [(0.0, dur)]
@@ -127,8 +162,16 @@ def _collect(edf, edf_path):
     d["o1"], d["o2"], d["f3"], d["f4"] = o1, o2, f3, f4
 
     if d["post"] is not None:
-        ana = min(dur, 300.0); t0 = max(0.0, (dur - ana) / 2)
-        seg = d["post"][int(t0 * sf):int((t0 + ana) * sf)]
+        # WICHTIG: Spektrum NICHT auf einem blinden Mitte-5-min-Fenster rechnen. Stattdessen
+        # das saubere Fenster mit dem klarsten Alpha-Grundrhythmus wählen (klinische Definition:
+        # posteriorer Grundrhythmus bei Augen-zu-Ruhe); Fallback = artefaktbereinigte Gesamtaufnahme.
+        _bt, _wl = _best_alpha_window(d["post"], sf, dur, d["segments"])
+        if _bt is not None:
+            cl = lambda s: s[int(_bt * sf):int((_bt + _wl) * sf)]
+        else:
+            cl = lambda s: _clean_concat(s, sf, d["segments"])
+        d["spec_window"] = (_bt, _wl)
+        seg = cl(d["post"])
         f, p = _compute_psd(seg, sf, amp_thresh_uv=9999.0)
         d["psd_f"], d["psd_p"] = f, p
         if f is not None:
@@ -139,7 +182,7 @@ def _collect(edf, edf_path):
             d["dar"] = bp["Delta"] / (bp["Alpha"] or 1e-9)
         # A/P-Gradient
         if d["ant"] is not None:
-            fa, pa = _compute_psd(d["ant"][int(t0 * sf):int((t0 + ana) * sf)], sf, amp_thresh_uv=9999.0)
+            fa, pa = _compute_psd(cl(d["ant"]), sf, amp_thresh_uv=9999.0)
             if fa is not None and f is not None:
                 d["par"] = _band_power(f, p, 8, 13) / (_band_power(fa, pa, 8, 13) or 1e-9)
                 d["rel_ant"] = {n: _band_power(fa, pa, lo, hi) for n, lo, hi, _ in BANDS}
@@ -148,14 +191,14 @@ def _collect(edf, edf_path):
         for lbl, L, R in [("okzipital", o1, o2), ("frontal", f3, f4)]:
             if L is None or R is None:
                 continue
-            fl, pl = _compute_psd(L[int(t0 * sf):int((t0 + ana) * sf)], sf, amp_thresh_uv=9999.0)
-            fr, pr = _compute_psd(R[int(t0 * sf):int((t0 + ana) * sf)], sf, amp_thresh_uv=9999.0)
+            fl, pl = _compute_psd(cl(L), sf, amp_thresh_uv=9999.0)
+            fr, pr = _compute_psd(cl(R), sf, amp_thresh_uv=9999.0)
             if fl is None or fr is None:
                 continue
             for n, lo, hi, _ in BANDS:
                 a_, b_ = _band_power(fl, pl, lo, hi), _band_power(fr, pr, lo, hi)
                 d["ai"][(lbl, n)] = (a_ - b_) / (a_ + b_) * 100 if (a_ + b_) > 1e-9 else np.nan
-        # Aperiodik
+        # Aperiodik (seg ist bereits artefaktbereinigt)
         try:
             from analysis.aperiodic import welch_psd, fit_aperiodic
             fw, pw = welch_psd(seg, sf, fmax=45.0)
@@ -295,7 +338,7 @@ def _page_raw_eeg(pdf, edf, d):
 
 # ── Seite 3: EEG Frequenz & Rhythmus ──────────────────────────────────────────
 def _page_spectrum(pdf, d):
-    fig = _page("EEG — Frequenz & Grundrhythmus", "Spektrogramm · Leistungsspektrum · Bandverteilung (posterior O1/O2)", C_EEG_HDR)
+    fig = _page("EEG — Frequenz & Grundrhythmus", "Spektrogramm · Leistungsspektrum · Bandverteilung (posterior O1/O2, artefaktbereinigt)", C_EEG_HDR)
     sf, post = d["sf"], d.get("post")
     if post is None:
         pdf.savefig(fig); plt.close(fig); return
@@ -356,8 +399,9 @@ def _page_spectrum(pdf, d):
     ax.set_title("Leistungsspektrum — wo sitzt die Energie?", fontsize=10.5,
                  fontweight="bold", color=C_INK, loc="left", pad=6)
     ax.legend(frameon=False, fontsize=8.5, ncol=4, loc="upper right")
-    _cap(fig, 0.055, "Der okzipitale Alpha-Gipfel ist der Grundrhythmus des wachen, entspannten Gehirns. "
-                     "Verschiebt er sich nach links (langsamer), spricht das für eine Funktionsstörung.")
+    _cap(fig, 0.055, "Der okzipitale Alpha-Gipfel ist der Grundrhythmus des wachen, entspannten Gehirns "
+                     "(hier aus dem sauberen Abschnitt mit dem klarsten Alpha). Verschiebt er sich "
+                     "nach links (langsamer), spricht das für eine Funktionsstörung.")
     pdf.savefig(fig); plt.close(fig)
 
 
