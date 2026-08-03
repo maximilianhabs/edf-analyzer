@@ -10,6 +10,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Verhindert BLAS-Thread-Oversubscription: mehrere gleichzeitige Streamlit-Sessions
+# rufen sonst je einen eigenen MNE/SciPy-Filter auf, der wiederum standardmäßig alle
+# Host-Kerne für sich beansprucht (OpenBLAS/OpenMP) — das überlastet den VPS bei
+# paralleler Nutzung deutlich schneller, als die Rechenlast selbst rechtfertigt.
+ENV OMP_NUM_THREADS=1
+ENV OPENBLAS_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
+
 # Dependencies zuerst (besseres Layer-Caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

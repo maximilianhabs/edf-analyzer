@@ -1,5 +1,6 @@
 """Gemeinsame Konstanten, Cache-Funktionen und Plot-Bausteine für alle App-Seiten."""
 
+import html
 import os
 import numpy as np
 import streamlit as st
@@ -31,7 +32,8 @@ CHAIN_OF = {
     ("P4","Cz"):("Rechts para", C_RE),
     ("F3","Cz"):("Links para", C_LI),  ("C3","Cz"):("Links para", C_LI),
     ("P3","Cz"):("Links para", C_LI),
-    ("Fz","Cz"):("Mittellinie", C_MID),
+    # ("Pz","Cz") separat nötig: MONTAGES["Referenziell Cz"] listet das Paar in dieser
+    # Richtung (nicht ("Cz","Pz") wie oben) — CHAIN_OF-Lookup ist reihenfolgeabhängig.
     ("Pz","Cz"):("Mittellinie", C_MID),
 }
 
@@ -77,7 +79,10 @@ EPOCH_SEC = 10  # Standard-Epochenlänge (EKG-Tab, Fallback)
 def render_sidebar_status():
     """Persistente Patientenkontext-Karte in der Sidebar — sichtbar auf jeder Seite."""
     edf_path  = st.session_state.get("edf_path", "")
-    file_name = st.session_state.get("edf_display_name", "")
+    # html.escape: file_name stammt vom hochgeladenen Dateinamen (uploaded.name) und
+    # landet unten via unsafe_allow_html direkt im DOM — ohne Escaping wäre ein
+    # präparierter Dateiname ein Stored-XSS-Vektor gegen den eigenen Browser.
+    file_name = html.escape(st.session_state.get("edf_display_name", ""))
     validated = st.session_state.get("phi_validated", False)
 
     with st.sidebar:

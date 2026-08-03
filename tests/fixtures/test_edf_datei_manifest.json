@@ -1,0 +1,73 @@
+{
+  "created": "2026-08-03T19:54:56.398084",
+  "purpose": "Synthetisches Ground-Truth-EDF zur Pipeline-Validierung — KEIN echter Patient, keine biologische Exaktheit beansprucht.",
+  "format": {
+    "fs_hz": 200.0,
+    "duration_s": 600,
+    "n_eeg_channels": 19,
+    "ecg_channel": "POL X1"
+  },
+  "aperiodic": {
+    "exponent_all_channels": 2.2,
+    "note": "1/f-Rauschen per FFT-Skalierung erzeugt — Soll-Exponent für JEDEN EEG-Kanal identisch. App sollte in Aperiodik-Seite/FOOOF nahe 2.2 liegen (± Fit-Rauschen)."
+  },
+  "alpha": {
+    "freq_hz": 10.0,
+    "amplitude_uv_per_channel": {
+      "O1": 33.0,
+      "O2": 27.5,
+      "Pz": 24.0,
+      "P3": 22.0,
+      "P4": 21.0,
+      "T5": 14.0,
+      "T6": 13.0,
+      "Cz": 10.0,
+      "C3": 9.0,
+      "C4": 9.0,
+      "Fz": 6.0,
+      "F3": 5.5,
+      "F4": 5.0,
+      "F7": 4.0,
+      "F8": 4.0,
+      "Fp1": 3.0,
+      "Fp2": 3.0,
+      "T3": 6.0,
+      "T4": 6.0
+    },
+    "expected_par": "posterior (O1/O2/Pz) >> anterior (Fp1/Fp2/F3/F4) -> PAR deutlich > 1",
+    "expected_asymmetry_o1_o2": "O1 20% staerker als O2 (33.0 vs 27.5 uV Amplitude) -> Alpha-AI ~ +18% (Power-Verhaeltnis, nicht Amplitude-Verhaeltnis -> tatsaechlicher Power-AI hoeher, da AI auf Power=Amplitude^2 wirkt; exakten Wert aus der App-Berechnung gegenchecken)"
+  },
+  "bands": {
+    "delta_hz": 2.0,
+    "theta_hz": 6.0,
+    "beta_hz": 20.0,
+    "note": "Kleine, gleich große Beimischung auf allen Kanälen — Bandpower sollte diese Peaks in Delta/Theta/Beta zeigen, unabhängig von Kanal."
+  },
+  "artifact_burst": {
+    "onset_s": 240.0,
+    "duration_s": 5.0,
+    "amplitude_uv": 300.0,
+    "channels": [
+      "Fp1",
+      "Fp2",
+      "F7",
+      "F8",
+      "T3",
+      "T4"
+    ],
+    "note": "Sollte vom Artefaktdetektor als Multikanal-Konsens-Ereignis bei 240-245s erkannt werden (deutlich über Default-Schwellen)."
+  },
+  "ecg": {
+    "mean_hr_bpm": 70.0,
+    "rsa_freq_hz": 0.25,
+    "rsa_amplitude_ms": 60.0,
+    "n_beats": 702,
+    "outlier_beat_times_s_approx": [
+      120.0,
+      300.0,
+      450.0
+    ],
+    "expected_hf_peak_hz": 0.25,
+    "note": "HRV-Frequenzdomäne (Welch/Burg/Lomb-Scargle) sollte einen HF-Peak sehr nahe an genau diesem RSA-Wert zeigen. Die 3 Ausreißer-Zeitpunkte sollten von der RR-Bereinigung (Hampel/Median-Filter) entfernt werden, ohne echte Nachbarschläge zu verlieren."
+  }
+}

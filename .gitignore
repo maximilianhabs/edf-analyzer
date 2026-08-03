@@ -18,6 +18,12 @@ data/
 *.bdf
 *.BDF
 
+# Ausnahme: synthetisches Ground-Truth-Test-EDF — rein mathematisch generiert
+# (tests/fixtures/generate_test_edf_datei.py), KEINE Patientendaten, bewusst versioniert
+# für reproduzierbare Regressionstests.
+!tests/fixtures/test_edf_datei.edf
+!tests/fixtures/test_edf_datei_manifest.json
+
 # Outputs — lokal generierte Reports
 reports/output/
 reports/
