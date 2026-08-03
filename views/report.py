@@ -36,7 +36,7 @@ def _psd_bandpower(freqs, psd, lo, hi):
     mask = (freqs >= lo) & (freqs < hi)
     if mask.sum() < 2:
         return 0.0
-    return float(np.trapz(psd[mask], freqs[mask]))
+    return float(np.trapezoid(psd[mask], freqs[mask]))
 
 
 def _alpha_peak(freqs, psd, lo=8.0, hi=13.0):

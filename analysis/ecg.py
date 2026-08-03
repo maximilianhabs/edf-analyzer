@@ -350,7 +350,7 @@ def compute_hrv_frequency_domain(rr_ms: np.ndarray, sfreq_rr: float = 4.0) -> di
 
     def band_power(f_low, f_high):
         mask = (freqs >= f_low) & (freqs < f_high)
-        return float(np.trapz(psd[mask], freqs[mask]))
+        return float(np.trapezoid(psd[mask], freqs[mask]))
 
     vlf = band_power(0.003, 0.04)
     lf = band_power(0.04, 0.15)

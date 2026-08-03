@@ -39,7 +39,7 @@ def lombscargle_hrv(rr_ms, t_s, n_freq: int = 1000):
 
     def _bp(band):
         mk = (freqs >= band[0]) & (freqs < band[1])
-        return float(np.trapz(psd[mk], freqs[mk])) if mk.sum() > 1 else 0.0
+        return float(np.trapezoid(psd[mk], freqs[mk])) if mk.sum() > 1 else 0.0
 
     def _peak(band):
         mk = (freqs >= band[0]) & (freqs < band[1])

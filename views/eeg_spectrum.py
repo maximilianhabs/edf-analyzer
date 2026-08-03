@@ -89,7 +89,7 @@ def _highpass(sig: np.ndarray, fs: float, cutoff: float = 1.0) -> np.ndarray:
 
 def _band_power(freqs, psd, lo, hi):
     mask = (freqs >= lo) & (freqs < hi)
-    return float(np.trapz(psd[mask], freqs[mask])) if mask.sum() > 1 else 0.0
+    return float(np.trapezoid(psd[mask], freqs[mask])) if mask.sum() > 1 else 0.0
 
 
 def _peak_freq(freqs, psd, lo, hi):
@@ -132,7 +132,7 @@ def _compute_par(edf_path, t_start, t_end, a_lo, a_hi, multitaper, amp_thresh):
         if f is None:
             continue
         m = (f >= a_lo) & (f < a_hi)
-        area = float(np.trapz(p[m], f[m])) if m.sum() > 1 else float("nan")
+        area = float(np.trapezoid(p[m], f[m])) if m.sum() > 1 else float("nan")
         r = fit_aperiodic(f, p, 1, 20)
         exp = r["exponent"] if r else float("nan")
         if pos[1] > 0.2:                            # anterior
