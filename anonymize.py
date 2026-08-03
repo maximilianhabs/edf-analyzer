@@ -27,6 +27,7 @@ import sys
 import argparse
 import hashlib
 import json
+import fcntl
 from datetime import datetime
 from pathlib import Path
 
@@ -168,15 +169,26 @@ def anonymize_edf(
     }
 
     # ── Audit-Log schreiben ───────────────────────────────────────────────────
+    # fcntl.flock sperrt Lese+Schreib-Zyklus exklusiv: ohne Lock würden zwei
+    # parallele Aufrufe (z. B. Batch-Verarbeitung) denselben alten Stand lesen und
+    # sich beim Zurückschreiben gegenseitig überschreiben (verlorener Audit-Eintrag).
     if log_path:
         log_path = str(log_path)
-        entries = []
-        if os.path.exists(log_path):
-            with open(log_path, "r", encoding="utf-8") as f:
-                entries = json.load(f)
-        entries.append(audit_entry)
-        with open(log_path, "w", encoding="utf-8") as f:
-            json.dump(entries, f, indent=2, ensure_ascii=False)
+        # Lock-Datei separat von der eigentlichen Log-Datei: verhindert, dass ein
+        # leeres/nicht-existentes Log beim ersten Lauf zu Lock-Handling-Sonderfällen führt.
+        lock_path = log_path + ".lock"
+        with open(lock_path, "w") as lockfile:
+            fcntl.flock(lockfile, fcntl.LOCK_EX)
+            try:
+                entries = []
+                if os.path.exists(log_path):
+                    with open(log_path, "r", encoding="utf-8") as f:
+                        entries = json.load(f)
+                entries.append(audit_entry)
+                with open(log_path, "w", encoding="utf-8") as f:
+                    json.dump(entries, f, indent=2, ensure_ascii=False)
+            finally:
+                fcntl.flock(lockfile, fcntl.LOCK_UN)
 
     return audit_entry
 

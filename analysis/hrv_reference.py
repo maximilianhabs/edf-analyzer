@@ -92,10 +92,10 @@ def pnn50_expected_from_rmssd(rmssd_ms: float) -> float:
     Empirische Näherungsformel: erwartetes pNN50 [%] aus RMSSD [ms].
     Basis: Mietus JE et al. (2002) — pNN50 und RMSSD messen denselben physiologischen
     Prozess (vagale Kurzzeitvariabilität) mit r>0.92. Die sigmoide Beziehung ergibt sich
-    aus der Normalverteilungsannahme der RR-Differenzen:
-        pNN50 ≈ 100 × [1 − Φ(50 / (√2 × RMSSD))]  × 2
-    was vereinfacht wird zu:
-        pNN50_exp ≈ 100 × erfc(50 / (√2 × RMSSD)) / 2
+    aus der Normalverteilungsannahme der RR-Differenzen ΔRR ~ N(0, RMSSD²):
+        pNN50 = P(|ΔRR| > 50) = 2 × [1 − Φ(50 / RMSSD)] = erfc(50 / (√2 × RMSSD))
+    (die scipy-Identität erfc(x) = 2×[1−Φ(x×√2)] liefert direkt die zweiseitige
+    Wahrscheinlichkeit — daher unten keine zusätzliche Division/Multiplikation mit 2).
     Praktische Kalibrierung: RMSSD=20ms → ~3%, RMSSD=40ms → ~20%, RMSSD=70ms → ~45%.
     """
     if rmssd_ms <= 0:
