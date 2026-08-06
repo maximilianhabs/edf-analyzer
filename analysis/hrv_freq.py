@@ -105,7 +105,7 @@ def band_power(freqs: np.ndarray, psd: np.ndarray, band: tuple) -> float:
     mask = (freqs >= band[0]) & (freqs < band[1])
     if mask.sum() < 2:
         return 0.0
-    return float(np.trapz(psd[mask], freqs[mask]))
+    return float(np.trapezoid(psd[mask], freqs[mask]))
 
 
 def band_peak(freqs: np.ndarray, psd: np.ndarray, band: tuple):
