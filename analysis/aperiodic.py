@@ -120,7 +120,7 @@ def flattened_power(res: dict, lo: float, hi: float) -> float:
     if band.sum() < 2:
         return float("nan")
     flat = np.log10(np.clip(ratio[band], 1e-9, None))
-    return float(np.trapz(flat, f[band]))
+    return float(np.trapezoid(flat, f[band]))
 
 
 def band_power_defs(freqs: np.ndarray, psd: np.ndarray, lo: float, hi: float,
@@ -132,8 +132,8 @@ def band_power_defs(freqs: np.ndarray, psd: np.ndarray, lo: float, hi: float,
     """
     m = (freqs >= lo) & (freqs < hi)
     mf = (freqs >= full[0]) & (freqs < full[1])
-    area = float(np.trapz(psd[m], freqs[m])) if m.sum() > 1 else 0.0
-    total = float(np.trapz(psd[mf], freqs[mf])) if mf.sum() > 1 else 0.0
+    area = float(np.trapezoid(psd[m], freqs[m])) if m.sum() > 1 else 0.0
+    total = float(np.trapezoid(psd[mf], freqs[mf])) if mf.sum() > 1 else 0.0
     return {
         "absolute": float(np.log10(area)) if area > 0 else float("nan"),
         "relative": (area / total * 100.0) if total > 0 else float("nan"),
