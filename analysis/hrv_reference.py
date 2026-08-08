@@ -96,7 +96,7 @@ def pnn50_expected_from_rmssd(rmssd_ms: float) -> float:
         pNN50 = P(|ΔRR| > 50) = 2 × [1 − Φ(50 / RMSSD)] = erfc(50 / (√2 × RMSSD))
     (die scipy-Identität erfc(x) = 2×[1−Φ(x×√2)] liefert direkt die zweiseitige
     Wahrscheinlichkeit — daher unten keine zusätzliche Division/Multiplikation mit 2).
-    Praktische Kalibrierung: RMSSD=20ms → ~3%, RMSSD=40ms → ~20%, RMSSD=70ms → ~45%.
+    Praktische Kalibrierung: RMSSD=20ms → ~1%, RMSSD=40ms → ~21%, RMSSD=70ms → ~48%.
     """
     if rmssd_ms <= 0:
         return 0.0

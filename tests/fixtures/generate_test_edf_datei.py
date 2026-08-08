@@ -134,7 +134,19 @@ def build_ecg_signal():
         if 0 <= j0 and j1 <= N:
             sig[j0:j1] += t_wave
     sig_uv = sig * 1000.0  # mV-Groessenordnung -> "uV"-Feld (siehe Kommentar unten)
-    return sig_uv, beat_times
+
+    # Amplituden-Artefakte (bewusst OHNE Flatline und OHNE Formveraenderung): reine
+    # Skalierung im Zeitfenster. Pearson-Korrelation zum Template ist skaleninvariant,
+    # d.h. Regel 4 (Template-Match) faengt das NICHT -> testet gezielt nur Regel 6
+    # (Amplituden-Plausibilitaet je Schlag) in analysis/ecg_quality.py isoliert.
+    WEAK_WINDOW = (330.0, 345.0)   # schwaches Signal / lockere Elektrode, Faktor 0.05
+    HIGH_WINDOW = (400.0, 410.0)   # Bewegungsartefakt-Spitzen, Faktor 7.0
+    i0, i1 = int(WEAK_WINDOW[0]*FS), int(WEAK_WINDOW[1]*FS)
+    sig_uv[i0:i1] *= 0.05
+    i0, i1 = int(HIGH_WINDOW[0]*FS), int(HIGH_WINDOW[1]*FS)
+    sig_uv[i0:i1] *= 7.0
+
+    return sig_uv, beat_times, WEAK_WINDOW, HIGH_WINDOW
 
 
 def main():
@@ -146,7 +158,7 @@ def main():
     signals = []
     for ch in EEG_CHANNELS:
         signals.append(build_eeg_signal(ch, rng))
-    ecg_sig, beat_times = build_ecg_signal()
+    ecg_sig, beat_times, weak_window, high_window = build_ecg_signal()
     signals.append(ecg_sig)
 
     n_ch = len(ALL_LABELS)
@@ -206,6 +218,14 @@ def main():
                         "nahe an genau diesem RSA-Wert zeigen. Die 3 Ausreißer-Zeitpunkte sollten "
                         "von der RR-Bereinigung (Hampel/Median-Filter) entfernt werden, ohne "
                         "echte Nachbarschläge zu verlieren."},
+        "ecg_amplitude_artifacts": {
+            "weak_signal_window_s": list(weak_window), "weak_signal_factor": 0.05,
+            "high_amplitude_window_s": list(high_window), "high_amplitude_factor": 7.0,
+            "note": "Reine Amplituden-Skalierung, KEINE Formveränderung, KEINE Flatline -> "
+                    "Pearson-Korrelation zum QRS-Template ist skaleninvariant und bleibt hoch. "
+                    "Testet gezielt Regel 6 (Amplituden-Plausibilität) in "
+                    "analysis/ecg_quality.py isoliert von Regel 4/5."
+        },
     }
     with open(manifest_path, "w", encoding="utf-8") as mf:
         json.dump(manifest, mf, indent=2, ensure_ascii=False)

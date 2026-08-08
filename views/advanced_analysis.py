@@ -14,6 +14,21 @@ from core.shared import (apply_global_style, section_header, get_edf_or_stop,
                          load_and_prepare, apply_channel_overrides, safe_slider)
 
 
+def _default_vs_alt_badge(default_label: str, alt_label: str) -> None:
+    """Konsistente, dezent farbige Kennzeichnung: was ist Default auf den bestehenden
+    Seiten (blau) vs. was ist die hier geprüfte Alternative (orange) — direkt unter dem
+    Sektionstitel, statt nur im Fließtext der Caption vergraben (User-Feedback 2026-08-03)."""
+    st.markdown(
+        "<div style='display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 12px 0'>"
+        "<span style='background:#2980b90d;border:1px solid #2980b955;border-radius:6px;"
+        "padding:3px 10px;font-size:12px;color:#2471a3'>"
+        f"🔵 <b>Default</b> (bestehende Seiten): {default_label}</span>"
+        "<span style='background:#e67e220d;border:1px solid #e67e2255;border-radius:6px;"
+        "padding:3px 10px;font-size:12px;color:#c0722a'>"
+        f"🟠 <b>Alternative</b> (hier geprüft): {alt_label}</span>"
+        "</div>", unsafe_allow_html=True)
+
+
 _DET_STYLE = {
     "eigen (aktueller Default)": ("#2980b9", "circle-open"),
     "Hamilton 2002 (validiert)": ("#e67e22", "x"),
@@ -58,6 +73,8 @@ def _render_methods_table():
 def _render_rpeak_visual(edf, edf_path):
     section_header("R-Zacken-Detektor — Vergleich & visuelle Kontrolle",
                    "Validierte Detektoren neben dem bewährten eigenen — mit Roh-EKG-Overlay")
+    _default_vs_alt_badge("eigener Detektor (vereinfachtes Pan-Tompkins)",
+                          "Hamilton 2002 / Pan-Tompkins (validiert, py-ecg-detectors)")
     ecg_channels = edf.get("ecg_channels") or []
     if not ecg_channels:
         st.info("Kein EKG-Kanal identifiziert.")
@@ -140,6 +157,8 @@ def _fooof_compare(edf_path, ch, hi, knee):
 def _render_fooof(edf, edf_path):
     section_header("Aperiodik 1/f — FOOOF vs. eigener Fit (W2)",
                    "Validierte Referenz-Implementierung (Donoghue 2020) parallel + visuelle Kontrolle")
+    _default_vs_alt_badge("eigener Sigma-Clip-Geradenfit",
+                          "FOOOF (Donoghue 2020, validierte Referenz-Implementierung)")
     eeg_map = edf.get("eeg_map", {})
     if not eeg_map:
         st.info("Keine EEG-Kanäle.")
@@ -235,6 +254,8 @@ def _hrv_spectrum_compare(edf_path, ch):
 def _render_lombscargle(edf, edf_path):
     section_header("HRV-Spektrum — Lomb-Scargle vs. Welch/Burg (W3)",
                    "Interpolationsfrei aus den RR-Zeitpunkten — belastbarer bei Lücken/Ektopie")
+    _default_vs_alt_badge("Welch/Burg (mit PCHIP-Resampling)",
+                          "Lomb-Scargle (interpolationsfrei, validiert)")
     ecg = edf.get("ecg_channels") or []
     if not ecg:
         st.info("Kein EKG-Kanal identifiziert.")
@@ -307,6 +328,8 @@ def _asym_compute(edf_path):
 def _render_asymmetry(edf, edf_path):
     section_header("Hemisphärische Asymmetrie — relativ vs. absolut (G1)",
                    "AI zusätzlich auf relativer Bandpower — robuster gegen Impedanz/Amplitude")
+    _default_vs_alt_badge("absolute Bandpower (Nuwer 1997)",
+                          "relative Bandpower (impedanz-/amplitudenrobuster)")
     bps = _asym_compute(edf_path)
     BK = ["Delta (1–4 Hz)", "Theta (4–8 Hz)", "Alpha (8–13 Hz)", "Beta (13–30 Hz)"]
     BN = ["Delta", "Theta", "Alpha", "Beta"]
@@ -349,6 +372,8 @@ def _dfa_compare(edf_path, ch):
 def _render_dfa(edf, edf_path):
     section_header("DFA — α1 + α2 mit überlappenden Fenstern (G6)",
                    "Standard-DFA (Peng 1995) neben unserer nicht-überlappenden α1-Variante")
+    _default_vs_alt_badge("eigene α1-Variante (nicht-überlappende Fenster)",
+                          "Standard-DFA α1+α2, überlappende Fenster (Peng 1995)")
     ecg = edf.get("ecg_channels") or []
     if not ecg:
         st.info("Kein EKG-Kanal identifiziert.")
@@ -420,6 +445,7 @@ def _mt_compare(edf_path, ch):
 def _render_multitaper(edf, edf_path):
     section_header("EEG-Spektrum — Multitaper vs. Welch (G7)",
                    "DPSS-Multitaper (Thomson 1982): weniger Leakage, schärfere Gipfel")
+    _default_vs_alt_badge("Welch", "Multitaper (DPSS, Thomson 1982, validiert)")
     em = edf.get("eeg_map", {})
     if not em:
         st.info("Keine EEG-Kanäle.")
@@ -471,14 +497,16 @@ def render():
     )
     _render_methods_table()
     st.divider()
-    _render_rpeak_visual(edf, edf_path)
-    st.divider()
+    # EEG-Themen zuerst (analog Navigator-Reihenfolge: EEG vor Herzrhythmus),
+    # danach alle EKG/HRV-Themen — bewusst thematisch gruppiert statt alternierend.
     _render_fooof(edf, edf_path)
-    st.divider()
-    _render_lombscargle(edf, edf_path)
     st.divider()
     _render_multitaper(edf, edf_path)
     st.divider()
-    _render_dfa(edf, edf_path)
-    st.divider()
     _render_asymmetry(edf, edf_path)
+    st.divider()
+    _render_rpeak_visual(edf, edf_path)
+    st.divider()
+    _render_lombscargle(edf, edf_path)
+    st.divider()
+    _render_dfa(edf, edf_path)
