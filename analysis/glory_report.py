@@ -211,11 +211,15 @@ def _collect(edf, edf_path):
     if edf.get("ecg_channels"):
         ch = edf["ecg_channels"][0]
         if ch in edf.get("ch_idx", {}):
-            from analysis.ecg import detect_r_peaks, build_rr_series, compute_hrv_time_domain
+            from analysis.ecg import detect_r_peaks_polarity_safe, build_rr_series, compute_hrv_time_domain
             from analysis.hrv_freq import compute_frequency_domain
             raw = edf["data"][edf["ch_idx"][ch]].astype(float)
             raw = raw - np.median(raw)
-            pk = detect_r_peaks(raw, sf)
+            # Polaritäts-sicherer Pfad (User-Audit 2026-08-08): korrigiertes `raw` wird sowohl
+            # für die Peak-Erkennung als auch für die spätere Roh-EKG-Abbildung im PDF verwendet
+            # (Zeile "sig": raw*1000.0 unten) — sonst zeigt die Report-Seite die R-Zacke bei
+            # invertierten Kanälen nach unten. Siehe [[project_edf_rhythm_screening]].
+            raw, pk, _ = detect_r_peaks_polarity_safe(raw, sf)
             rr = build_rr_series(pk, sf)
             if rr is not None:
                 clean = rr.rr_ms[~rr.artifact_mask]

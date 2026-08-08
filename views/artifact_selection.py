@@ -28,7 +28,7 @@ from views.eeg_spectrum import (
     _compute_psd, _band_power, _peak_freq, _spectral_edge, _highpass,
     _alpha_band, BANDS, BAND_COLOR,
 )
-from analysis.ecg import detect_r_peaks, build_rr_series, compute_hrv_time_domain
+from analysis.ecg import build_rr_series, compute_hrv_time_domain
 
 
 def _mmss(s: float) -> str:
@@ -62,7 +62,9 @@ def _cached_rr(edf_path: str, ecg_name: str, overrides_key: str):
     """Gecachte R-Zacken-/RR-Erkennung für den HRV-Vergleich."""
     edf = apply_channel_overrides(load_and_prepare(edf_path))
     sig = edf["data"][edf["ch_idx"][ecg_name]].astype(float)
-    rp = detect_r_peaks(sig, edf["sfreq"])
+    # Polaritäts-sicherer Pfad (User-Audit 2026-08-08) — siehe [[project_edf_rhythm_screening]]
+    from analysis.ecg import detect_r_peaks_polarity_safe
+    _, rp, _ = detect_r_peaks_polarity_safe(sig, edf["sfreq"])
     rr = build_rr_series(rp, edf["sfreq"])
     if rr is None:
         return None

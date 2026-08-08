@@ -138,7 +138,7 @@ def _eeg_metrics(edf, edf_path, segments=None):
 
 
 def _compute_hrv_corrected(edf_path, edf, segments):
-    from analysis.ecg import detect_r_peaks, build_rr_series, compute_hrv_time_domain, dfa_alpha1
+    from analysis.ecg import detect_r_peaks_polarity_safe, build_rr_series, compute_hrv_time_domain, dfa_alpha1
     from analysis.complexity import sample_entropy
     from analysis.hrv_freq import compute_frequency_domain
     ch = edf["ecg_channels"][0]
@@ -146,7 +146,9 @@ def _compute_hrv_corrected(edf_path, edf, segments):
         return None
     fs = edf["sfreq"]
     sig = edf["data"][edf["ch_idx"][ch]].astype(float)
-    rr = build_rr_series(detect_r_peaks(sig, fs), fs)
+    # Polaritäts-sicherer Pfad (User-Audit 2026-08-08) — siehe [[project_edf_rhythm_screening]]
+    _, peaks, _ = detect_r_peaks_polarity_safe(sig, fs)
+    rr = build_rr_series(peaks, fs)
     if rr is None:
         return None
     rr_ms, times, ect = rr.rr_ms, rr.rr_times_s, rr.artifact_mask
@@ -176,12 +178,17 @@ def _compute_hrv_corrected(edf_path, edf, segments):
 
 def _hrv_hamilton(edf):
     """HRV-Zeitbereich mit validiertem R-Zacken-Detektor (Hamilton 2002)."""
-    from analysis.ecg import detect_r_peaks_validated, build_rr_series, compute_hrv_time_domain
+    from analysis.ecg import detect_r_peaks_validated, detect_polarity_flip, build_rr_series, compute_hrv_time_domain
     ch = edf["ecg_channels"][0]
     if ch not in edf.get("ch_idx", {}):
         return None
     fs = edf["sfreq"]
     sig = edf["data"][edf["ch_idx"][ch]].astype(float)
+    # Polaritäts-sicherer Pfad (User-Audit 2026-08-08): erst flippen, DANACH den validierten
+    # Detektor laufen lassen — sonst verschiebt dessen interne Verfeinerung den Zeitindex bei
+    # invertiertem Kanal, siehe [[project_edf_rhythm_screening]].
+    if detect_polarity_flip(sig - sig.mean(), fs):
+        sig = -sig
     rr = build_rr_series(detect_r_peaks_validated(sig, fs, "hamilton"), fs)
     if rr is None:
         return None

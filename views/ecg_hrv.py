@@ -896,9 +896,15 @@ def render():
         )
         if manual_ch not in edf["ecg_filtered"]:
             from scipy.signal import butter as _b, filtfilt as _f
+            from analysis.ecg import detect_polarity_flip
             _idx = edf["ch_idx"][manual_ch]
             sig_raw = edf["data"][_idx].copy().astype(float)
             sig_raw -= sig_raw.mean()
+            # Polaritäts-sicherer Pfad (User-Audit 2026-08-08) — dieselbe Logik wie
+            # core/shared.py, hier dupliziert für manuell gewählte Kanäle. Siehe
+            # [[project_edf_rhythm_screening]].
+            if detect_polarity_flip(sig_raw, sfreq):
+                sig_raw = -sig_raw
             nyq = sfreq / 2
             bb, aa = _b(4, [0.5/nyq, min(40/nyq, 0.99)], btype="band")
             edf["ecg_filtered"][manual_ch] = _f(bb, aa, sig_raw)
@@ -921,9 +927,13 @@ def render():
     )
     if ecg_ch not in edf["ecg_filtered"]:
         from scipy.signal import butter as _b2, filtfilt as _f2
+        from analysis.ecg import detect_polarity_flip as _dpf2
         _idx2 = edf["ch_idx"][ecg_ch]
         sig_raw2 = edf["data"][_idx2].copy().astype(float)
         sig_raw2 -= sig_raw2.mean()
+        # Polaritäts-sicherer Pfad (User-Audit 2026-08-08), siehe [[project_edf_rhythm_screening]]
+        if _dpf2(sig_raw2, sfreq):
+            sig_raw2 = -sig_raw2
         nyq2 = sfreq / 2
         bb2, aa2 = _b2(4, [0.5/nyq2, min(40/nyq2, 0.99)], btype="band")
         edf["ecg_filtered"][ecg_ch] = _f2(bb2, aa2, sig_raw2)
@@ -1099,20 +1109,19 @@ def render():
         "Seite (Seitenmenü) prüfen — dort inkl. Sicherheitsstufe und P-Wellen-Nachweis."
     )
 
-    # ── Polaritäts-Hinweis (User-Anfrage 2026-08-08, gleiche Logik/UI wie
-    # views/rhythm_screening.py — dort ausführlich hergeleitet, siehe
-    # [[project_edf_rhythm_screening]]) ─────────────────────────────────────────
+    # ── Polaritäts-Hinweis (User-Anfrage 2026-08-08, PRÄZISIERT 2026-08-08 — gleiche Logik/UI
+    # wie views/rhythm_screening.py, dort ausführlich hergeleitet + gegengeprüft mit
+    # SYNTH_groundtruth.edf, siehe [[project_edf_rhythm_screening]]) ─────────────────────────
     if rr_data.get("was_flipped"):
         st.markdown(
-            "<div style='background:#f39c1214;border:1.5px solid #f39c12;border-radius:8px;"
+            "<div style='background:#eaf2fa;border:1.5px solid #5b8fc7;border-radius:8px;"
             "padding:10px 14px;margin-bottom:10px;font-size:13px'>"
-            "⚠️ <b>Polarität automatisch korrigiert:</b> Die QRS-Auslenkung war im Rohsignal "
-            "dieses Kanals negativ dominant (R-Zacke zeigt nach unten) — nach EKG-Standard-"
-            "konvention sollte sie positiv sein. Bei diesem Kanal (POL X1) betrifft das "
-            "konsistent nahezu alle geprüften Aufnahmen — vermutlich eine systematische "
-            "Verdrahtungskonvention des Aufnahmesystems, keine individuelle Elektroden-"
-            "Vertauschung bei dieser Ableitung. Die Analyse berücksichtigt das automatisch "
-            "(Polarität wird korrigiert, alle Zahlen bleiben gültig)."
+            "ℹ️ <b>Kanal-Polaritätskonvention erkannt und für die Darstellung angepasst:</b> "
+            "Die QRS-Auslenkung ist im Rohsignal dieses Kanals negativ dominant. Das ist bei "
+            "diesem Kanal (POL X1) die durchgehende, verlässliche Konvention dieses "
+            "Aufnahmesystems — kein Hinweis auf ein Problem bei dieser Ableitung. Für die "
+            "Darstellung und Analyse wird die Polarität automatisch so ausgerichtet, dass die "
+            "R-Zacke wie klinisch gewohnt nach oben zeigt; alle Zahlen bleiben unverändert gültig."
             "</div>", unsafe_allow_html=True)
         with st.expander("🔍 Polaritäts-Check: Analyse mit vs. ohne Korrektur anzeigen"):
             from analysis.ecg import flip_diagnostic

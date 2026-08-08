@@ -371,7 +371,14 @@ def load_and_prepare(path: str):
     eog_channels = [ch for ch, r in classifications.items() if r.channel_type == EOG]
     emg_channels = [ch for ch, r in classifications.items() if r.channel_type == EMG]
 
-    # Bandpass-filtered ECG signals for display (0.5–40 Hz)
+    # Bandpass-filtered ECG signals for display (0.5–40 Hz). Polaritäts-korrigiert an der
+    # QUELLE (User-Audit 2026-08-08): dieses Dict wird app-weit für die EKG-Darstellung
+    # wiederverwendet (EEG-Viewer, EKG&HRV-Hauptkurve, Report) — ohne Korrektur hier würde
+    # die Kurve bei jedem invertierten Kanal (z. B. POL X1, systematische Gerätekonvention
+    # dieses Aufnahmesystems, siehe [[project_edf_rhythm_screening]]) trotz korrekter RR-
+    # Zeiten optisch mit der R-Zacke nach unten erscheinen. Flip-Entscheidung auf dem
+    # UNGEFILTERTEN Signal (robuster, wie überall sonst in der App).
+    from analysis.ecg import detect_polarity_flip
     ecg_filtered = {}
     nyq = sfreq / 2
     b, a = butter(4, [0.5 / nyq, min(40.0 / nyq, 0.99)], btype="band")
@@ -379,6 +386,8 @@ def load_and_prepare(path: str):
         idx = ch_idx[ch]
         sig = data[idx].copy().astype(np.float64)
         sig -= sig.mean()
+        if detect_polarity_flip(sig, sfreq):
+            sig = -sig
         sig = filtfilt(b, a, sig)
         ecg_filtered[ch] = sig
 
@@ -760,7 +769,10 @@ def apply_channel_overrides(edf: dict) -> dict:
     if eeg_map:
         edf["eeg_map"] = eeg_map
 
-    # Add bandpass-filtered ECG for newly added ECG channels
+    # Add bandpass-filtered ECG for newly added ECG channels — mit derselben Polaritäts-
+    # korrektur wie im Erstlade-Pfad (load_and_prepare), sonst würde ein manuell nachträglich
+    # als EKG markierter Kanal die Kurve invertiert zeigen.
+    from analysis.ecg import detect_polarity_flip
     ecg_filtered = dict(edf.get("ecg_filtered", {}))
     new_ecg = set(edf["ecg_channels"]) - set(ecg_filtered.keys())
     if new_ecg:
@@ -774,6 +786,8 @@ def apply_channel_overrides(edf: dict) -> dict:
             if idx is not None:
                 sig = data[idx].copy().astype(float)
                 sig -= sig.mean()
+                if detect_polarity_flip(sig, sfreq):
+                    sig = -sig
                 ecg_filtered[ch] = _filtfilt(b, a, sig)
     edf["ecg_filtered"] = ecg_filtered
 
