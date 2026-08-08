@@ -43,7 +43,8 @@ Danach [http://localhost:8501](http://localhost:8501) öffnen. Der Upload erwart
 - **Kanal-Identifikation** — signalbasierter Classifier (EEG/EKG/EOG/EMG/Referenz/Vital) mit Konfidenz und manueller Korrektur.
 - **EEG-Spektralanalyse** — Welch/Multitaper-PSD, absolute/relative Bandpower, Alpha-Grundrhythmus, A/P-Gradient, hemisphärische Asymmetrie.
 - **Aperiodik (1/f)** — eigener Log-Log-Fit plus validierter FOOOF/specparam-Fit.
-- **EKG & HRV** — QRS-Detektion, RR-Bereinigung, Zeitdomäne (SDNN/RMSSD/pNN50/CV/Poincaré), Frequenzdomäne (Welch + Burg, Lomb-Scargle), DFA α₁/α₂.
+- **Rhythmus-Screening** — vorgeschaltetes AFib-/Ektopie-Screening vor der HRV-Analyse: Artefakt-Filterung (Orphanidou 2015), Vorhofflimmern-Erkennung via CosEn (Lake & Moorman 2011) mit gestufter Sicherheit, P-Wellen-Nachweis via Schlag-Summation, Ektopie-Erkennung (Kompensationspause/QRS-Breite), Detektor-Umschaltung (eigen/Hamilton/Christov/Pan-Tompkins/…), automatische Polaritätskorrektur mit In-App-Diagnose.
+- **EKG & HRV** — QRS-Detektion, RR-Bereinigung, Zeitdomäne (SDNN/RMSSD/pNN50/CV/Poincaré), Frequenzdomäne (Welch + Burg, Lomb-Scargle), DFA α₁/α₂, autonome Gesamtaktivitäts-Warnung bei "starrer Herzfrequenz".
 - **Komplexität** — Sample Entropy, Lempel-Ziv, Permutationsentropie.
 - **Artefaktkorrektur** — regelbasierte Auto-Maske plus klickbares Editing; Gesamt- und bereinigte Auswertung laufen parallel.
 - **Reports** — tabellarischer PDF/Excel-Export (Gesamt vs. korrigiert) und ein visueller PDF-Abstract.
