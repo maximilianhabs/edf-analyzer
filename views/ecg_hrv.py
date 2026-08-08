@@ -414,7 +414,7 @@ def render():
             row=2, col=1,
         )
         fig.update_yaxes(visible=False, row=2, col=1)
-        return fig, label
+        return fig, label, z_sdnn
 
     _ANS_LEGEND = (
         "**Wie lesen Sie das Diagramm?**  \n"
@@ -538,9 +538,39 @@ def render():
                    "lf": _lf, "hf": _hf, "tp": _tp, "lhr": _lhr}
 
         try:
-            _fig_ans, _ans_lbl = _build_ans_state_fig(
+            _fig_ans, _ans_lbl, _z_sdnn = _build_ans_state_fig(
                 _mean_hr, _rmssd, _fd, sdnn_val=_sdnn, pnn50_val=_pnn50,
                 duration_s=edf["duration_s"])
+            # "Starre Herzfrequenz"-Warnung (User-Konzept 2026-08-08): die Balance-Achse
+            # (vagal↔sympathisch) allein kann einen GLOBALEN Ausfall beider Äste nicht zeigen
+            # (LF/HF kann unauffällig aussehen, obwohl beide Pole kollabiert sind — Fall
+            # GA2410DH: LF/HF=1,14, sogar unter dem Populationsmittel, trotz RMSSD/SDNN/pNN50
+            # praktisch am Boden). WICHTIG: der ursprünglich vorgesehene Trigger SDNN-z<-2
+            # (POOLED_REFERENCE-Sigma, nicht altersadjustiert) löst bei GA2410DH selbst NICHT
+            # aus (z=-1,22 — das grobe Populations-Sigma ist zu breit) — durch Testlauf entdeckt
+            # und korrigiert. Stattdessen direkter, populationsmodell-unabhängiger Trigger:
+            # pNN50 nahe 0% UND CV% sehr niedrig — beide beschreiben "praktisch keine Schlag-zu-
+            # Schlag-Variabilität" ohne Umweg über ein Referenzmodell. Kalibriert an allen 5
+            # Referenzfällen: trennt GA2410DH (pNN50=0,00%/CV=1,9%) sauber von allen anderen,
+            # AUCH vom AFib-Fall (hohe statt niedrige Variabilität, löst korrekt nicht aus).
+            _rigid_hr = (_pnn50 < 0.5) and (_cv < 3.0)
+            if _rigid_hr:
+                st.markdown(
+                    "<div style='background:#c0392b14;border:2px solid #c0392b;border-radius:10px;"
+                    "padding:12px 16px;margin-bottom:10px'>"
+                    "<div style='font-size:15px;font-weight:800;color:#c0392b'>"
+                    "⚠️ Auffällig starre Herzfrequenz</div>"
+                    "<div style='font-size:13px;color:#555;margin-top:4px'>"
+                    f"Praktisch keine Schlag-zu-Schlag-Variabilität: pNN50={_pnn50:.2f}% "
+                    f"(nahe 0), CV={_cv:.1f}% (sehr niedrig), SDNN={_sdnn:.1f}ms "
+                    f"(z={_z_sdnn:+.1f} σ ggü. Population). Das kann auf eine autonome "
+                    "Funktionsstörung hindeuten (z. B. Dysautonomie/autonome Neuropathie) — "
+                    "<b>unabhängig davon, ob die Balance-Achse unten unauffällig aussieht.</b> "
+                    "Bei stark reduzierter Gesamtaktivität sind vagale UND sympathische Marker "
+                    "oft gemeinsam betroffen, wodurch die reine Richtungsaussage (vagal/"
+                    "sympathisch) wenig über das eigentliche Ausmaß aussagt. Bitte die "
+                    "Einzelwerte unten (RMSSD, SDNN, pNN50, LF/HF) gezielt gegenprüfen und "
+                    "klinisch korrelieren.</div></div>", unsafe_allow_html=True)
             st.plotly_chart(_fig_ans, use_container_width=True)
             st.markdown(
                 f"<div style='text-align:center;font-size:15px;margin-top:-10px'>"
@@ -682,8 +712,11 @@ def render():
                             (lo_ok,   hi_ok,             "normal"),
                             (hi_ok,   cls["scale_max"],  "grenzwertig"),
                         ]
-                    elif pnn50_exp is not None and pnn50_exp > 0.05:
-                        zones = [(0, cls["scale_max"], "normal")]
+                    elif pnn50_exp is not None:
+                        # RMSSD selbst sehr niedrig (pnn50_exp<2%) — Zone kommt jetzt aus
+                        # RMSSDs EIGENER Klassifikation (User-Fund 2026-08-08, siehe
+                        # analysis/hrv_reference.py), kein neutraler Flach-Balken mehr.
+                        zones = [(0, cls["scale_max"], cls["zone"])]
                     else:
                         zones = [(0, cls["scale_max"], "info")]
                 elif key == "heart_rate":
@@ -1405,17 +1438,18 @@ def render():
     fig_psd_burg_obj  = render_psd_chart(fd_burg,  "Burg (Maximum Entropy Method)", "#6c3483")
 
     # ANS-Statusdiagramm für PDF und Tab 3
-    fig_bal, _ans_label = _build_ans_state_fig(
+    fig_bal, _ans_label, _z_sdnn_summary = _build_ans_state_fig(
         mean_hr, rmssd, fd, sdnn_val=sdnn, pnn50_val=pnn50,
         duration_s=edf["duration_s"])
     balance = {"label": _ans_label, "index": 0.0}  # index nur noch für PDF-Kompatibilität
 
-    # Ergebnisse für Report-Seite persistieren
+    # Ergebnisse für Report-Seite persistieren — inkl. z_sdnn für "starre Herzfrequenz"-Hinweis
+    # (User-Konzept 2026-08-08), damit Report-Seite/PDF denselben Befund zeigen können.
     st.session_state["hrv_summary"] = {
         "mean_hr": mean_hr, "sdnn": sdnn, "cv_pct": cv_pct,
         "rmssd": rmssd, "pnn50": pnn50, "nn50": nn50,
         "pct_removed": pct_removed, "quality_label": qlabel,
-        "ans_label": _ans_label, "seg_label": seg_label,
+        "ans_label": _ans_label, "z_sdnn": _z_sdnn_summary, "seg_label": seg_label,
         "fd_welch": fd_welch, "fd_burg": fd_burg,
         "edf_name": os.path.basename(edf_path),
     }

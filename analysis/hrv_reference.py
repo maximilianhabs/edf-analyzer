@@ -123,13 +123,9 @@ def classify_parameter(param: str, value: float, age: float, heart_rate: float,
         scale_max = max(50.0, value * 1.25)
         pos = float(np.clip(value / scale_max, 0, 1))
         pnn50_exp = pnn50_expected_from_rmssd(rmssd_ms) if rmssd_ms is not None else None
-        if pnn50_exp is not None and pnn50_exp > 0.05:
+        if pnn50_exp is not None and pnn50_exp >= 2.0:
             ratio = value / pnn50_exp if pnn50_exp > 0 else float("nan")
-            # Bei sehr niedrigem erwartetem Wert (<2%) ist das Ratio unzuverlässig
-            if pnn50_exp < 2.0:
-                zone, severity = "normal", "—"
-                direction = f"beide Werte sehr niedrig (erwartet {pnn50_exp:.2f}%)"
-            elif ratio < 0.40:
+            if ratio < 0.40:
                 zone, severity = "grenzwertig", "stark diskordant"
                 direction = f"↓ {ratio*100:.0f}% des Erwarteten — Ektopie/Artefakte prüfen"
             elif ratio < 0.65:
@@ -141,6 +137,20 @@ def classify_parameter(param: str, value: float, age: float, heart_rate: float,
             else:
                 zone, severity = "normal", "—"
                 direction = f"konkordant ({ratio*100:.0f}% des Erwarteten)"
+        elif rmssd_ms is not None:
+            # pnn50_exp < 2% heißt: RMSSD SELBST ist schon sehr niedrig — die Konkordanz-
+            # Ratio wird hier unzuverlässig (beide Werte nahe der Nachweisgrenze), ABER
+            # "beide Werte sehr niedrig" ist selbst ein klinisch relevanter Befund, kein
+            # neutraler "keine Aussage möglich"-Zustand (User-Fund 2026-08-08: bei einer
+            # GBS-Patientin mit pNN50=0,000%/NN50=0 zeigte diese Zeile bisher fälschlich
+            # "normal"/"info" statt die extrem reduzierte vagale Modulation abzubilden).
+            # Fix: Zone von RMSSDs EIGENER Klassifikation übernehmen (Hansen-2024-P5), statt
+            # sie zu verschleiern.
+            _rmssd_cls = classify_parameter("rmssd", rmssd_ms, age, heart_rate)
+            zone, severity = _rmssd_cls["zone"], _rmssd_cls["severity"]
+            direction = (f"pNN50 ≈0% ist bei RMSSD={rmssd_ms:.1f}ms erwartbar (RMSSD selbst "
+                        f"{_rmssd_cls['zone']}) — direkte Folge der niedrigen Gesamt-"
+                        "variabilität, kein separates Diskordanz-Signal")
         else:
             zone, severity, direction = "info", "—", "kein RMSSD-Vergleich"
         return {
@@ -382,12 +392,9 @@ def classify_parameter_pediatric(param: str, value: float, heart_rate: float,
         scale_max = max(50.0, value * 1.25)
         pos = float(np.clip(value / scale_max, 0, 1))
         pnn50_exp = pnn50_expected_from_rmssd(rmssd_ms) if rmssd_ms is not None else None
-        if pnn50_exp is not None and pnn50_exp > 0.05:
+        if pnn50_exp is not None and pnn50_exp >= 2.0:
             ratio = value / pnn50_exp if pnn50_exp > 0 else float("nan")
-            if pnn50_exp < 2.0:
-                zone, severity = "normal", "—"
-                direction = f"beide Werte sehr niedrig (erwartet {pnn50_exp:.2f}%)"
-            elif ratio < 0.40:
+            if ratio < 0.40:
                 zone, severity = "grenzwertig", "stark diskordant"
                 direction = f"↓ {ratio*100:.0f}% des Erwarteten — Ektopie/Artefakte prüfen"
             elif ratio < 0.65:
@@ -399,6 +406,15 @@ def classify_parameter_pediatric(param: str, value: float, heart_rate: float,
             else:
                 zone, severity = "normal", "—"
                 direction = f"konkordant ({ratio*100:.0f}% des Erwarteten)"
+        elif rmssd_ms is not None:
+            # Siehe classify_parameter() (Erwachsene) — dieselbe Präzisierung, damit ein
+            # extrem niedriges RMSSD (z. B. schwere Dysautonomie) nicht als "normal"/"info"
+            # verschleiert wird, nur weil die Konkordanz-Ratio selbst unzuverlässig wird.
+            _rmssd_cls = classify_parameter_pediatric("rmssd", rmssd_ms, heart_rate)
+            zone, severity = _rmssd_cls["zone"], _rmssd_cls["severity"]
+            direction = (f"pNN50 ≈0% ist bei RMSSD={rmssd_ms:.1f}ms erwartbar (RMSSD selbst "
+                        f"{_rmssd_cls['zone']}) — direkte Folge der niedrigen Gesamt-"
+                        "variabilität, kein separates Diskordanz-Signal")
         else:
             zone, severity, direction = "info", "—", "kein RMSSD-Vergleich"
         return {"param": param, "value": value, "zone": zone, "severity": severity,
