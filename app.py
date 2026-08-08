@@ -25,12 +25,14 @@ inject_arrow_key_nav()
 logout_button()
 
 from views import (file_patient, eeg_viewer, ecg_hrv, eeg_spectrum, report,
-                   channel_report, aperiodic, artifact_selection, advanced_analysis)
+                   channel_report, aperiodic, artifact_selection, advanced_analysis,
+                   rhythm_screening)
 
 pages = [
     st.Page(file_patient.render, title="Datei & Patient", icon="📂", default=True, url_path="datei-patient"),
     st.Page(channel_report.render, title="Kanal-Identifikation", icon="🔍", url_path="kanaele"),
     st.Page(eeg_viewer.render, title="EEG-Viewer", icon="🧠", url_path="eeg-viewer"),
+    st.Page(rhythm_screening.render, title="Rhythmus-Screening", icon="🫀", url_path="rhythmus-screening"),
     st.Page(ecg_hrv.render, title="EKG & HRV", icon="❤️", url_path="ekg-hrv"),
     st.Page(eeg_spectrum.render, title="EEG-Spektrum", icon="📊", url_path="eeg-spektrum"),
     st.Page(aperiodic.render, title="Aperiodisch (1/f)", icon="🌀", url_path="aperiodisch"),

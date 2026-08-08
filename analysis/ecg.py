@@ -97,6 +97,74 @@ def detect_r_peaks(signal: np.ndarray, sfreq: float) -> np.ndarray:
 
 
 # ── W1: validierte R-Zacken-Detektion (publizierte Algorithmen) ────────────────
+def detect_polarity_flip(signal: np.ndarray, sfreq: float, candidates=None,
+                         half_win_ms: float = 60.0) -> bool:
+    """Robuste Polaritäts-Entscheidung: vergleicht den Median der lokalen Extremwert-BETRÄGE
+    (±half_win_ms um jeden Kandidaten-Peak) statt nur des Vorzeichens am Peak-Sample selbst —
+    bei biphasischer QRS-Form kann ein Detektor auf einem kleinen positiven Nebenpunkt sitzen,
+    während der dominante Ausschlag (z. B. tiefe S-Zacke) deutlich größer und negativ ist
+    (gefunden 2026-08-08 an CA1772QO). `candidates` = grobe Peak-Kandidaten (z. B. aus
+    `detect_r_peaks`); wenn None, wird `detect_r_peaks` intern aufgerufen. Gibt True zurück,
+    wenn geflippt werden sollte (R-Zacke ist im Rohsignal negativ dominant). Siehe
+    [[project_edf_rhythm_screening]] für die Herleitung und den zugehörigen Nachverfeinerungs-
+    Bug in `refine_peaks`/`detect_r_peaks`, den dieser Flip VOR der Verfeinerung vermeidet."""
+    if candidates is None:
+        candidates = detect_r_peaks(signal, sfreq)
+    if len(candidates) == 0:
+        return False
+    half_w = int(half_win_ms / 1000.0 * sfreq)
+    max_amps, min_amps = [], []
+    for p in candidates:
+        lo, hi = max(0, p - half_w), min(len(signal), p + half_w)
+        seg = signal[lo:hi]
+        if len(seg):
+            max_amps.append(seg.max()); min_amps.append(seg.min())
+    if not max_amps:
+        return False
+    return bool(abs(np.median(min_amps)) > abs(np.median(max_amps)))
+
+
+def detect_r_peaks_polarity_safe(signal: np.ndarray, sfreq: float) -> tuple:
+    """Kompletter, bugfreier Erkennungspfad: grobe Kandidaten (polaritätsunabhängig) → Flip-
+    Entscheidung → bei Bedarf flippen → ERST DANACH exakt verfeinern. Vermeidet den Bug, bei
+    dem `refine_peaks`/`detect_r_peaks`s interne argmax-Verfeinerung bei invertiertem Kanal
+    auf einen Nebenpunkt statt die echte R-Zacke springt (strukturierte statt zufällige
+    Zeitfehler → sichtbare Cluster im Tachogramm, siehe [[project_edf_rhythm_screening]]).
+
+    Rückgabe: (signal_polaritaetskorrigiert, peaks, was_flipped).
+    """
+    candidates = detect_r_peaks(signal, sfreq)
+    was_flipped = detect_polarity_flip(signal, sfreq, candidates)
+    sig = -signal if was_flipped else signal
+    peaks = refine_peaks(sig, candidates, sfreq, win_ms=40.0) if len(candidates) else candidates
+    return sig, peaks, was_flipped
+
+
+def flip_diagnostic(signal: np.ndarray, sfreq: float) -> dict:
+    """Diagnose-Hilfsfunktion NUR für die UI-Visualisierung "mit vs. ohne Flip" (User-Anfrage
+    2026-08-08) — reproduziert bewusst den alten, fehleranfälligen Pfad (Peak-Erkennung/
+    -verfeinerung VOR dem Flip) neben dem korrigierten Pfad, um den Effekt an der konkreten
+    Aufnahme sichtbar zu machen. NICHT für die eigentliche Analyse verwenden — dafür
+    `detect_r_peaks_polarity_safe()`.
+
+    Rückgabe: {"rr_ohne_ms", "t_ohne_s", "rr_mit_ms", "t_mit_s", "std_ohne", "std_mit",
+    "was_flipped"}.
+    """
+    candidates = detect_r_peaks(signal, sfreq)
+    peaks_ohne = refine_peaks(signal, candidates, sfreq, win_ms=40.0) if len(candidates) else candidates
+    rr_ohne = np.diff(peaks_ohne) / sfreq * 1000.0
+    t_ohne = peaks_ohne[:-1] / sfreq
+
+    sig_mit, peaks_mit, was_flipped = detect_r_peaks_polarity_safe(signal, sfreq)
+    rr_mit = np.diff(peaks_mit) / sfreq * 1000.0
+    t_mit = peaks_mit[:-1] / sfreq
+
+    return {"rr_ohne_ms": rr_ohne, "t_ohne_s": t_ohne, "rr_mit_ms": rr_mit, "t_mit_s": t_mit,
+            "std_ohne": float(np.std(rr_ohne)) if len(rr_ohne) else float("nan"),
+            "std_mit": float(np.std(rr_mit)) if len(rr_mit) else float("nan"),
+            "was_flipped": was_flipped}
+
+
 def refine_peaks(signal: np.ndarray, peaks, sfreq: float, win_ms: float = 50.0) -> np.ndarray:
     """Schiebt jede Detektion auf das echte R-Zacken-Maximum im ±win_ms-Fenster.
 
