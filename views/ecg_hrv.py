@@ -51,7 +51,7 @@ def compute_rr(path, channel):
     Bestimmung als eine Betragssignal-Schwelle → korrektes RMSSD/pNN50.
     Danach 4-stufige robuste Artefakt-Bereinigung der RR-Reihe."""
     from core.loader import load_edf
-    from analysis.ecg import detect_r_peaks
+    from analysis.ecg import detect_r_peaks_polarity_safe
     import warnings; warnings.filterwarnings("ignore")
     _raw = load_edf(path, preload=True)
     _data, _ = _raw[:]
@@ -60,15 +60,21 @@ def compute_rr(path, channel):
     sig = _data[_idx].copy().astype(np.float64)
     sig -= sig.mean()
 
-    # Anzeigesignal (0.5–40 Hz) — nur für Amplitude & Polarität der Peaks
+    # Polaritäts-Flip + Nachverfeinerung über den gemeinsamen, getesteten Helfer (analysis/ecg.py
+    # — auch von views/rhythm_screening.py genutzt, damit beide Pfade konsistent bleiben).
+    # Hintergrund (User-Fund 2026-08-08, siehe [[project_edf_rhythm_screening]]): die interne
+    # argmax-Verfeinerung von detect_r_peaks() springt bei invertiertem Kanal (z. B. POL X1 in
+    # diesem Aufnahmesystem — systematische Konvention, kein Einzelfall) NICHT zufällig, sondern
+    # STRUKTURIERT neben die echte R-Zacke (auf Nebenpunkte wie T-Wellen-Anflanken) — sichtbar
+    # als mehrere parallele Bänder im Tachogramm/Poincaré statt einer glatten Verteilung.
+    sig, peaks, was_flipped = detect_r_peaks_polarity_safe(sig, fs)
+
+    # Anzeigesignal (0.5–40 Hz) — nur für Amplitude & Polarität der Peaks. Auf dem bereits
+    # korrekt orientierten `sig` berechnet, damit ▲/▼-Marker konsistent zur Polarität sind.
     from scipy.signal import butter, filtfilt
     nyq = fs / 2
     b, a = butter(4, [0.5/nyq, min(40/nyq, 0.99)], btype="band")
     sig_f = filtfilt(b, a, sig)
-
-    # QRS-Detektion: 5–15 Hz Bandpass → Differentiation → Squaring →
-    # 150-ms-Integration → adaptive Schwelle → ±40-ms-Refinement (in detect_r_peaks).
-    peaks = detect_r_peaks(sig, fs)
 
     # Polarität & Amplitude der Peaks aus dem Anzeigesignal (für ▲/▼ und Referenz)
     if len(peaks):
@@ -135,7 +141,7 @@ def compute_rr(path, channel):
         "times": peaks_clean / fs, "times_raw": peaks_s1 / fs,
         "removed_mask": ~final_mask, "fs": fs,
         "threshold_mv": threshold * 1000, "peak_ref_mv": peak_ref * 1000,
-        "n_peaks_total": len(peaks), "n_removed": n_removed,
+        "n_peaks_total": len(peaks), "n_removed": n_removed, "was_flipped": was_flipped,
     }
 
 
@@ -1077,6 +1083,72 @@ def render():
     if len(rr_ms) < 5:
         st.warning("Zu wenige R-Peaks erkannt. Kanal oder Filter prüfen.")
         return
+
+    # ── Rhythmus-Screening-Verweis (Add-on, ändert die bestehende HRV-Pipeline NICHT) ──
+    # Der ausführliche, gestufte AFib-/Ektopie-Disclaimer lebt jetzt AUSSCHLIESSLICH auf der
+    # eigenen Rhythmus-Screening-Seite (views/rhythm_screening.py, davor im Seitenmenü) — dort
+    # inkl. Sicherheitsstufe (CosEn) UND P-Wellen-Nachweis (Stufe②b). User-Entscheidung
+    # 2026-08-08: kein doppelter großer Banner mehr hier, da beide sonst potenziell aus dem
+    # Takt geraten (z. B. leicht unterschiedliche Peak-Erkennung) und Redundanz Wartungsrisiko
+    # ist. Nur ein leichtgewichtiger Verweis bleibt hier als Sicherheitsnetz für den Fall, dass
+    # jemand direkt auf diese Seite navigiert, ohne vorher das Screening zu öffnen. Siehe
+    # [[project_edf_rhythm_screening]].
+    st.caption(
+        "ℹ️ Diese HRV-Analyse setzt einen stabilen Sinusrhythmus voraus. Bei Verdacht auf "
+        "Vorhofflimmern oder andere Rhythmusstörungen bitte zuerst die **Rhythmus-Screening**-"
+        "Seite (Seitenmenü) prüfen — dort inkl. Sicherheitsstufe und P-Wellen-Nachweis."
+    )
+
+    # ── Polaritäts-Hinweis (User-Anfrage 2026-08-08, gleiche Logik/UI wie
+    # views/rhythm_screening.py — dort ausführlich hergeleitet, siehe
+    # [[project_edf_rhythm_screening]]) ─────────────────────────────────────────
+    if rr_data.get("was_flipped"):
+        st.markdown(
+            "<div style='background:#f39c1214;border:1.5px solid #f39c12;border-radius:8px;"
+            "padding:10px 14px;margin-bottom:10px;font-size:13px'>"
+            "⚠️ <b>Polarität automatisch korrigiert:</b> Die QRS-Auslenkung war im Rohsignal "
+            "dieses Kanals negativ dominant (R-Zacke zeigt nach unten) — nach EKG-Standard-"
+            "konvention sollte sie positiv sein. Bei diesem Kanal (POL X1) betrifft das "
+            "konsistent nahezu alle geprüften Aufnahmen — vermutlich eine systematische "
+            "Verdrahtungskonvention des Aufnahmesystems, keine individuelle Elektroden-"
+            "Vertauschung bei dieser Ableitung. Die Analyse berücksichtigt das automatisch "
+            "(Polarität wird korrigiert, alle Zahlen bleiben gültig)."
+            "</div>", unsafe_allow_html=True)
+        with st.expander("🔍 Polaritäts-Check: Analyse mit vs. ohne Korrektur anzeigen"):
+            from analysis.ecg import flip_diagnostic
+            _sig0 = edf["data"][edf["ch_idx"][ecg_ch]].astype(np.float64)
+            _sig0 = _sig0 - _sig0.mean()
+            _diag = flip_diagnostic(_sig0, sfreq)
+            st.markdown(
+                "**Warum das wichtig ist:** Die Peak-Verfeinerung sucht per `argmax()` den "
+                "höchsten Punkt in einem ±40ms-Fenster um jeden Kandidaten — das setzt voraus, "
+                "dass die R-Zacke positiv ist. Bei einem invertierten Kanal (wie hier) springt "
+                "sie stattdessen auf einen zufälligen Nebenpunkt (Überschwinger, T-Wellen-"
+                "Anflanke) statt auf die echte R-Zacke. Da dieser Nebenpunkt je nach lokaler "
+                "Kurvenform leicht unterschiedlich weit von der echten R-Zacke entfernt liegt, "
+                "entstehen keine zufälligen, sondern **strukturierte Zeitfehler** — sichtbar als "
+                "mehrere getrennte Bänder/Cluster im Tachogramm, obwohl der echte Rhythmus "
+                "glatt und regelmäßig ist."
+            )
+            _dfig = go.Figure()
+            _dfig.add_trace(go.Scatter(x=_diag["t_ohne_s"], y=_diag["rr_ohne_ms"], mode="markers",
+                                       marker=dict(size=3, color="#c0392b"),
+                                       name=f"ohne Flip (std={_diag['std_ohne']:.0f}ms)"))
+            _dfig.add_trace(go.Scatter(x=_diag["t_mit_s"], y=_diag["rr_mit_ms"], mode="markers",
+                                       marker=dict(size=3, color="#27ae60"),
+                                       name=f"mit Flip-Korrektur (std={_diag['std_mit']:.0f}ms)"))
+            _dfig.update_layout(
+                title="Tachogramm — RR-Intervalle über die Zeit",
+                xaxis_title="Zeit (s)", yaxis_title="RR (ms)", height=340,
+                margin=dict(t=40, b=40, l=55, r=10), plot_bgcolor="#fafafa",
+                legend=dict(orientation="h", y=1.12),
+            )
+            st.plotly_chart(_dfig, use_container_width=True, key="hrv_flip_diag_tacho")
+            st.caption(
+                "🔴 Ohne Korrektur: mehrere parallele Bänder (Peak-Verfeinerung springt auf "
+                "Nebenpunkte). 🟢 Mit Korrektur: eine kompakte, glatte Verteilung — das ist "
+                "der Pfad, den diese Seite jetzt tatsächlich verwendet."
+            )
 
     n_total     = rr_data["n_peaks_total"]
     n_removed   = rr_data["n_removed"]
