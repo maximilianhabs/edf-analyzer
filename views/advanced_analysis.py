@@ -38,15 +38,19 @@ _DET_STYLE = {
 
 @st.cache_data(show_spinner="Erkenne R-Zacken (mehrere Detektoren) …")
 def _detect_all(edf_path: str, ch: str):
-    from analysis.ecg import (detect_r_peaks, detect_r_peaks_validated,
+    from analysis.ecg import (detect_r_peaks_polarity_safe, detect_r_peaks_validated,
                               build_rr_series, compute_hrv_time_domain)
     e = apply_channel_overrides(load_and_prepare(edf_path))
     sf = e["sfreq"]
     sig = e["data"][e["ch_idx"][ch]].astype(float)
+    # Polaritäts-sicherer Pfad (User-Audit 2026-08-08): EINE Flip-Entscheidung für alle
+    # Detektoren + die spätere Roh-EKG-Anzeige, damit Overlay und Kurve konsistent bleiben.
+    # Siehe [[project_edf_rhythm_screening]].
+    sig_corr, eigen_peaks, was_flipped = detect_r_peaks_polarity_safe(sig, sf)
     methods = {
-        "eigen (aktueller Default)": detect_r_peaks(sig, sf),
-        "Hamilton 2002 (validiert)": detect_r_peaks_validated(sig, sf, "hamilton"),
-        "Pan-Tompkins (validiert)":  detect_r_peaks_validated(sig, sf, "pan_tompkins"),
+        "eigen (aktueller Default)": eigen_peaks,
+        "Hamilton 2002 (validiert)": detect_r_peaks_validated(sig_corr, sf, "hamilton"),
+        "Pan-Tompkins (validiert)":  detect_r_peaks_validated(sig_corr, sf, "pan_tompkins"),
     }
     out = {}
     for label, pk in methods.items():
@@ -54,7 +58,7 @@ def _detect_all(edf_path: str, ch: str):
         rr = build_rr_series(pk, sf)
         td = compute_hrv_time_domain(rr.rr_ms[~rr.artifact_mask]) if rr is not None else {}
         out[label] = {"peaks": pk, "hrv": td}
-    return out, sf
+    return out, sf, sig_corr, was_flipped
 
 
 def _render_methods_table():
@@ -87,9 +91,12 @@ def _render_rpeak_visual(edf, edf_path):
     overlay = c2.multiselect("Overlay-Detektoren", list(_DET_STYLE.keys()),
                              default=["eigen (aktueller Default)", "Hamilton 2002 (validiert)"])
 
-    det, _ = _detect_all(edf_path, ch)
-    sig_mv = edf["data"][edf["ch_idx"][ch]].astype(float) * 1000.0
+    det, _, sig_corr, was_flipped = _detect_all(edf_path, ch)
+    sig_mv = sig_corr * 1000.0
     sig_mv = sig_mv - np.median(sig_mv)
+    if was_flipped:
+        st.caption("ℹ️ Kanal-Polaritätskonvention erkannt und für die Darstellung/Detektoren "
+                   "angepasst (R-Zacke zeigt nach oben) — siehe Rhythmus-Screening-Seite für Details.")
 
     # ── Kennzahlen-Vergleich ─────────────────────────────────────────────────
     rows = []

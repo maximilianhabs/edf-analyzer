@@ -1,5 +1,5 @@
 {
-  "created": "2026-08-06T15:48:58.223644",
+  "created": "2026-08-08T21:16:50.598575",
   "purpose": "Synthetisches Ground-Truth-EDF zur Pipeline-Validierung — KEIN echter Patient, keine biologische Exaktheit beansprucht.",
   "format": {
     "fs_hz": 200.0,

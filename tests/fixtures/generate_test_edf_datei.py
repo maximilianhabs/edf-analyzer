@@ -133,6 +133,15 @@ def build_ecg_signal():
         j0, j1 = i_t - half_t, i_t - half_t + len(t_wave)
         if 0 <= j0 and j1 <= N:
             sig[j0:j1] += t_wave
+    # Polaritaet an die ECHTE Geraetekonvention angleichen, nicht an Lehrbuch-Konvention
+    # (User-Fund 2026-08-08): POL X1 zeigt bei praktisch JEDER echten Aufnahme dieses
+    # Systems eine NEGATIVE R-Zacke im Rohsignal (durchgehende, verlaessliche Konvention,
+    # verifiziert an 25+ Dateien, u.a. GA2410DH/CA177326) -- unser Template wurde zuvor
+    # nach Kardiologie-Lehrbuch (Lead II, R positiv) gebaut, das ist NICHT repraesentativ
+    # fuer echte Testdaten aus diesem System. Ohne diesen Flip haette das Ground-Truth-EDF
+    # nur den "kein Flip noetig"-Zweig der Polaritaetskorrektur getestet, nie den in der
+    # Praxis fast immer durchlaufenen "Flip noetig"-Zweig. Siehe [[project_edf_rhythm_screening]].
+    sig = -sig
     sig_uv = sig * 1000.0  # mV-Groessenordnung -> "uV"-Feld (siehe Kommentar unten)
 
     # Amplituden-Artefakte (bewusst OHNE Flatline und OHNE Formveraenderung): reine

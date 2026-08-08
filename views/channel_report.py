@@ -345,7 +345,15 @@ def render():
                         if eff_type == ECG:
                             y_vals = raw_seg * 1000  # → mV
                             y_label = "mV"
-                            negate  = False
+                            # Polaritäts-sicherer Pfad (User-Audit 2026-08-08): R-Zacke soll
+                            # wie klinisch gewohnt nach oben zeigen, unabhängig von der rohen
+                            # Gerätekonvention (z. B. POL X1, systematisch invertiert in diesem
+                            # Aufnahmesystem). Siehe [[project_edf_rhythm_screening]].
+                            from analysis.ecg import detect_polarity_flip
+                            try:
+                                negate = detect_polarity_flip(raw_seg, sfreq)
+                            except Exception:
+                                negate = False
                         else:
                             y_vals = raw_seg * 1e6   # → µV
                             y_label = "µV"
