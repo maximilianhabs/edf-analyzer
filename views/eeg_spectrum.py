@@ -105,6 +105,31 @@ def _lzc_cached(seg_bytes: bytes, n: int, fs: float) -> dict:
     return lziv_complexity(x, fs)
 
 
+def _group_header(number: str, title: str, subtitle: str) -> None:
+    """Kräftigere Gruppen-Ebene NUR für diese Seite (nummeriert + Farbband) — bewusst
+    getrennt von core.shared.section_header (app-weit an 28 Stellen in 7 Dateien genutzt,
+    daher nicht global verändert). Schafft eine sichtbare zweite Hierarchie-Ebene über den
+    bestehenden Sektionen (User-Feedback 2026-08-03: Seite wirkte als „Einheitsbrei")."""
+    st.markdown(
+        "<div style='margin:34px 0 6px 0;padding:14px 18px;border-radius:10px;"
+        "background:linear-gradient(90deg,#1c283a 0%,#2c3e50 100%);'>"
+        f"<span style='display:inline-block;background:#ffffff22;border-radius:6px;"
+        f"padding:2px 10px;font-size:13px;font-weight:800;color:#fff;margin-right:10px'>{number}</span>"
+        f"<span style='font-size:17px;font-weight:800;color:#fff'>{title}</span>"
+        f"<span style='font-size:12px;color:#ffffffaa;margin-left:12px'>{subtitle}</span>"
+        "</div>", unsafe_allow_html=True)
+
+
+def _active_settings_note(use_multitaper: bool, use_art_filter: bool) -> None:
+    """Zeigt sichtbar, welche globalen ⚙️-Einstellungen diese Sektion gerade beeinflussen —
+    Multitaper/Artefaktfilter wirken seitenweit, nicht lokal; ohne diesen Hinweis muss man
+    zum Nachschauen nach oben scrollen (User-Feedback 2026-08-03)."""
+    _mt = "Multitaper" if use_multitaper else "Welch"
+    _af = f"an (≥150 µV)" if use_art_filter else "aus"
+    st.caption(f"⚙️ Aktive Einstellungen dieser Sektion: Methode **{_mt}** · "
+               f"Extremartefakt-Filter **{_af}** — änderbar oben in den Analyse-Optionen.")
+
+
 @st.cache_data(show_spinner="Berechne A/P-Gradient (PAR)…")
 def _compute_par(edf_path, t_start, t_end, a_lo, a_hi, multitaper, amp_thresh):
     """Anterior-Posterior-Ratio der absoluten Alpha-Power über den ganzen Kopf.
@@ -839,13 +864,9 @@ def render():
             )
         amp_thresh = 150.0 if use_art_filter else 9999.0
 
-        heavy_calc = st.toggle(
-            "Rechenintensive Maße berechnen (LZC, A/P-Gradient)",
-            value=False, key="spec_heavy",
-            help="LZC-Komplexität (O(N²)) und der kopfweite A/P-Gradient (PAR) brauchen mehr "
-                 "Rechenzeit. Standard aus, damit die Ansicht schnell bleibt — bei Bedarf aktivieren.")
-
     all_eeg = sorted(eeg_map.keys())
+
+    _group_header("①", "Vier-Elektroden-Achsen", "O1/O2 + F3/F4 — vorne↔hinten und links↔rechts")
 
     # ══════════════════════════════════════════════════════════════════════════
     # KONSENSUS-PANEL — O1+O2 (posterior) vs F3+F4 (anterior)
@@ -855,6 +876,7 @@ def render():
 
     if has_consensus:
         section_header("🧠 Konsensus-Panel", "Posterior O1+O2 vs. Anterior F3+F4 · ACNS-Empfehlung")
+        _active_settings_note(use_multitaper, use_art_filter)
         st.caption(
             "ACNS-Empfehlung für Vigilanz- und Verlangsamungsmonitoring. "
             "Posterior = okzipitaler Alpha-Grundrhythmus · Anterior = frontales Beta/Delta."
@@ -958,15 +980,47 @@ def render():
         total_a = sum(bp_a.values()) or 1
         ap_post = alpha_peaks.get("Posterior (O1+O2)")
         ap_ant  = alpha_peaks.get("Anterior (F3+F4)")
+        # Karten im Stil der Einzelkanal-Analyse (Frequenzbänder/Klinische Ratios):
+        # Normbereich sichtbar in der Karte statt nur im Hover-Tooltip. Nur Alpha-Peak
+        # posterior hat einen belastbaren festen Normwert (9–11 Hz, Ampel-Punkt) — bei
+        # den anderen drei ehrlich "kein fester Normbereich" statt erfundener Zahlen.
+        def _apk_dot_cons(v):
+            if v != v:
+                return "transparent"
+            if 9 <= v <= 11:
+                return "#27ae60"
+            if 8 <= v < 9 or 11 < v <= 13:
+                return "#e6a817"
+            return "#c0392b"
+
+        def _kpi_card(label, value, norm_text, dot_color=None):
+            _dot = (f"<span style='color:{dot_color};font-size:15px;margin-left:6px'>●</span>"
+                    if dot_color else "")
+            return (
+                "<div style='background:var(--surface-1,#f8f9fa);border:0.5px solid var(--border);"
+                "border-top:3px solid #2471a3;border-radius:0 10px 10px 0;padding:10px 12px'>"
+                f"<div style='font-size:11px;color:var(--text-secondary,#6b7684)'>{label}</div>"
+                f"<div style='font-size:20px;font-weight:800;color:var(--text-primary,#1c2833)'>"
+                f"{value}{_dot}</div>"
+                f"<div style='font-size:10px;color:var(--text-muted,#98a3b0);margin-top:3px'>"
+                f"{norm_text}</div></div>")
+
+        _apk_p_str = f"{ap_post:.1f} Hz" if ap_post == ap_post else "—"
+        _apk_a_str = f"{ap_ant:.1f} Hz"  if ap_ant  == ap_ant  else "—"
         k1, k2, k3, k4 = st.columns(4)
-        k1.metric("Alpha-Peak posterior", f"{ap_post:.1f} Hz" if ap_post == ap_post else "—",
-                  help="PSD-Maximum (argmax) im 8–13-Hz-Band. Norm: 9–11 Hz.")
-        k2.metric("Alpha-Peak anterior",  f"{ap_ant:.1f} Hz"  if ap_ant  == ap_ant  else "—",
-                  help="Sollte niedriger als posterior sein.")
-        k3.metric("Rel. Alpha posterior", f"{bp_p.get('Alpha',0)/total_p*100:.1f}%",
-                  help="Dominanter Anteil bei wachem, entspanntem EEG.")
-        k4.metric("Rel. Delta anterior",  f"{bp_a.get('Delta',0)/total_a*100:.1f}%",
-                  help="Erhöht bei Enzephalopathie / tiefer Sedierung.")
+        k1.markdown(_kpi_card("Alpha-Peak posterior", _apk_p_str, "Norm 9–11 Hz",
+                              _apk_dot_cons(ap_post)), unsafe_allow_html=True)
+        k2.markdown(_kpi_card("Alpha-Peak anterior", _apk_a_str,
+                              "kein fester Normbereich · sollte < posterior sein"),
+                    unsafe_allow_html=True)
+        k3.markdown(_kpi_card("Rel. Alpha posterior", f"{bp_p.get('Alpha',0)/total_p*100:.1f}%",
+                              "kein fester %-Normbereich (montage-/referenzabhängig) · "
+                              "siehe Alpha/Theta-Ratio (Norm 1,5–6,0) unten"),
+                    unsafe_allow_html=True)
+        k4.markdown(_kpi_card("Rel. Delta anterior", f"{bp_a.get('Delta',0)/total_a*100:.1f}%",
+                              "kein fester %-Normbereich (montage-/referenzabhängig) · "
+                              "siehe DAR Delta/Alpha-Ratio (Norm 0,0–1,5) unten"),
+                    unsafe_allow_html=True)
 
         # Vergleich Schwerpunkt (CoG) vs. Maximum — robusteres Maß bei bimodalem Alpha
         _cog_p_str = f"{_cog_post:.1f} Hz" if _cog_post == _cog_post else "—"
@@ -983,9 +1037,99 @@ def render():
         st.info(f"ℹ️ Konsensus-Panel nicht verfügbar — fehlende Kanäle: {', '.join(sorted(missing))}")
 
     # ══════════════════════════════════════════════════════════════════════════
+    # HEMISPHÄRISCHE ASYMMETRIE
+    # (direkt nach dem Konsensus-Panel — beide nutzen O1/O2+F3/F4, nur andere Achse:
+    #  Konsensus-Panel = vorne↔hinten, Asymmetrie = links↔rechts)
+    # ══════════════════════════════════════════════════════════════════════════
+    asym_chs = [c for c in ["O1", "O2", "F3", "F4"] if c in all_eeg]
+    if len(asym_chs) >= 2 and ("O1" in asym_chs and "O2" in asym_chs
+                                or "F3" in asym_chs and "F4" in asym_chs):
+        section_header("🔁 Hemisphärische Asymmetrie", "AI = (L−R)/(L+R) × 100% · nach Frequenzband · Nuwer 1997", color="#2980b9")
+        _active_settings_note(use_multitaper, use_art_filter)
+        st.markdown(
+            "<div style='background:#f0f4ff;border-left:4px solid #2980b9;"
+            "padding:12px 16px;border-radius:6px;margin-bottom:12px'>"
+            "<b>Was wird hier gemessen?</b><br>"
+            "Der <b>Asymmetrie-Index (AI)</b> vergleicht die Spektralleistung der linken vs. "
+            "rechten Hemisphäre pro Frequenzband:<br>"
+            "<code>AI = (P<sub>links</sub> − P<sub>rechts</sub>) / "
+            "(P<sub>links</sub> + P<sub>rechts</sub>) × 100 %</code><br><br>"
+            "<b>Warum nach Frequenzbändern aufgeteilt?</b> Weil Läsionen frequenzspezifisch "
+            "wirken: Eine Ischämie erzeugt typisch <i>Delta-Asymmetrie</i> ipsilateral; "
+            "eine Substanzdefekt-Narbe zeigt oft auch <i>Alpha-Reduktion</i> auf der "
+            "betroffenen Seite. Verschiedene Bänder können gleichzeitig asymmetrisch sein "
+            "oder nicht — das Muster ist klinisch interpretierbar.<br><br>"
+            "🟢 |AI| ≤ 20 % — physiologisch normal &nbsp;&nbsp;"
+            "🔴 |AI| > 20 % — pathologisch verdächtig (Nuwer 1997, ACNS)</div>",
+            unsafe_allow_html=True,
+        )
+        # PSDs berechnen
+        _ch_psds = {}
+        for _ch in asym_chs:
+            _f_ch, _p_ch = _compute_psd(
+                _get(_ch)[int(t_start*fs):int(t_end*fs)], fs,
+                multitaper=use_multitaper, amp_thresh_uv=float(amp_thresh),
+            )
+            if _f_ch is not None:
+                _ch_psds[_ch] = {bn: _band_power(_f_ch, _p_ch, lo, hi)
+                                  for bn, (lo, hi), _ in BANDS}
+
+        def _ai(l_val, r_val):
+            denom = l_val + r_val
+            return (l_val - r_val) / denom * 100 if denom > 1e-9 else float("nan")
+
+        for pair_label, l_ch, r_ch in [("Okzipital — O1 (links) vs. O2 (rechts)", "O1", "O2"),
+                                         ("Frontal — F3 (links) vs. F4 (rechts)",   "F3", "F4")]:
+            if l_ch not in _ch_psds or r_ch not in _ch_psds:
+                continue
+            lbp = _ch_psds[l_ch]
+            rbp = _ch_psds[r_ch]
+            st.markdown(f"**{pair_label}** "
+                        "<span style='font-size:11px;color:#888'>🔵 links dominant · "
+                        "🟠 rechts dominant · roter Rahmen = |AI| > 20 % (auffällig)</span>",
+                        unsafe_allow_html=True)
+            _L, _R = "#2980b9", "#e67e22"          # links blau · rechts orange
+            ai_cols = st.columns(4)
+            for col_w, bname in zip(ai_cols, ["Delta", "Theta", "Alpha", "Beta"]):
+                ai_val = _ai(lbp.get(bname, 0), rbp.get(bname, 0))
+                if ai_val != ai_val:
+                    col_w.markdown(
+                        f"<div style='text-align:center;color:var(--text-muted);font-size:12px;"
+                        f"padding:10px 0'>AI {bname}<br>—</div>", unsafe_allow_html=True)
+                    continue
+                _patho = abs(ai_val) > 20
+                _side_col = _L if ai_val > 0 else _R
+                _w = min(abs(ai_val), 50.0)         # |AI|% der vollen Breite ab Mitte
+                if ai_val >= 0:                     # links dominant → Balken nach links
+                    _seg = (f"<div style='position:absolute;right:50%;top:2px;bottom:2px;"
+                            f"width:{_w:.0f}%;background:{_L};border-radius:4px 0 0 4px'></div>")
+                else:                               # rechts dominant → nach rechts
+                    _seg = (f"<div style='position:absolute;left:50%;top:2px;bottom:2px;"
+                            f"width:{_w:.0f}%;background:{_R};border-radius:0 4px 4px 0'></div>")
+                _bandcol = BAND_COLOR.get(bname, "#64748b")
+                _outline = "border:1.5px solid #c0392b;" if _patho else f"border:0.5px solid {_bandcol}55;"
+                col_w.markdown(
+                    f"<div style='{_outline}background:{_bandcol}12;border-top:3px solid {_bandcol};"
+                    f"border-radius:8px;padding:7px 8px'>"
+                    f"<div style='font-size:11px;color:{_bandcol};font-weight:700;text-align:center'>"
+                    f"AI {bname}{' ⚠' if _patho else ''}</div>"
+                    f"<div style='position:relative;height:20px;background:var(--surface-1);"
+                    f"border-radius:5px;margin:5px 0'>"
+                    f"<div style='position:absolute;left:50%;top:0;bottom:0;width:1px;"
+                    f"background:var(--border-strong)'></div>{_seg}</div>"
+                    f"<div style='font-size:13px;font-weight:500;text-align:center;color:{_side_col}'>"
+                    f"{ai_val:+.0f} %</div>"
+                    f"<div style='display:flex;justify-content:space-between;font-size:9px;"
+                    f"color:var(--text-muted)'><span>{l_ch}</span><span>{r_ch}</span></div></div>",
+                    unsafe_allow_html=True)
+
+    _group_header("②", "Ganzer Kopf", "Kopfweiter A/P-Gradient — kein Elektrodenpaar, sondern Gesamtbild")
+
+    # ══════════════════════════════════════════════════════════════════════════
     # ANTERIOR-POSTERIOR-GRADIENT (PAR) — ganzer Kopf
     # ══════════════════════════════════════════════════════════════════════════
     section_header("🧭 Anterior-Posterior-Gradient (PAR)", "Ganzer Kopf · ganzes Gehirn")
+    _active_settings_note(use_multitaper, use_art_filter)
     st.markdown(
         "<div style='background:#eef3fb;border-left:4px solid #2471a3;border-radius:8px;"
         "padding:10px 14px;margin:2px 0 8px 0;font-size:13px'>"
@@ -998,9 +1142,15 @@ def render():
         "Bewusstseinsminderung) — der Rhythmus wandert nach vorne oder verschwindet.</div>",
         unsafe_allow_html=True,
     )
-    if not st.session_state.get("spec_heavy", False):
-        st.info("ℹ️ Rechenintensiv — in den **⚙️ Analyse-Optionen** oben die Option "
-                "**Rechenintensive Maße berechnen** aktivieren, um den A/P-Gradienten "
+    heavy_calc = st.toggle(
+        "Rechenintensive Maße berechnen (A/P-Gradient hier + LZC-Komplexität weiter "
+        "unten in der Einzelkanal-Analyse)",
+        value=False, key="spec_heavy",
+        help="Beide Maße sind O(N²)/kopfweit und brauchen mehr Rechenzeit. Standard aus, "
+             "damit die Ansicht schnell bleibt — bei Bedarf hier aktivieren; gilt für "
+             "die ganze Seite, nicht nur für den A/P-Gradienten.")
+    if not heavy_calc:
+        st.info("ℹ️ Rechenintensiv — obigen Schalter aktivieren, um den A/P-Gradienten "
                 "(ganzer Kopf) zu berechnen.")
         _par = {"n_post": 0, "n_ant": 0, "par": float("nan")}
     else:
@@ -1010,24 +1160,42 @@ def render():
         _pv = _par["par"]
         _pzone = "normal" if _pv >= 1.0 else ("grenzwertig" if _pv >= 0.6 else "pathologisch")
         _pcol = {"normal": "#27ae60", "grenzwertig": "#e67e22", "pathologisch": "#c0392b"}[_pzone]
-        pc1, pc2, pc3 = st.columns([2, 2, 3])
-        pc1.metric("Alpha-PAR", f"{_pv:.2f}",
-                   help="Posterior/anterior geom. Mittel der absoluten Alpha-Power. >1 = "
-                        "posterior-dominant (wach/normal), <1 = anteriorisiert "
-                        "(Bewusstseinsminderung/Anästhesie).")
-        pc2.metric("Exponent-Gradient (post−ant)",
-                   f"{_par['exp_grad']:+.2f}" if _par['exp_grad'] == _par['exp_grad'] else "—",
-                   help="Differenz des spektralen Exponenten posterior − anterior (1–20 Hz). "
-                        "Positiv = posterior steiler; anterior-posteriore Verflachung "
-                        "korreliert mit Bewusstseinsniveau (Maschke 2025).")
-        with pc3:
+        # Alpha-PAR ist der Leitwert dieser Sektion — visuell zentral/groß, die Nebenwerte
+        # (Exponent-Gradient, Elektrodenzahl) bewusst kleiner (User-Feedback 2026-08-03).
+        pc1, pc2, pc3 = st.columns([2, 1, 2])
+        with pc1:
             _lbl = {"normal": "🟢 posterior-dominant", "grenzwertig": "🟡 abgeschwächt",
                     "pathologisch": "🔴 anteriorisiert"}[_pzone]
             st.markdown(
-                f"<div style='padding:10px 12px;border-radius:10px;border:1.5px solid {_pcol};"
-                f"background:{_pcol}0d;font-size:13px;margin-top:6px'>{_lbl}<br>"
-                f"<span style='font-size:11px;color:#888'>{_par['n_post']} post · "
-                f"{_par['n_ant']} ant Elektroden (Cz-Linie ausgeschlossen)</span></div>",
+                f"<div style='padding:12px 16px;border-radius:12px;border:2px solid {_pcol};"
+                f"background:{_pcol}0d'>"
+                f"<div style='font-size:12px;color:var(--text-secondary,#6b7684);"
+                f"font-weight:700'>Alpha-PAR (Leitwert)</div>"
+                f"<div style='font-size:34px;font-weight:800;color:{_pcol};line-height:1.15'>"
+                f"{_pv:.2f}</div>"
+                f"<div style='font-size:12px;color:{_pcol};font-weight:600'>{_lbl}</div></div>",
+                unsafe_allow_html=True)
+            st.caption("Posterior/anterior geom. Mittel der absoluten Alpha-Power. >1 = "
+                       "posterior-dominant (wach/normal), <1 = anteriorisiert "
+                       "(Bewusstseinsminderung/Anästhesie).")
+        with pc2:
+            _exp_grad_str = (f"{_par['exp_grad']:+.2f}" if _par['exp_grad'] == _par['exp_grad'] else "—")
+            st.markdown(
+                "<div style='font-size:10px;color:var(--text-muted,#98a3b0);margin-top:6px'>"
+                "Exponent-Gradient<br>(post−ant)</div>"
+                f"<div style='font-size:15px;font-weight:600;color:var(--text-primary,#1c2833)'>"
+                f"{_exp_grad_str}</div>",
+                unsafe_allow_html=True,
+                help="Differenz des spektralen Exponenten posterior − anterior (1–20 Hz). "
+                     "Positiv = posterior steiler; anterior-posteriore Verflachung "
+                     "korreliert mit Bewusstseinsniveau (Maschke 2025).")
+        with pc3:
+            st.markdown(
+                "<div style='font-size:10px;color:var(--text-muted,#98a3b0);margin-top:6px'>"
+                "Elektroden</div>"
+                f"<div style='font-size:13px;color:var(--text-secondary,#6b7684)'>"
+                f"{_par['n_post']} posterior · {_par['n_ant']} anterior "
+                f"<span style='font-size:10px'>(Cz-Linie ausgeschlossen)</span></div>",
                 unsafe_allow_html=True)
         # ── Schemakopf: anteriore Werte oben, posteriore unten, Kopf vorne→hinten graduiert
         _es = st.session_state.get("eeg_summary") or {}
@@ -1108,10 +1276,13 @@ def render():
         st.info("ℹ️ PAR nicht berechenbar — zu wenige posteriore/anteriore 10-20-Elektroden "
                 "(je ≥ 2 nötig, Cz-Linie ausgeschlossen).")
 
+    _group_header("③", "Einzelkanal-Detail", "Ein Kanal im Fokus — Bandpower, FFT, interne Validierung")
+
     # ══════════════════════════════════════════════════════════════════════════
     # EINZELKANAL-ANALYSE
     # ══════════════════════════════════════════════════════════════════════════
     section_header("🔬 Einzelkanal-Analyse", "Bandpower · FFT · Klinische Ratios pro Kanal")
+    _active_settings_note(use_multitaper, use_art_filter)
 
     defaults = [c for c in ["O1", "O2"] if c in all_eeg] or all_eeg[:min(2, len(all_eeg))]
     with st.container(border=True):
@@ -1137,6 +1308,7 @@ def render():
     # REFERENZ-EPOCH (einmalig, mit Kanal-Auswahl)
     # ══════════════════════════════════════════════════════════════════════════
     section_header("🔍 Referenz-Epoch", "Interne Validierung · Kanal wählbar · FFT-Overlay")
+    _active_settings_note(use_multitaper, use_art_filter)
     st.caption(
         "Wähle einen Kanal und navigiere mit dem Slider (← → Pfeiltasten) zu einem "
         "visuell qualitätsgeprüften 10-Sekunden-Segment. Das Gesamtfenster-Spektrum (grau) "
@@ -1260,90 +1432,6 @@ def render():
             st.info("Kein Alpha-Peak detektierbar.")
     else:
         st.warning("Segment zu kurz für PSD.")
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # HEMISPHÄRISCHE ASYMMETRIE
-    # ══════════════════════════════════════════════════════════════════════════
-    asym_chs = [c for c in ["O1", "O2", "F3", "F4"] if c in all_eeg]
-    if len(asym_chs) >= 2 and ("O1" in asym_chs and "O2" in asym_chs
-                                or "F3" in asym_chs and "F4" in asym_chs):
-        section_header("🔁 Hemisphärische Asymmetrie", "AI = (L−R)/(L+R) × 100% · nach Frequenzband · Nuwer 1997", color="#2980b9")
-        st.markdown(
-            "<div style='background:#f0f4ff;border-left:4px solid #2980b9;"
-            "padding:12px 16px;border-radius:6px;margin-bottom:12px'>"
-            "<b>Was wird hier gemessen?</b><br>"
-            "Der <b>Asymmetrie-Index (AI)</b> vergleicht die Spektralleistung der linken vs. "
-            "rechten Hemisphäre pro Frequenzband:<br>"
-            "<code>AI = (P<sub>links</sub> − P<sub>rechts</sub>) / "
-            "(P<sub>links</sub> + P<sub>rechts</sub>) × 100 %</code><br><br>"
-            "<b>Warum nach Frequenzbändern aufgeteilt?</b> Weil Läsionen frequenzspezifisch "
-            "wirken: Eine Ischämie erzeugt typisch <i>Delta-Asymmetrie</i> ipsilateral; "
-            "eine Substanzdefekt-Narbe zeigt oft auch <i>Alpha-Reduktion</i> auf der "
-            "betroffenen Seite. Verschiedene Bänder können gleichzeitig asymmetrisch sein "
-            "oder nicht — das Muster ist klinisch interpretierbar.<br><br>"
-            "🟢 |AI| ≤ 20 % — physiologisch normal &nbsp;&nbsp;"
-            "🔴 |AI| > 20 % — pathologisch verdächtig (Nuwer 1997, ACNS)</div>",
-            unsafe_allow_html=True,
-        )
-        # PSDs berechnen
-        _ch_psds = {}
-        for _ch in asym_chs:
-            _f_ch, _p_ch = _compute_psd(
-                _get(_ch)[int(t_start*fs):int(t_end*fs)], fs,
-                multitaper=use_multitaper, amp_thresh_uv=float(amp_thresh),
-            )
-            if _f_ch is not None:
-                _ch_psds[_ch] = {bn: _band_power(_f_ch, _p_ch, lo, hi)
-                                  for bn, (lo, hi), _ in BANDS}
-
-        def _ai(l_val, r_val):
-            denom = l_val + r_val
-            return (l_val - r_val) / denom * 100 if denom > 1e-9 else float("nan")
-
-        for pair_label, l_ch, r_ch in [("Okzipital — O1 (links) vs. O2 (rechts)", "O1", "O2"),
-                                         ("Frontal — F3 (links) vs. F4 (rechts)",   "F3", "F4")]:
-            if l_ch not in _ch_psds or r_ch not in _ch_psds:
-                continue
-            lbp = _ch_psds[l_ch]
-            rbp = _ch_psds[r_ch]
-            st.markdown(f"**{pair_label}** "
-                        "<span style='font-size:11px;color:#888'>🔵 links dominant · "
-                        "🟠 rechts dominant · roter Rahmen = |AI| > 20 % (auffällig)</span>",
-                        unsafe_allow_html=True)
-            _L, _R = "#2980b9", "#e67e22"          # links blau · rechts orange
-            ai_cols = st.columns(4)
-            for col_w, bname in zip(ai_cols, ["Delta", "Theta", "Alpha", "Beta"]):
-                ai_val = _ai(lbp.get(bname, 0), rbp.get(bname, 0))
-                if ai_val != ai_val:
-                    col_w.markdown(
-                        f"<div style='text-align:center;color:var(--text-muted);font-size:12px;"
-                        f"padding:10px 0'>AI {bname}<br>—</div>", unsafe_allow_html=True)
-                    continue
-                _patho = abs(ai_val) > 20
-                _side_col = _L if ai_val > 0 else _R
-                _w = min(abs(ai_val), 50.0)         # |AI|% der vollen Breite ab Mitte
-                if ai_val >= 0:                     # links dominant → Balken nach links
-                    _seg = (f"<div style='position:absolute;right:50%;top:2px;bottom:2px;"
-                            f"width:{_w:.0f}%;background:{_L};border-radius:4px 0 0 4px'></div>")
-                else:                               # rechts dominant → nach rechts
-                    _seg = (f"<div style='position:absolute;left:50%;top:2px;bottom:2px;"
-                            f"width:{_w:.0f}%;background:{_R};border-radius:0 4px 4px 0'></div>")
-                _bandcol = BAND_COLOR.get(bname, "#64748b")
-                _outline = "border:1.5px solid #c0392b;" if _patho else f"border:0.5px solid {_bandcol}55;"
-                col_w.markdown(
-                    f"<div style='{_outline}background:{_bandcol}12;border-top:3px solid {_bandcol};"
-                    f"border-radius:8px;padding:7px 8px'>"
-                    f"<div style='font-size:11px;color:{_bandcol};font-weight:700;text-align:center'>"
-                    f"AI {bname}{' ⚠' if _patho else ''}</div>"
-                    f"<div style='position:relative;height:20px;background:var(--surface-1);"
-                    f"border-radius:5px;margin:5px 0'>"
-                    f"<div style='position:absolute;left:50%;top:0;bottom:0;width:1px;"
-                    f"background:var(--border-strong)'></div>{_seg}</div>"
-                    f"<div style='font-size:13px;font-weight:500;text-align:center;color:{_side_col}'>"
-                    f"{ai_val:+.0f} %</div>"
-                    f"<div style='display:flex;justify-content:space-between;font-size:9px;"
-                    f"color:var(--text-muted)'><span>{l_ch}</span><span>{r_ch}</span></div></div>",
-                    unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════════
     # APPENDIX — Methodenerklärungen

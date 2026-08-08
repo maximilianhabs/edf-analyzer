@@ -8,4 +8,10 @@ font = "sans serif"
 
 [server]
 runOnSave = true
+# maxUploadSize begrenzt nur die Datei auf der Festplatte, NICHT den RAM-Bedarf im
+# Container: load_and_prepare() hält die Rohdaten als float64-Arrays (mehrfach kopiert
+# beim Laden/Filtern), das ist deutlich größer als die Dateigröße. Faustregel (empirisch,
+# Audit 2026-07-04): eine typische mehrkanalige 10-Minuten-Aufnahme braucht ~180 MB RAM
+# pro aktiver Session — bei mehreren gleichzeitigen Sessions multipliziert sich das linear.
+# Kein hartes RAM-Limit im Code hinterlegt; auf dem VPS ggf. über Docker-Limits absichern.
 maxUploadSize = 200

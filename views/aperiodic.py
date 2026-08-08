@@ -12,12 +12,18 @@ FIT_LO, FIT_HI = 1.0, 40.0
 
 
 @st.cache_data(show_spinner="Berechne Exponenten je Kanal…")
-def _all_channel_exponents(edf_path, fmin, fmax):
-    """Aperiodischer Exponent + R² für jeden EEG-Kanal (für die Übersicht)."""
+def _all_channel_exponents(edf_path, fmin, fmax, channels=None):
+    """Aperiodischer Exponent + R² für die angegebenen (oder alle) EEG-Kanäle.
+
+    `channels`: optionale Teilmenge (z. B. nur empfohlene Kanäle) — vermeidet
+    unnötige Fits für Kanäle, die in der Übersicht ohnehin nicht gezeigt werden.
+    """
     import mne
     edf = load_and_prepare(edf_path)
     fs = edf["sfreq"]
     eeg_map = edf["eeg_map"]
+    if channels is not None:
+        eeg_map = {c: idx for c, idx in eeg_map.items() if c in channels}
     raw = mne.io.read_raw_edf(edf_path, preload=True, encoding="latin1", verbose=False)
     out = {}
     for c, idx in eeg_map.items():
@@ -273,11 +279,20 @@ def render():
     section_header("Spektrale Zerlegung", "log-log: Original vs. aperiodischer Fit")
     f = res["freqs"]
     fig1 = go.Figure()
-    # Band-Hintergründe
+    # Band-Hintergründe. WICHTIG: Plotly transformiert bei Annotations (anders als bei
+    # Kurven-Datenpunkten) den x-Wert auf log-Achsen NICHT automatisch — weder add_vrect()s
+    # annotation_position-Kurzform noch add_annotation(xref="x", x=<roher Hz-Wert>)
+    # funktionieren hier (empirisch verifiziert 2026-08-04: beide platzieren alle vier
+    # Bandnamen falsch/außerhalb des sichtbaren Bereichs). Fix: eigene Log-Bruchteils-
+    # berechnung + xref="paper" — umgeht die fehlerhafte interne Log-Transformation komplett.
+    _log_lo, _log_hi = np.log10(FIT_LO), np.log10(FIT_HI)
     for bname, (lo, hi), bcol in BANDS:
-        fig1.add_vrect(x0=lo, x1=hi, fillcolor=bcol, opacity=0.06, line_width=0,
-                       annotation_text=bname, annotation_position="top",
-                       annotation_font_size=9, annotation_font_color=bcol)
+        fig1.add_vrect(x0=lo, x1=hi, fillcolor=bcol, opacity=0.06, line_width=0)
+        _frac = (np.log10(lo) - _log_lo) / (_log_hi - _log_lo)
+        fig1.add_annotation(x=float(_frac), y=1.0, xref="paper", yref="paper",
+                            text=bname, showarrow=False,
+                            xanchor="left", yanchor="top",
+                            font=dict(size=9, color=bcol))
     fig1.add_trace(go.Scatter(
         x=f, y=res["psd"], mode="lines", name="Originalspektrum",
         line=dict(color="#7f8c8d", width=2),
@@ -338,7 +353,8 @@ def render():
 
     # ── Kanal-Übersicht ───────────────────────────────────────────────────────
     section_header("Exponent je Kanal", "Konsistenz-Check & Kanalwahl")
-    _exps = _all_channel_exponents(edf_path, FIT_LO, FIT_HI)
+    _overview_chs = list(dict.fromkeys(_RECOMMENDED + [ch]))  # empfohlene + aktiver Kanal, keine Dubletten
+    _exps = _all_channel_exponents(edf_path, FIT_LO, FIT_HI, channels=_overview_chs)
     if len(_exps) >= 2:
         _chs = sorted(_exps.keys())
         _vals = [_exps[c][0] for c in _chs]
@@ -369,8 +385,9 @@ def render():
         )
         st.plotly_chart(fig3, use_container_width=True, key="aper_perchannel")
         st.caption(
-            f"Aktiver Kanal **{ch}** (lila) im Vergleich zum Median aller Kanäle "
-            f"(**{_median:.2f}**, orange). Stark abweichende, **blasse** Balken haben "
+            f"Aktiver Kanal **{ch}** (lila) im Vergleich zum Median der empfohlenen Kanäle "
+            f"(**{_median:.2f}**, orange). Beschränkt auf ⭐ empfohlene Kanäle + aktiven Kanal — "
+            f"nicht alle EEG-Kanäle. Stark abweichende, **blasse** Balken haben "
             f"schwache Fit-Güte (R² < 0,90) — meist artefaktbedingt. Ein Kanal nahe "
             f"dem Median ist für die E/I-Einordnung am repräsentativsten."
         )

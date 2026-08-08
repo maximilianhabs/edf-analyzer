@@ -1,5 +1,5 @@
 {
-  "created": "2026-08-03T19:54:56.398084",
+  "created": "2026-08-06T15:48:58.223644",
   "purpose": "Synthetisches Ground-Truth-EDF zur Pipeline-Validierung — KEIN echter Patient, keine biologische Exaktheit beansprucht.",
   "format": {
     "fs_hz": 200.0,
@@ -69,5 +69,18 @@
     ],
     "expected_hf_peak_hz": 0.25,
     "note": "HRV-Frequenzdomäne (Welch/Burg/Lomb-Scargle) sollte einen HF-Peak sehr nahe an genau diesem RSA-Wert zeigen. Die 3 Ausreißer-Zeitpunkte sollten von der RR-Bereinigung (Hampel/Median-Filter) entfernt werden, ohne echte Nachbarschläge zu verlieren."
+  },
+  "ecg_amplitude_artifacts": {
+    "weak_signal_window_s": [
+      330.0,
+      345.0
+    ],
+    "weak_signal_factor": 0.05,
+    "high_amplitude_window_s": [
+      400.0,
+      410.0
+    ],
+    "high_amplitude_factor": 7.0,
+    "note": "Reine Amplituden-Skalierung, KEINE Formveränderung, KEINE Flatline -> Pearson-Korrelation zum QRS-Template ist skaleninvariant und bleibt hoch. Testet gezielt Regel 6 (Amplituden-Plausibilität) in analysis/ecg_quality.py isoliert von Regel 4/5."
   }
 }

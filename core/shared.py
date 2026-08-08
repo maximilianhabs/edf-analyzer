@@ -302,7 +302,14 @@ def render_head_diagram(pairs):
 
 @st.cache_data(show_spinner="Lade und verarbeite EDF…")
 def load_and_prepare(path: str):
-    """Lädt EDF, extrahiert alle Kanäle als numpy-Matrix, filtert ECG vorab."""
+    """Lädt EDF, extrahiert alle Kanäle als numpy-Matrix, filtert ECG vorab.
+
+    RAM-Faustregel (empirisch, Audit 2026-07-04): ~180 MB pro Session für eine typische
+    mehrkanalige 10-Minuten-Aufnahme — deutlich mehr als die Upload-Dateigröße, da die
+    Rohdaten als float64-Arrays gehalten und beim Laden/Filtern mehrfach kopiert werden.
+    Kein hartes RAM-Limit hinterlegt; siehe .streamlit/config.toml für den Kontext zu
+    `maxUploadSize` (begrenzt nur die Dateigröße, nicht den RAM-Bedarf).
+    """
     import mne
     from scipy.signal import butter, filtfilt
     from core.channel_classifier import classify_channels, make_short_name, ECG, EEG
@@ -506,7 +513,7 @@ def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
             fig.add_trace(go.Scatter(
                 x=t, y=plot_seg + offset, mode="lines",
                 name=chain, legendgroup=chain, showlegend=show_leg,
-                line=dict(width=0.9, color=color),
+                line=dict(width=1.6, color=color),
                 hovertemplate=f"<b>{label}</b>: %{{customdata:.3f}} {hover_unit}<extra></extra>",
                 customdata=hover_values,
             ))
@@ -539,10 +546,10 @@ def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
             range=[-spacing * 0.8, total_height + spacing * 0.3],
             tickvals=offsets,
             ticktext=[item[0] for item in derivs],
-            showgrid=False, tickfont=dict(size=10),
+            showgrid=False, tickfont=dict(size=13),
         ),
         height=max(500, int(total_height / spacing) * 42 + 80),
-        margin=dict(t=8, b=48, l=120, r=8),
+        margin=dict(t=8, b=48, l=132, r=8),
         legend=dict(orientation="h", y=-0.06, x=0, font=dict(size=11)),
         plot_bgcolor="#f9f9f9",
     )
@@ -570,7 +577,7 @@ def ecg_figure(t, sig_mv, sensitivity_mv, lp_hz=None):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=t, y=sig_centered, mode="lines",
-        line=dict(color="#c0392b", width=1.2),
+        line=dict(color="#c0392b", width=1.8),
         hovertemplate="%{y:.3f} mV<extra></extra>",
     ))
     fig.update_layout(
