@@ -4,7 +4,7 @@ import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 
-from core.shared import load_and_prepare, section_header, get_patient_info, kpi_tile
+from core.shared import load_and_prepare, apply_channel_overrides, section_header, get_patient_info, kpi_tile
 from analysis.aperiodic import welch_psd, fit_aperiodic, corrected_peak
 from views.eeg_spectrum import _highpass, _alpha_band, BANDS
 
@@ -12,14 +12,16 @@ FIT_LO, FIT_HI = 1.0, 40.0
 
 
 @st.cache_data(show_spinner="Berechne Exponenten je Kanal…")
-def _all_channel_exponents(edf_path, fmin, fmax, channels=None):
+def _all_channel_exponents(edf_path, fmin, fmax, channels=None, overrides_key=""):
     """Aperiodischer Exponent + R² für die angegebenen (oder alle) EEG-Kanäle.
 
     `channels`: optionale Teilmenge (z. B. nur empfohlene Kanäle) — vermeidet
     unnötige Fits für Kanäle, die in der Übersicht ohnehin nicht gezeigt werden.
-    """
+    `overrides_key`: nur für den Cache-Key (Bugfix 2026-08-09, siehe eeg_spectrum.py::
+    _compute_par für die volle Begründung — manuelle Kanal-Typ-Korrekturen wurden hier
+    vorher ignoriert)."""
     import mne
-    edf = load_and_prepare(edf_path)
+    edf = apply_channel_overrides(load_and_prepare(edf_path))
     fs = edf["sfreq"]
     eeg_map = edf["eeg_map"]
     if channels is not None:
@@ -154,7 +156,7 @@ def render():
         st.error("Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.", icon=":material/block:")
         return
 
-    edf = load_and_prepare(edf_path)
+    edf = apply_channel_overrides(load_and_prepare(edf_path))
     fs = edf["sfreq"]
     eeg_map = edf["eeg_map"]
     if not eeg_map:
@@ -349,7 +351,8 @@ def render():
     # ── Kanal-Übersicht ───────────────────────────────────────────────────────
     section_header("Exponent je Kanal", "Konsistenz-Check & Kanalwahl")
     _overview_chs = list(dict.fromkeys(_RECOMMENDED + [ch]))  # empfohlene + aktiver Kanal, keine Dubletten
-    _exps = _all_channel_exponents(edf_path, FIT_LO, FIT_HI, channels=_overview_chs)
+    _exps = _all_channel_exponents(edf_path, FIT_LO, FIT_HI, channels=_overview_chs,
+                                   overrides_key=str(sorted(st.session_state.get("channel_overrides", {}).items())))
     if len(_exps) >= 2:
         _chs = sorted(_exps.keys())
         _vals = [_exps[c][0] for c in _chs]
