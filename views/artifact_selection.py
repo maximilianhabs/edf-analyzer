@@ -36,6 +36,30 @@ def _mmss(s: float) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
+@st.cache_data(show_spinner="Berechne Amplituden-Verteilung je Kanal …")
+def _cached_channel_amplitudes(edf_path: str, overrides_key: str, win_s: float = 1.0):
+    """Peak-to-Peak-Amplitude je Kanal in nicht-überlappenden `win_s`-Fenstern über die
+    GESAMTE Aufnahme (Histogramm-Konzept Punkt 4, siehe [[project_edf_ui_redesign]]) —
+    macht Clipping (harte Sättigungsspitzen, sehr rechtsschiefe Verteilung) und rauschende/
+    flache Kanäle (breite bzw. sehr schmale Streuung) auf einen Blick sichtbar, ohne für
+    jeden der bis zu 19 Kanäle ein eigenes Diagramm gleichzeitig zu rendern (Performance-
+    Vorgabe des Users — ein Kanal wird ausgewählt, plus EIN kompakter Kanal-Vergleich)."""
+    edf = apply_channel_overrides(load_and_prepare(edf_path))
+    eeg_map = edf["eeg_map"]
+    sf = edf["sfreq"]
+    win_n = max(1, int(win_s * sf))
+    out = {}
+    for ch, idx in eeg_map.items():
+        sig = edf["data"][idx].astype(np.float64) * 1e6
+        n_win = len(sig) // win_n
+        if n_win < 2:
+            continue
+        trimmed = sig[: n_win * win_n].reshape(n_win, win_n)
+        p2p = trimmed.max(axis=1) - trimmed.min(axis=1)
+        out[ch] = p2p
+    return out
+
+
 # A10: Regions-Toleranz-Presets (Faktoren + räumlicher Schutz min_nonfrontal)
 _REGION_PRESETS = {
     "aus":     ({"FP1": 1.0, "FP2": 1.0, "F7": 1.0, "F8": 1.0, "T3": 1.0, "T4": 1.0}, 0),
@@ -666,6 +690,58 @@ def render():
     section_header("Zeitleiste", "Rote Flächen = Multikanal-Ausschläge · schattiert = Artefakt-Segment")
     st.plotly_chart(_timeline_figure(res, dur), use_container_width=True,
                     config={"displayModeBar": False})
+
+    # ── Amplituden-Verteilung je Kanal (Histogramm-Konzept Punkt 4, User-Idee 2026-08-08) ───
+    section_header("Amplituden-Verteilung je Kanal",
+                   "Peak-to-Peak pro 1s-Fenster · Ausreißer/Clipping/Rauschen sichtbar machen")
+    _amp_data = _cached_channel_amplitudes(edf_path, overrides_key)
+    if _amp_data:
+        _amp_chs = list(_amp_data.keys())
+        _sel_ch = st.selectbox("Kanal für Detail-Histogramm", _amp_chs,
+                               index=0, key="art_amp_channel")
+        _p2p = _amp_data[_sel_ch]
+        _med = float(np.median(_p2p))
+        _p99 = float(np.percentile(_p2p, 99))
+        _n_outlier = int(np.sum(_p2p > _med * 4.0))
+        ahc1, ahc2 = st.columns([2, 1])
+        with ahc1:
+            ahfig = go.Figure(go.Histogram(x=_p2p, marker_color="#2471a3", opacity=0.85,
+                                           nbinsx=60))
+            ahfig.add_vline(x=_med, line_dash="dash", line_color="#27ae60",
+                            annotation_text="Median", annotation_font_size=10)
+            ahfig.update_layout(
+                title=dict(text=f"{_sel_ch} — Amplitudenverteilung (1s-Fenster)", font=dict(size=12)),
+                xaxis_title="Peak-to-Peak (µV)", yaxis_title="Anzahl Fenster", height=260,
+                margin=dict(t=30, b=35, l=45, r=10), plot_bgcolor="#fafafa", bargap=0.02,
+            )
+            st.plotly_chart(ahfig, use_container_width=True, key="art_amp_hist")
+        with ahc2:
+            st.metric("Median-Amplitude", f"{_med:.0f} µV")
+            st.metric("99. Perzentil", f"{_p99:.0f} µV")
+            st.metric("Fenster ≥4× Median", f"{_n_outlier} von {len(_p2p)}",
+                      help="Grober Hinweis auf vereinzelte starke Ausschläge (Bewegung, "
+                           "Elektrodenkontakt) — kein automatisches Urteil.")
+        st.caption(
+            "Eine schmale, symmetrische Verteilung um den Median spricht für stabile Ableitung. "
+            "Eine breit auslaufende rechte Flanke oder eine zweite, weit entfernte Häufung "
+            "deutet auf wiederkehrende Artefakte oder Clipping in diesem Kanal hin — kein "
+            "Ersatz für die Multikanal-Konsens-Erkennung oben, aber ein schneller Kanal-für-"
+            "Kanal-Qualitätscheck."
+        )
+
+        with st.expander("📊 Alle Kanäle im Vergleich (Boxplot)", expanded=False):
+            bfig = go.Figure()
+            for ch in _amp_chs:
+                bfig.add_trace(go.Box(y=_amp_data[ch], name=ch, marker_color="#2471a3",
+                                      boxpoints="outliers", marker_size=3, line_width=1))
+            bfig.update_layout(
+                yaxis_title="Peak-to-Peak (µV, log)", yaxis_type="log", height=320,
+                margin=dict(t=10, b=40, l=50, r=10), plot_bgcolor="#fafafa", showlegend=False,
+            )
+            st.plotly_chart(bfig, use_container_width=True, key="art_amp_box")
+            st.caption("Log-Skala (µV-Amplituden streuen über Größenordnungen). Kanäle mit "
+                      "auffällig höherer Box/mehr Ausreißern gegenüber den Nachbarn verdienen "
+                      "eine genauere Prüfung (z. B. als Bad-Channel-Kandidat).")
 
     # ── A9a: Segment-Editor (entfernen / hinzufügen) ─────────────────────────
     _render_segment_editor(res_auto, dur)
