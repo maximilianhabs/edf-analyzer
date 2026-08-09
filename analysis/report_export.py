@@ -198,10 +198,16 @@ def _hrv_hamilton(edf):
 # ──────────────────────────────────────────────────────────────────────────────
 # Sektionen zusammenstellen  →  [{name, columns, rows}]
 # ──────────────────────────────────────────────────────────────────────────────
-def collect_sections(edf: dict, edf_path: str, corr_segments=None):
+def collect_sections(edf: dict, edf_path: str, corr_segments=None,
+                     age=None, sex=None, is_pediatric=False):
+    """`age`/`sex`/`is_pediatric`: Patientenkontext für die alters-/HF-adjustierte
+    Laborwert-Bewertung (Hansen 2024 / Gąsior 2018, siehe `analysis/report_metadata.py`).
+    Fehlt `age`, fällt die Bewertung auf den Erwachsenen-Default (50 J.) zurück — wie
+    `core.shared.get_patient_info()` es bei fehlender Eingabe ebenfalls tut."""
     sections = []
     sf, dur, em = edf["sfreq"], edf["duration_s"], edf.get("eeg_map", {})
     has_ecg = bool(edf.get("ecg_channels"))
+    age = age if age is not None else 50
 
     # Artefakt-Maske für die Korrigiert-Spalte (übergeben oder automatisch)
     if corr_segments is None:
@@ -227,6 +233,12 @@ def collect_sections(edf: dict, edf_path: str, corr_segments=None):
     ]})
 
     # ── HRV ───────────────────────────────────────────────────────────────────
+    # Bewertung alters-/HF-adjustiert (Hansen 2024 / Gąsior 2018), IDENTISCH zur Live-App-
+    # Seite views/ecg_hrv.py — vorher zeigte dieser Report statische Erwachsenen-Fixwerte im
+    # Text, unabhängig vom tatsächlichen Patientenalter (Report-Audit-Fund, siehe
+    # [[project_edf_report_audit]]). "Bewertung"-Spalte ersetzt die alte "Norm / Deutung"-
+    # Freitextspalte; Zeilen tragen zusätzlich eine Zone (row["zones"][i]) für die farbliche
+    # Hervorhebung in PDF/Excel (siehe build_pdf/build_excel).
     if has_ecg:
         try:
             from views.report import _compute_hrv
@@ -235,43 +247,64 @@ def collect_sections(edf: dict, edf_path: str, corr_segments=None):
             hf = None
         hc = _compute_hrv_corrected(edf_path, edf, corr_segments) if (hf and corr_segments) else None
         if hf:
-            def _g(src, k, fmt=".1f"):
-                return _f(src.get(k), fmt) if src else "—"
-            gc = ["Parameter", "Gesamt", "Korrigiert", "Einheit", "Norm / Deutung"]
-            sections.append({"name": "HRV — Zeitbereich", "columns": gc, "rows": [
-                ["Herzfrequenz", _g(hf, "mean_hr"), _g(hc, "mean_hr"), "bpm", "60–100 · ↓ athlet. Bradykardie mögl."],
-                ["Mittleres RR", _g(hf, "mean_rr", ".0f"), _g(hc, "mean_rr", ".0f"), "ms", "600–1000 · ↑ bei niedriger HF"],
-                ["SDNN", _g(hf, "sdnn"), _g(hc, "sdnn"), "ms", "37 (27–54) · ↑ = günstig (Gesamt-Vagotonie)"],
-                ["CV", _g(hf, "cv"), _g(hc, "cv"), "%", "SDNN/RR · HF-unabhängig"],
-            ]})
-            sections.append({"name": "HRV — vagale Marker", "columns": gc, "rows": [
-                ["RMSSD", _g(hf, "rmssd"), _g(hc, "rmssd"), "ms", "27 (17–44) · ↑ = günstig (vagal)"],
-                ["pNN50", _g(hf, "pnn50"), _g(hc, "pnn50"), "%", "~12 (5–28) · ↑ = günstig"],
-                ["pNN20", _g(hf, "pnn20"), _g(hc, "pnn20"), "%", "sensitiver als pNN50 · ↑ günstig"],
-                ["NN50", _g(hf, "nn50", ".0f"), _g(hc, "nn50", ".0f"), "Anzahl", "längenabhängig"],
-            ]})
-            sections.append({"name": "HRV — nichtlinear & Atmung", "columns": gc, "rows": [
-                ["SD1", _g(hf, "sd1"), _g(hc, "sd1"), "ms", "kurzfristig/vagal (≈RMSSD/√2)"],
-                ["SD2", _g(hf, "sd2"), _g(hc, "sd2"), "ms", "langfristig (≈SDNN)"],
-                ["SD2/SD1", _g(hf, "sd2_sd1", ".2f"), _g(hc, "sd2_sd1", ".2f"), "Ratio", "Balance lang/kurz"],
-                ["DFA α1", _g(hf, "dfa_a1", ".2f"), _g(hc, "dfa_a1", ".2f"), "—", "~1,0 gesund (0,75–1,25)"],
-                ["Sample Entropy", _g(hf, "samp_en", ".2f"), _g(hc, "samp_en", ".2f"), "—", "↓ = regelmäßig"],
-                ["Atemfrequenz (EDR)", _g(hf, "edr_rate"), "—", "/min", "12–20 · aus R-Amplitude, unsicher"],
-                ["Artefaktrate RR", _g(hf, "pct_removed"), "—", "%", "< 5 % gut"],
-            ]})
+            from analysis.report_metadata import grade_hrv, HRV_PARAM_DEFS
+            hr_val = hf.get("mean_hr", 70.0) or 70.0
+            rmssd_val = hf.get("rmssd")
+            _used_params = []
+
+            def _row(param, fmt=".1f", src=None, src_c=None):
+                """Baut eine Report-Zeile [Label, Gesamt, Korrigiert, Bewertung, Einheit,
+                Referenz] + liefert die Zone separat für die Farbcodierung. Bewertung/
+                Referenz beziehen sich auf den GESAMT-Wert (die Korrigiert-Spalte bleibt
+                ein reiner Vergleichswert ohne eigene Zweitbewertung, wie schon bisher).
+                `src`/`src_c` optional: alternative Quell-Dicts (für die Frequenzbereich-
+                Zeilen, deren Werte in hf["fd_welch"] statt direkt in hf liegen)."""
+                meta = HRV_PARAM_DEFS[param]
+                _key = "mean_hr" if param == "heart_rate" else param  # classify_parameter()
+                # nennt den Parameter "heart_rate", _compute_hrv() liefert ihn als "mean_hr"
+                _src, _src_c = (src if src is not None else hf), (src_c if src_c is not None else hc)
+                gv, cv_ = _src.get(_key), (_src_c.get(_key) if _src_c else None)
+                _used_params.append(param)
+                extra = {"rmssd_ms": rmssd_val} if param == "pnn50" else {}
+                grade = grade_hrv(param, gv, age, hr_val, is_pediatric=is_pediatric, **extra)
+                row = [meta["label"], _f(gv, fmt), _f(cv_, fmt) if _src_c else "—",
+                       grade["label"], meta["unit"], grade["ref_text"]]
+                return row, grade["zone"]
+
+            gc = ["Parameter", "Gesamt", "Korrigiert", "Bewertung", "Einheit", "Referenz"]
+
+            rows, zones = [], []
+            for p, fmt in [("heart_rate", ".1f"), ("mean_rr", ".0f"), ("sdnn", ".1f"), ("cv", ".1f")]:
+                r, z = _row(p, fmt); rows.append(r); zones.append(z)
+            sections.append({"name": "HRV — Zeitbereich", "columns": gc, "rows": rows, "zones": zones})
+
+            rows, zones = [], []
+            for p, fmt in [("rmssd", ".1f"), ("pnn50", ".1f"), ("pnn20", ".1f"), ("nn50", ".0f")]:
+                r, z = _row(p, fmt); rows.append(r); zones.append(z)
+            sections.append({"name": "HRV — vagale Marker", "columns": gc, "rows": rows, "zones": zones})
+
+            rows, zones = [], []
+            for p, fmt in [("sd1", ".1f"), ("sd2", ".1f"), ("sd2_sd1", ".2f"), ("dfa_a1", ".2f"),
+                           ("samp_en", ".2f"), ("edr_rate", ".1f"), ("pct_removed", ".1f")]:
+                r, z = _row(p, fmt); rows.append(r); zones.append(z)
+            sections.append({"name": "HRV — nichtlinear & Atmung", "columns": gc, "rows": rows, "zones": zones})
+
             fw, fwc = (hf.get("fd_welch") or {}), (hc.get("fd_welch") if hc else {}) or {}
-            sections.append({"name": "HRV — Frequenzbereich (Welch, Task Force 1996)", "columns": gc, "rows": [
-                ["Total Power", _f(fw.get("total_power"), ".0f"), _f(fwc.get("total_power"), ".0f"), "ms²", "235–1033 · ↑ bei hoher HRV günstig"],
-                ["VLF-Leistung", _f(fw.get("vlf_power"), ".0f"), _f(fwc.get("vlf_power"), ".0f"), "ms²", "0,0033–0,04 Hz · bei Kurzzeit unsicher"],
-                ["LF-Leistung", _f(fw.get("lf_power"), ".0f"), _f(fwc.get("lf_power"), ".0f"), "ms²", "67–368 · 0,04–0,15 Hz"],
-                ["HF-Leistung", _f(fw.get("hf_power"), ".0f"), _f(fwc.get("hf_power"), ".0f"), "ms²", "38–263 · 0,15–0,40 Hz · ↑ = vagal"],
-                ["LF/HF-Ratio", _f(fw.get("lf_hf_ratio"), ".2f"), _f(fwc.get("lf_hf_ratio"), ".2f"), "Ratio", "0,5–5,0 · Sympatho-vagale Balance"],
-                ["LF normiert", _f(fw.get("lf_norm")), _f(fwc.get("lf_norm")), "%", "40–70 · LF/(LF+HF) = Task Force"],
-                ["HF normiert", _f(fw.get("hf_norm")), _f(fwc.get("hf_norm")), "%", "20–50 · HF/(LF+HF) = Task Force"],
-                ["LF-Gipfel", _f(fw.get("lf_peak_freq"), ".3f"), _f(fwc.get("lf_peak_freq"), ".3f"), "Hz", "0,04–0,15 (Mayer-Wellen)"],
-                ["HF-Gipfel", _f(fw.get("hf_peak_freq"), ".3f"), _f(fwc.get("hf_peak_freq"), ".3f"), "Hz", "0,15–0,40 (Atmung/RSA)"],
-                ["Atemfrequenz (HF-Gipfel)", _f(fw.get("hf_resp_rate")), _f(fwc.get("hf_resp_rate")), "/min", "12–20 · Quervergleich zur EDR!"],
-            ]})
+            rows, zones = [], []
+            for p, fmt in [("total_power", ".0f"), ("vlf_power", ".0f"), ("lf_power", ".0f"),
+                           ("hf_power", ".0f"), ("lf_hf_ratio", ".2f"), ("lf_norm", ".1f"),
+                           ("hf_norm", ".1f"), ("lf_peak_freq", ".3f"), ("hf_peak_freq", ".3f"),
+                           ("hf_resp_rate", ".1f")]:
+                r, z = _row(p, fmt, src=fw, src_c=fwc); rows.append(r); zones.append(z)
+            sections.append({"name": "HRV — Frequenzbereich (Welch, Task Force 1996)",
+                             "columns": gc, "rows": rows, "zones": zones})
+
+            # Begriffserklärungen (Akronyme/Fachbegriffe) — kompakte Liste statt einer 7.
+            # Tabellenspalte, damit die Werte-Tabellen selbst schlank/lesbar bleiben
+            # (User-Vorgabe: „einfacher Report soll simpel bleiben, aber alles verständlich").
+            sections.append({"name": "HRV — Begriffserklärungen", "columns": ["Parameter", "Erklärung"],
+                             "rows": [[HRV_PARAM_DEFS[p]["label"], HRV_PARAM_DEFS[p]["definition"]]
+                                      for p in dict.fromkeys(_used_params)]})
 
     # ── EEG ───────────────────────────────────────────────────────────────────
     if em:
@@ -439,10 +472,14 @@ def _add_validated(sections, edf, edf_path, has_ecg, em):
 # ──────────────────────────────────────────────────────────────────────────────
 # Excel
 # ──────────────────────────────────────────────────────────────────────────────
+_ZONE_FILL = {"normal": "E3F2E3", "grenzwertig": "FDF3D9", "pathologisch": "FBE1DE"}
+_ZONE_FONT = {"normal": "1E7B34", "grenzwertig": "9C6F00", "pathologisch": "B23A24"}
+
+
 def build_excel(sections, edf, disp_name: str) -> bytes:
     import pandas as pd
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Font, PatternFill
     wb = Workbook()
     ws = wb.active
     ws.title = "Report"
@@ -455,8 +492,16 @@ def build_excel(sections, edf, disp_name: str) -> bytes:
         ws.append(sec["columns"])
         for c in ws[ws.max_row]:
             c.font = Font(bold=True)
-        for row in sec["rows"]:
+        # "Bewertung"-Spalte farblich hervorheben (Laborwert-Stil: grün/gelb/rot), sofern
+        # die Sektion Zonen mitliefert (nur HRV-Wertetabellen — siehe collect_sections()).
+        zones = sec.get("zones")
+        bew_col = sec["columns"].index("Bewertung") + 1 if "Bewertung" in sec["columns"] else None
+        for i, row in enumerate(sec["rows"]):
             ws.append(list(row))
+            if zones and bew_col and i < len(zones) and zones[i] in _ZONE_FILL:
+                cell = ws.cell(row=ws.max_row, column=bew_col)
+                cell.fill = PatternFill("solid", fgColor=_ZONE_FILL[zones[i]])
+                cell.font = Font(color=_ZONE_FONT[zones[i]], bold=True)
         ws.append([])
     for col in ws.columns:
         width = max((len(str(c.value)) for c in col if c.value is not None), default=10)
@@ -516,9 +561,15 @@ def build_pdf(sections, disp_name: str) -> bytes:
                            spaceAfter=2, textColor=colors.HexColor("#2471a3"))
     story = [Paragraph("EDF-Analyzer — Gesamt-Report", title),
              Paragraph(f"Datei: {disp_name}", normal), Spacer(1, 5)]
-    # Spaltenbreiten je nach Spaltenzahl (4 oder 5)
-    widths = {4: [60 * mm, 40 * mm, 22 * mm, 64 * mm],
-              5: [56 * mm, 27 * mm, 27 * mm, 18 * mm, 58 * mm]}
+    # Spaltenbreiten je nach Spaltenzahl (2/4/5/6)
+    widths = {2: [40 * mm, 146 * mm],
+              4: [60 * mm, 40 * mm, 22 * mm, 64 * mm],
+              5: [56 * mm, 27 * mm, 27 * mm, 18 * mm, 58 * mm],
+              6: [42 * mm, 22 * mm, 22 * mm, 30 * mm, 16 * mm, 54 * mm]}
+    _zone_bg = {"normal": colors.HexColor("#e3f2e3"), "grenzwertig": colors.HexColor("#fdf3d9"),
+               "pathologisch": colors.HexColor("#fbe1de")}
+    _zone_fg = {"normal": colors.HexColor("#1e7b34"), "grenzwertig": colors.HexColor("#9c6f00"),
+               "pathologisch": colors.HexColor("#b23a24")}
     for sec in sections:
         cols = sec["columns"]
         story.append(Paragraph(sec["name"], h_sec))
@@ -532,11 +583,22 @@ def build_pdf(sections, disp_name: str) -> bytes:
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7f9fc")]),
             ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.HexColor("#c4ccd6")),
             ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ]
-        if len(cols) == 5:
+        if len(cols) in (5, 6):
             style.append(("ALIGN", (1, 0), (3, -1), "RIGHT"))
-        else:
+        elif len(cols) == 4:
             style.append(("ALIGN", (1, 0), (2, -1), "RIGHT"))
+        # "Bewertung"-Spalte farblich hervorheben (Laborwert-Stil), analog build_excel()
+        zones = sec.get("zones")
+        if zones and "Bewertung" in cols:
+            bcol = cols.index("Bewertung")
+            for i, z in enumerate(zones):
+                if z in _zone_bg:
+                    r = i + 1  # +1: Header-Zeile
+                    style.append(("BACKGROUND", (bcol, r), (bcol, r), _zone_bg[z]))
+                    style.append(("TEXTCOLOR", (bcol, r), (bcol, r), _zone_fg[z]))
+                    style.append(("FONTNAME", (bcol, r), (bcol, r), font_b))
         tbl.setStyle(TableStyle(style))
         story.append(tbl)
     doc.build(story)

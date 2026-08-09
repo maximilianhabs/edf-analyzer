@@ -793,23 +793,25 @@ def render():
                "PDF und Excel, analog zum Report, aber artefaktkorrigiert.")
 
     @st.cache_data(show_spinner="Erstelle artefaktkorrigierten Report …")
-    def _export_corrected(_path, _seg_tuple, _disp):
+    def _export_corrected(_path, _seg_tuple, _disp, _age, _sex, _pediatric):
         from analysis.report_export import collect_sections, build_pdf, build_excel
         e = apply_channel_overrides(load_and_prepare(_path))
         segs = [{"start_s": a, "end_s": b} for a, b in _seg_tuple]
-        secs = collect_sections(e, _path, corr_segments=segs)
+        secs = collect_sections(e, _path, corr_segments=segs, age=_age, sex=_sex, is_pediatric=_pediatric)
         return build_pdf(secs, _disp + " (mit deiner Maske)"), build_excel(secs, e, _disp)
 
     _disp = st.session_state.get("edf_display_name", "report")
     _base = (_disp.rsplit(".", 1)[0] if _disp else "report") + "_artefaktkorrigiert"
     _seg_tuple = tuple((s["start_s"], s["end_s"]) for s in res.segments)
+    _art_age, _art_sex = get_patient_info()
+    _art_pediatric = st.session_state.get("is_pediatric", False)
     if not res.segments:
         st.info("Noch keine Artefakt-Segmente markiert → der korrigierte Report entspräche der "
                 "Gesamtauswertung. Markiere/erzeuge oben Segmente oder nutze den Export auf der "
                 "**Report**-Seite.")
     else:
         try:
-            pdf_bytes, xlsx_bytes = _export_corrected(edf_path, _seg_tuple, _disp)
+            pdf_bytes, xlsx_bytes = _export_corrected(edf_path, _seg_tuple, _disp, _art_age, _art_sex, _art_pediatric)
             ec1, ec2 = st.columns(2)
             ec1.download_button("PDF (korrigiert)", pdf_bytes, icon=":material/description:", file_name=f"{_base}.pdf",
                                 mime="application/pdf", use_container_width=True)
