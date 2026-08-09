@@ -311,7 +311,6 @@ def render():
                    ticktext=["1", "2", "3", "5", "8", "13", "20", "30", "40"]),
         yaxis=dict(title="PSD (µV²/Hz)", type="log"),
         height=360, margin=dict(t=26, b=44, l=65, r=12),
-        plot_bgcolor="#fafafa",
         legend=dict(orientation="h", yanchor="bottom", y=1.03, x=0, font=dict(size=11)),
     )
     st.plotly_chart(fig1, use_container_width=True, key="aper_decomp")
@@ -343,7 +342,7 @@ def render():
         xaxis=dict(title="Frequenz (Hz)", range=[FIT_LO, FIT_HI]),
         yaxis=dict(title="PSD / Untergrund (×)", rangemode="tozero"),
         height=280, margin=dict(t=24, b=44, l=65, r=12),
-        plot_bgcolor="#fafafa", showlegend=False,
+        showlegend=False,
     )
     st.plotly_chart(fig2, use_container_width=True, key="aper_flat")
     st.caption(
@@ -381,7 +380,7 @@ def render():
             xaxis=dict(title=None, tickfont=dict(size=10)),
             yaxis=dict(title="Exponent", rangemode="tozero"),
             height=240, margin=dict(t=8, b=40, l=55, r=60),
-            plot_bgcolor="#fafafa", showlegend=False,
+            showlegend=False,
         )
         st.plotly_chart(fig3, use_container_width=True, key="aper_perchannel")
         st.caption(

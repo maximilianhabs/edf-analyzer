@@ -377,7 +377,6 @@ def render():
                             yaxis=dict(title=y_label, showgrid=False,
                                        zeroline=True, zerolinecolor="#ccc",
                                        zerolinewidth=0.8),
-                            plot_bgcolor="#fafafa",
                             showlegend=False,
                         )
                         st.plotly_chart(fig_prev, use_container_width=True,
