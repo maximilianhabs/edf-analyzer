@@ -285,6 +285,37 @@ def kpi_tile(label: str, value: str, sub_text: str = "", zone: str = "info",
         f"{sub_text}</div></div>")
 
 
+def register_plotly_theme():
+    """Registriert ein gemeinsames Plotly-Template (Phase 4 GUI-Redesign, siehe
+    [[project_edf_ui_redesign]]) und setzt es als App-weiten Default — Foundation-Schritt wie
+    Phase 0: neue/nicht explizit gestylte Diagramm-Elemente (Achsen, Grid, Schrift, Legende,
+    Standard-Farbfolge) folgen ab jetzt EINER Quelle statt der bisher pro Seite verstreuten
+    Hex-Werte. Diagramme, die Farben/Hintergrund EXPLIZIT selbst setzen (z. B. `plot_bgcolor=
+    "#fafafa"`, klinische Ampelfarben für Befunde), überschreiben das Template lokal — das ist
+    gewollt (fachliche Farben bleiben reserviert) und wird seitenweise erst in Phase 5 bereinigt,
+    nicht rückwirkend hier. Mehrfacher Aufruf ist billig (Plotly dedupliziert das Template)."""
+    import plotly.io as pio
+    import plotly.graph_objects as _go
+    from core.design_tokens import (BG_SUBTLE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY, ACCENT,
+                                     DANGER, WARNING, SUCCESS, INFO)
+    if "edf_analyzer" not in pio.templates:
+        _font = dict(family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', "
+                            "Helvetica, Arial, sans-serif", color=TEXT_PRIMARY, size=12)
+        _axis = dict(gridcolor="rgba(0,0,0,0.06)", zerolinecolor="rgba(0,0,0,0.10)",
+                    linecolor=BORDER, tickfont=dict(color=TEXT_SECONDARY, size=10),
+                    title_font=dict(color=TEXT_SECONDARY, size=11))
+        pio.templates["edf_analyzer"] = _go.layout.Template(layout=_go.Layout(
+            font=_font,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor=BG_SUBTLE,
+            colorway=[ACCENT, SUCCESS, WARNING, DANGER, INFO, "#9b59b6", "#e67e22"],
+            xaxis=_axis, yaxis=_axis,
+            legend=dict(font=dict(size=11, color=TEXT_SECONDARY)),
+            margin=dict(t=30, b=35, l=45, r=10),
+        ))
+    pio.templates.default = "edf_analyzer"
+
+
 def apply_global_style():
     """Neutrale, hochwertige Basis-Optik. Klinische Farben (Rot/Blau/Grün/Ampel) bleiben
     ausschließlich für ihre fachliche Bedeutung reserviert und werden hier nicht verändert.
@@ -294,6 +325,7 @@ def apply_global_style():
     .subtitle/.dw-card) als FUNDAMENT für die kommenden Phasen (Navigation, Status-Banner,
     Karten, Plotly-Theme). Migriert NICHT rückwirkend bestehende Seiten — die nutzen bis zur
     jeweiligen Phase weiterhin ihre bisherigen Ad-hoc-Styles, nichts bricht."""
+    register_plotly_theme()
     from core.design_tokens import (BG_SUBTLE, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
                                     ACCENT, ACCENT_HOVER, DANGER, WARNING, SUCCESS, INFO,
                                     RADIUS_SM, RADIUS_MD, RADIUS_LG, RADIUS_XL,
