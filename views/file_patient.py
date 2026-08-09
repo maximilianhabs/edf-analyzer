@@ -71,11 +71,11 @@ def render():
         if file_active:
             col_info, col_remove = st.columns([4, 1])
             with col_info:
-                st.success(f"✅ **{st.session_state.edf_display_name}** ist geladen und aktiv verankert.")
+                st.success(f"**{st.session_state.edf_display_name}** ist geladen und aktiv verankert.")
                 st.caption("Diese Datei bleibt für die gesamte Sitzung aktiv. Zum Wechseln zuerst entfernen.")
             with col_remove:
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                if st.button("🗑️ Entfernen", use_container_width=True,
+                if st.button("Entfernen", icon=":material/delete:", use_container_width=True,
                              help="Datei aus der Anwendung entfernen, um eine neue hochzuladen"):
                     try:
                         os.remove(st.session_state.edf_path)
@@ -89,7 +89,7 @@ def render():
             if st.session_state.get("phi_pending_path"):
                 _pending_name = st.session_state.get("phi_pending_name", "")
                 st.warning(
-                    f"⚠️ **Datei enthält Patientendaten — Bestätigung erforderlich**\n\n"
+                    f"**Datei enthält Patientendaten — Bestätigung erforderlich**\n\n"
                     f"Die Datei **{_pending_name}** enthält identifizierende Informationen "
                     f"im EDF-Header (Name, Fallnummer oder Aufnahmedatum).\n\n"
                     f"**Empfehlung:** Verwende `anonymize.py` zur lokalen De-Identifikation "
@@ -105,7 +105,7 @@ def render():
                 )
                 col_load, col_cancel = st.columns([2, 1])
                 with col_load:
-                    if st.button("✅ Datei trotzdem laden", disabled=not _phi_accepted,
+                    if st.button("Datei trotzdem laden", icon=":material/check:", disabled=not _phi_accepted,
                                  use_container_width=True, type="primary"):
                         st.session_state.edf_path = st.session_state.pop("phi_pending_path")
                         st.session_state.edf_display_name = st.session_state.pop("phi_pending_name", "")
@@ -113,7 +113,7 @@ def render():
                         st.session_state.phi_has_patient_data = True
                         st.rerun()
                 with col_cancel:
-                    if st.button("❌ Abbrechen", use_container_width=True):
+                    if st.button("Abbrechen", icon=":material/close:", use_container_width=True):
                         try:
                             os.remove(st.session_state.pop("phi_pending_path", ""))
                         except OSError:
@@ -122,7 +122,7 @@ def render():
                         st.rerun()
             else:
                 uploaded = st.file_uploader(
-                    "📁 EDF-Datei hinzufügen — öffnet den Datei-Dialog (Finder)",
+                    ":material/folder_open: EDF-Datei hinzufügen — öffnet den Datei-Dialog (Finder)",
                     type=["edf"], accept_multiple_files=False,
                 )
                 if uploaded is not None:
@@ -251,7 +251,7 @@ def render():
             st.session_state.pediatric_age_group = grp_val
 
     if not edf_path or not os.path.exists(edf_path):
-        st.info("👆 Bitte oben eine EDF-Datei hochladen, um die Vorschau zu sehen.")
+        st.info("Bitte oben eine EDF-Datei hochladen, um die Vorschau zu sehen.", icon=":material/upload_file:")
         return
 
     edf = _edf_preview if _edf_preview else load_and_prepare(edf_path)
@@ -278,7 +278,7 @@ def render():
         sfreq = edf["sfreq"]
         sfreq_note = ""
         if sfreq < 500:
-            sfreq_note = f" ⚠️ <500 Hz — RMSSD-Präzision eingeschränkt"
+            sfreq_note = " · <500 Hz — RMSSD-Präzision eingeschränkt"
         st.caption(f"Format: EDF+D · Encoding: latin1 (NeuroFax) · **Abtastrate EKG: {sfreq:.0f} Hz**{sfreq_note}")
 
     with col_r:
@@ -292,4 +292,4 @@ def render():
         else:
             st.caption("Keine Annotations in dieser Datei.")
 
-    st.success("✅ Datei geladen — wechsle links zu **EEG-Viewer** oder **EKG & HRV**, um die Analyse zu starten.")
+    st.success("Datei geladen — wechsle links zu **EEG-Viewer** oder **EKG & HRV**, um die Analyse zu starten.")

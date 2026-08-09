@@ -150,7 +150,7 @@ def _render_spectral_compare(edf, res):
     eeg_map = edf["eeg_map"]
     section_header("Spektralanalyse — Gesamt vs. artefaktkorrigiert",
                    "Gleiche Analyse einmal über die ganze Aufnahme, einmal nur auf sauberen Segmenten")
-    st.caption(f"🔄 Der Korrigiert-Wert nutzt die **aktuelle** Maske ({_mmss(res.clean_s)} min:s "
+    st.caption(f"Der Korrigiert-Wert nutzt die **aktuelle** Maske ({_mmss(res.clean_s)} min:s "
                f"sauber, {len(res.segments)} Segmente) — aktualisiert sich sofort bei jeder "
                "Bearbeitung oben.")
 
@@ -206,14 +206,14 @@ def _render_spectral_compare(edf, res):
 
     # Impact-Einordnung
     if max_delta < 1.0:
-        st.success(f"✅ **Geringer Artefakt-Impact** — größte Änderung der relativen Bandpower "
+        st.success(f"**Geringer Artefakt-Impact** — größte Änderung der relativen Bandpower "
                    f"nur **{max_delta:.1f} Prozentpunkte**. Über die lange Aufnahme mitteln sich die "
                    "kurzen Artefakte weitgehend heraus; die Gesamt-Auswertung ist hier belastbar.")
     elif max_delta < 3.0:
         st.info(f"ℹ️ **Moderater Artefakt-Impact** — bis **{max_delta:.1f} Prozentpunkte** Unterschied. "
                 "Die korrigierte Auswertung lohnt den Blick.")
     else:
-        st.warning(f"⚠️ **Deutlicher Artefakt-Impact** — bis **{max_delta:.1f} Prozentpunkte** "
+        st.warning(f"**Deutlicher Artefakt-Impact** — bis **{max_delta:.1f} Prozentpunkte** "
                    "Unterschied. Hier verändern die Artefakte das Spektrum spürbar → korrigierte "
                    "Auswertung bevorzugen.")
     st.caption(f"Gesamt: ganze Aufnahme ({_mmss(res.duration_s)} min:s) · "
@@ -226,7 +226,7 @@ def _render_hrv_compare(edf, edf_path, res, overrides_key):
     ecg_channels = edf.get("ecg_channels") or []
     section_header("HRV — Gesamt vs. artefaktkorrigiert",
                    "RR-basierte Herzratenvariabilität, einmal komplett, einmal ohne Bewegungsfenster")
-    st.caption(f"🔄 Der Korrigiert-Wert schließt die Schläge in der **aktuellen** Maske "
+    st.caption(f"Der Korrigiert-Wert schließt die Schläge in der **aktuellen** Maske "
                f"({len(res.segments)} Segmente) aus — aktualisiert sich sofort bei jeder Bearbeitung.")
     if not ecg_channels:
         st.info("Kein EKG-Kanal identifiziert → HRV-Vergleich nicht möglich. Ggf. in der "
@@ -272,12 +272,12 @@ def _render_hrv_compare(edf, edf_path, res, overrides_key):
                f"lagen in Artefakt-Segmenten und wurden für die korrigierte Auswertung entfernt. "
                "Beide Werte zusätzlich um ektopische/implausible Schläge bereinigt (Standard).")
     if rel_change < 5:
-        st.success(f"✅ **Geringer Artefakt-Impact auf die HRV** — SDNN/RMSSD ändern sich um "
+        st.success(f"**Geringer Artefakt-Impact auf die HRV** — SDNN/RMSSD ändern sich um "
                    f"< {max(rel_change,0.1):.0f} %. Die Gesamt-HRV ist hier belastbar.")
     elif rel_change < 15:
         st.info(f"ℹ️ **Moderater Impact** — SDNN/RMSSD ändern sich um bis zu {rel_change:.0f} %.")
     else:
-        st.warning(f"⚠️ **Deutlicher Impact** — SDNN/RMSSD ändern sich um bis zu {rel_change:.0f} % "
+        st.warning(f"**Deutlicher Impact** — SDNN/RMSSD ändern sich um bis zu {rel_change:.0f} % "
                    "→ korrigierte HRV bevorzugen (Bewegung verzerrt die RR-Reihe).")
 
 
@@ -538,7 +538,7 @@ def _render_segment_editor(res_auto, dur):
                    "Auto-Vorschlag anpassen · fließt sofort in Vorher/Nachher-Auswertung")
     if n_add or n_rem:
         cc1, cc2 = st.columns([4, 1])
-        cc1.info(f"✏️ Manuell: **{n_add}** hinzugefügt · **{n_rem}** als kein Artefakt entfernt.")
+        cc1.info(f"Manuell: **{n_add}** hinzugefügt · **{n_rem}** als kein Artefakt entfernt.", icon=":material/edit:")
         if cc2.button("Zurücksetzen", use_container_width=True):
             st.session_state["artifact_overrides"] = {"removed": [], "added": []}
             st.rerun()
@@ -564,25 +564,25 @@ def _render_segment_editor(res_auto, dur):
             if col[4].button("↩︎ doch Artefakt", key=f"reart_{k}", use_container_width=True):
                 ov["removed"].remove(k); st.rerun()
         else:
-            if col[4].button("✗ kein Artefakt", key=f"keep_{k}", use_container_width=True):
+            if col[4].button("kein Artefakt", icon=":material/close:", key=f"keep_{k}", use_container_width=True):
                 ov["removed"].append(k); st.rerun()
 
     # Manuell hinzugefügte
     for i, a in enumerate(ov["added"]):
         col = st.columns([3, 1.4, 2, 2, 2.2])
-        col[0].markdown(f"🖐 **{_mmss(a['start_s'])}–{_mmss(a['end_s'])}** "
+        col[0].markdown(f"**{_mmss(a['start_s'])}–{_mmss(a['end_s'])}** "
                         "<span style='font-size:10px;color:#e67e22'>manuell</span>",
                         unsafe_allow_html=True)
         col[1].markdown(f"{round(a['end_s']-a['start_s'],1)}s")
         col[2].markdown("—"); col[3].markdown("")
-        if col[4].button("🗑 löschen", key=f"del_{i}", use_container_width=True):
+        if col[4].button("löschen", icon=":material/delete:", key=f"del_{i}", use_container_width=True):
             ov["added"].pop(i); st.rerun()
 
     if not res_auto.segments and not ov["added"]:
-        st.success("✅ Keine Artefakt-Segmente — die Aufnahme läuft ruhig durch.")
+        st.success("Keine Artefakt-Segmente — die Aufnahme läuft ruhig durch.")
 
     # Bereich hinzufügen
-    with st.expander("➕ Artefakt-Bereich hinzufügen (übersehenen Bereich ausklammern)"):
+    with st.expander("Artefakt-Bereich hinzufügen (übersehenen Bereich ausklammern)", icon=":material/add:"):
         idx = st.session_state.get("artifact_screen_idx", 0)
         slen = st.session_state.get("artifact_screen_len", 60)
         def_start = float(min(idx * slen, max(0.0, dur - 10)))
@@ -614,7 +614,7 @@ def render():
 
     if not edf.get("eeg_map"):
         st.warning(
-            "⚠️ Keine EEG-Kanäle erkannt. Bitte zuerst auf **🔍 Kanal-Identifikation** die "
+            "Keine EEG-Kanäle erkannt. Bitte zuerst auf **Kanal-Identifikation** die "
             "Kanäle festlegen (EEG / EKG / unbekannt) — die Artefakterkennung baut darauf auf."
         )
         return
@@ -622,7 +622,7 @@ def render():
     overrides_key = str(sorted(st.session_state.get("channel_overrides", {}).items()))
 
     # ── A10: Detektor-Schwellen justierbar ───────────────────────────────────
-    with st.expander("⚙️ Detektor-Einstellungen — Feinjustierung der Artefakt-Erkennung", expanded=False):
+    with st.expander("Detektor-Einstellungen — Feinjustierung der Artefakt-Erkennung", icon=":material/tune:", expanded=False):
         if st.button("Auf Standard zurücksetzen", key="art_reset_params"):
             for k in ("art_flag_sus", "art_consensus", "art_island", "art_region"):
                 st.session_state.pop(k, None)
@@ -667,20 +667,20 @@ def render():
     # Live-Status: WANN/WORAUF die Auswertung basiert
     if edited:
         st.success(
-            f"🔄 **Live aktualisiert.** Spektrum & HRV unten rechnen mit deiner **bearbeiteten** "
+            f"**Live aktualisiert.** Spektrum & HRV unten rechnen mit deiner **bearbeiteten** "
             f"Maske: Auto {len(res_auto.segments)} Segmente, manuell **+{n_add} / −{n_rem}** → "
             f"effektiv **{len(res.segments)} Segmente**, **{res.clean_frac*100:.0f}%** sauber "
             f"(Auto: {res_auto.clean_frac*100:.0f}%). Jede Klick-Änderung wird **sofort** neu berechnet.")
     else:
-        st.info("🔄 Noch keine manuellen Änderungen — es gilt die **Auto-Maske**. Sobald du oben im "
+        st.info("Noch keine manuellen Änderungen — es gilt die **Auto-Maske**. Sobald du oben im "
                 "Canvas Segmente hinzufügst/entfernst, werden **Spektrum & HRV sofort** neu berechnet.")
 
     # Genügend saubere Zeit? (Literatur: ~1–2 min reichen spektral)
     if res.clean_s < 60:
-        st.warning(f"⚠️ Nur **{res.clean_s:.0f}s** sauberes EEG — für stabile Spektralwerte grenzwertig "
+        st.warning(f"Nur **{res.clean_s:.0f}s** sauberes EEG — für stabile Spektralwerte grenzwertig "
                    "(Richtwert ≥ 1–2 min).")
     else:
-        st.caption(f"✅ **{_mmss(res.clean_s)} min:s** sauberes EEG verfügbar "
+        st.caption(f"**{_mmss(res.clean_s)} min:s** sauberes EEG verfügbar "
                    "(Richtwert für stabile Spektralwerte: ≥ 1–2 min).")
 
     # ── Zeitleiste ───────────────────────────────────────────────────────────
@@ -726,7 +726,7 @@ def render():
             "Kanal-Qualitätscheck."
         )
 
-        with st.expander("📊 Alle Kanäle im Vergleich (Boxplot)", expanded=False):
+        with st.expander("Alle Kanäle im Vergleich (Boxplot)", icon=":material/bar_chart:", expanded=False):
             bfig = go.Figure()
             for ch in _amp_chs:
                 bfig.add_trace(go.Box(y=_amp_data[ch], name=ch, marker_color="#2471a3",
@@ -748,7 +748,7 @@ def render():
         section_header("Bad-Channel-Vorschläge", "Elektrode dauerhaft auffällig")
         for b in res.bad_channels:
             st.warning(
-                f"🔌 **{b['name']}** ab **{_mmss(b['since_s'])}** dauerhaft isoliert auffällig "
+                f"**{b['name']}** ab **{_mmss(b['since_s'])}** dauerhaft isoliert auffällig "
                 f"({b['frac']*100:.0f}% der Fenster) — möglicherweise gelöste/defekte Elektrode. "
                 "**Vorschlag:** diese Ableitung aus den Analysen ausblenden. (Noch nur Vorschlag.)"
             )
@@ -811,10 +811,10 @@ def render():
         try:
             pdf_bytes, xlsx_bytes = _export_corrected(edf_path, _seg_tuple, _disp)
             ec1, ec2 = st.columns(2)
-            ec1.download_button("📄 PDF (korrigiert)", pdf_bytes, file_name=f"{_base}.pdf",
+            ec1.download_button("PDF (korrigiert)", pdf_bytes, icon=":material/description:", file_name=f"{_base}.pdf",
                                 mime="application/pdf", use_container_width=True)
             ec2.download_button(
-                "📊 Excel (korrigiert)", xlsx_bytes, file_name=f"{_base}.xlsx",
+                "Excel (korrigiert)", xlsx_bytes, icon=":material/bar_chart:", file_name=f"{_base}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True)
         except Exception as e:

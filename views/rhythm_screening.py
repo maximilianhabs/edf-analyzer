@@ -115,7 +115,7 @@ def render():
     )
     det_method = DETECTOR_METHODS[det_label]
     if det_method is not None:
-        st.caption(f"ℹ️ Aktiver Detektor: **{det_label}** (nicht Default) — Ergebnisse dieser "
+        st.caption(f"Aktiver Detektor: **{det_label}** (nicht Default) — Ergebnisse dieser "
                    "Seite basieren auf diesem Detektor, bis zurückgeschaltet wird.")
 
     sig_uv, peaks_all, fs, was_flipped = _detect(edf_path, ch, det_method)
@@ -144,7 +144,7 @@ def render():
         # DIESER konkreten Aufnahme sichtbar, statt nur zu behaupten. Zeigt exakt den Fehler,
         # den `views/ecg_hrv.py::compute_rr()` aktuell noch macht (Peak-Verfeinerung VOR dem
         # Flip) — Aufklärung, kein Ersatz für den noch ausstehenden Fix dort.
-        with st.expander("🔍 Polaritäts-Check: Analyse mit vs. ohne Korrektur anzeigen"):
+        with st.expander("Polaritäts-Check: Analyse mit vs. ohne Korrektur anzeigen", icon=":material/search:"):
             diag = _detect_flip_diagnostic(edf_path, ch)
             st.markdown(
                 "**Warum das wichtig ist:** Die Peak-Verfeinerung sucht per `argmax()` den "
@@ -269,7 +269,7 @@ def render():
             _detail += (f"<div style='margin-top:8px;padding:6px 10px;background:{_pw_box_col}0d;"
                        f"border-left:3px solid {_pw_box_col};border-radius:4px;font-size:12px;"
                        f"color:{_pw_box_col}'>"
-                       f"{'⚠️' if rhythm.get('pwave_contradiction') else 'ℹ️'} "
+                       f"{status_dot('danger' if rhythm.get('pwave_contradiction') else 'info')} "
                        f"{rhythm['pwave_note']}</div>")
     elif rhythm["verdict"] == "ektopie_richtung":
         _col, _lbl = "#e67e22", f"{status_dot('warning')} Erhöhte Rhythmus-Variabilität"
@@ -587,7 +587,7 @@ def render():
                                 key=f"artgallery_{i}")
                 st.caption(f"t={b0/60:.2f}–{b1/60:.2f}min · {reason}")
 
-    with st.expander("📖 Was bedeutet das? — Methodik", expanded=False):
+    with st.expander("Was bedeutet das? — Methodik", icon=":material/menu_book:", expanded=False):
         st.markdown(
             "**Ablauf:** ① Signalqualität prüfen (Orphanidou et al. 2015, angepasste Schwellen) "
             "→ ② Vorhofflimmern-Screening (CosEn, Lake & Moorman 2011) auf den verbleibenden, "
@@ -600,8 +600,8 @@ def render():
             "können oben per Klick entfernt werden."
         )
 
-    with st.expander("🔬 Stufe①-Regeln im Detail — wonach wird ein 10s-Segment als Artefakt "
-                     "verworfen?", expanded=False):
+    with st.expander("Stufe①-Regeln im Detail — wonach wird ein 10s-Segment als Artefakt "
+                     "verworfen?", icon=":material/science:", expanded=False):
         st.markdown(
             "Jedes 10s-Segment durchläuft bis zu 6 Regeln (`analysis/ecg_quality.py`). Ein "
             "Segment gilt als **Artefakt** (wird von CosEn/Ektopie-Erkennung ausgeschlossen), "
@@ -614,7 +614,7 @@ def render():
             "Segment-Mittel-QRS < 0,66 (bzw. 0,35 im nachsichtigeren AFib-Screening-Modus, "
             "da AFib selbst schwankende Morphologie erzeugt) → kein erkennbarer, "
             "wiederkehrender QRS-Komplex.\n"
-            "4. **🎯 Amplituden-Plausibilität** (die von dir angefragte Regel): Für jeden "
+            "4. **Amplituden-Plausibilität** (die von dir angefragte Regel): Für jeden "
             "Schlag wird die Spitze-zu-Spitze-Amplitude (`peak-to-peak`) in einem Fenster um "
             "die R-Zacke gemessen. Referenz ist die **globale** Baseline — der Median-Wert "
             "über die GESAMTE Aufnahme, nicht nur das einzelne Segment (bewusst so: ein "

@@ -149,7 +149,7 @@ def _render_login():
 
 def logout_button():
     """Logout-Button für Sidebar."""
-    if st.sidebar.button("🔓 Abmelden", use_container_width=True, key="_logout_btn"):
+    if st.sidebar.button("Abmelden", icon=":material/logout:", use_container_width=True, key="_logout_btn"):
         st.session_state.pop("_edf_auth", None)
         try:
             from extra_streamlit_components import CookieManager

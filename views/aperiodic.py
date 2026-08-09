@@ -148,10 +148,10 @@ def render():
 
     edf_path = st.session_state.get("edf_path", "")
     if not edf_path:
-        st.info("👆 Bitte zuerst auf **Datei & Patient** eine EDF-Datei laden.")
+        st.info("Bitte zuerst auf **Datei & Patient** eine EDF-Datei laden.", icon=":material/folder_open:")
         return
     if not st.session_state.get("phi_validated"):
-        st.error("🚫 Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.")
+        st.error("Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.", icon=":material/block:")
         return
 
     edf = load_and_prepare(edf_path)
@@ -196,7 +196,7 @@ def render():
             unsafe_allow_html=True,
         )
 
-    with st.expander("ℹ️ Welchen Kanal wählen?"):
+    with st.expander("Welchen Kanal wählen?", icon=":material/info:"):
         st.markdown(
             "- **⭐ Posterior (O1, O2, Pz, P3, P4)** — beste Wahl: klarster "
             "Alpha-Gipfel und sauberes Signal → der 1/f-Fit ist am zuverlässigsten.\n"
@@ -248,7 +248,7 @@ def render():
           f"{apf_corr:.1f} Hz" if apf_corr == apf_corr else "—",
           "Gipfel über Untergrund", "#27ae60")
 
-    st.caption(f"🌀 **Exponent {exp:.2f}** (1–40 Hz) · **{exp20:.2f}** (1–20 Hz) — "
+    st.caption(f"**Exponent {exp:.2f}** (1–40 Hz) · **{exp20:.2f}** (1–20 Hz) — "
                f"{_exponent_hint(exp, age)}. Das **1–20-Hz-Fenster** ist bei DoC-Patienten "
                f"diagnostisch/prognostisch stärker (Maschke 2025). "
                f"*Orientierend — Forschungsmarker, keine breit etablierte klinische Norm.*")
@@ -266,7 +266,7 @@ def render():
     )
     if _r2_zone != "normal":
         st.warning(
-            f"⚠️ Fit-Güte R² = {r2:.3f} — der 1/f-Untergrund ist in diesem Kanal nur "
+            f"Fit-Güte R² = {r2:.3f} — der 1/f-Untergrund ist in diesem Kanal nur "
             f"{_r2_txt.lower()} beschreibbar (Artefakte, Krümmung/Knee, breite Gipfel). "
             f"Exponent/Offset mit Vorsicht interpretieren."
         )
@@ -389,7 +389,7 @@ def render():
 
     # ── Appendix ──────────────────────────────────────────────────────────────
     st.markdown("---")
-    with st.expander("📖 Was ist die aperiodische Komponente? — Methodik & Literatur", expanded=False):
+    with st.expander("Was ist die aperiodische Komponente? — Methodik & Literatur", icon=":material/menu_book:", expanded=False):
         st.markdown(
             """
 ### Die zwei Anteile des EEG-Spektrums

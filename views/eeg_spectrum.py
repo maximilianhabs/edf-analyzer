@@ -815,10 +815,10 @@ def render():
 
     edf_path = st.session_state.get("edf_path", "")
     if not edf_path:
-        st.info("👆 Bitte zuerst auf **Datei & Patient** eine EDF-Datei laden.")
+        st.info("Bitte zuerst auf **Datei & Patient** eine EDF-Datei laden.", icon=":material/folder_open:")
         return
     if not st.session_state.get("phi_validated"):
-        st.error("🚫 Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.")
+        st.error("Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.", icon=":material/block:")
         return
 
     edf = load_and_prepare(edf_path)
@@ -920,7 +920,7 @@ def render():
     has_consensus = consensus_channels.issubset(set(all_eeg))
 
     if has_consensus:
-        section_header("🧠 Konsensus-Panel", "Posterior O1+O2 vs. Anterior F3+F4 · ACNS-Empfehlung")
+        section_header("Konsensus-Panel", "Posterior O1+O2 vs. Anterior F3+F4 · ACNS-Empfehlung")
         _active_settings_note(use_multitaper, use_art_filter)
         st.caption(
             "ACNS-Empfehlung für Vigilanz- und Verlangsamungsmonitoring. "
@@ -1097,7 +1097,7 @@ def render():
         _cog_p_str = f"{_cog_post:.1f} Hz" if _cog_post == _cog_post else "—"
         _cog_a_str = f"{_cog_ant:.1f} Hz"  if _cog_ant  == _cog_ant  else "—"
         st.caption(
-            f"🎯 **Alpha-Schwerpunkt (CoG, 1/f-korrigiert):** posterior **{_cog_p_str}** · "
+            f"**Alpha-Schwerpunkt (CoG, 1/f-korrigiert):** posterior **{_cog_p_str}** · "
             f"anterior **{_cog_a_str}** — stabiler bei bimodalem Alpha als das reine Maximum. "
             f"Größere Abweichung Max↔CoG deutet auf einen breiten oder doppelgipfligen Alpha-Peak."
         )
@@ -1115,7 +1115,7 @@ def render():
     asym_chs = [c for c in ["O1", "O2", "F3", "F4"] if c in all_eeg]
     if len(asym_chs) >= 2 and ("O1" in asym_chs and "O2" in asym_chs
                                 or "F3" in asym_chs and "F4" in asym_chs):
-        section_header("🔁 Hemisphärische Asymmetrie", "AI = (L−R)/(L+R) × 100% · nach Frequenzband · Nuwer 1997", color="#2980b9")
+        section_header("Hemisphärische Asymmetrie", "AI = (L−R)/(L+R) × 100% · nach Frequenzband · Nuwer 1997", color="#2980b9")
         _active_settings_note(use_multitaper, use_art_filter)
         st.markdown(
             "<div style='background:#f0f4ff;border-left:4px solid #2980b9;"
@@ -1155,11 +1155,14 @@ def render():
                 continue
             lbp = _ch_psds[l_ch]
             rbp = _ch_psds[r_ch]
-            st.markdown(f"**{pair_label}** "
-                        "<span style='font-size:11px;color:#888'>🔵 links dominant · "
-                        "🟠 rechts dominant · roter Rahmen = |AI| > 20 % (auffällig)</span>",
-                        unsafe_allow_html=True)
             _L, _R = "#2980b9", "#e67e22"          # links blau · rechts orange
+            _dot = lambda c: (f"<span style='display:inline-block;width:9px;height:9px;"
+                              f"border-radius:50%;background:{c};margin-right:4px;"
+                              f"vertical-align:middle'></span>")
+            st.markdown(f"**{pair_label}** "
+                        f"<span style='font-size:11px;color:#888'>{_dot(_L)}links dominant · "
+                        f"{_dot(_R)}rechts dominant · roter Rahmen = |AI| > 20 % (auffällig)</span>",
+                        unsafe_allow_html=True)
             ai_cols = st.columns(4)
             for col_w, bname in zip(ai_cols, ["Delta", "Theta", "Alpha", "Beta"]):
                 ai_val = _ai(lbp.get(bname, 0), rbp.get(bname, 0))
@@ -1199,7 +1202,7 @@ def render():
     # ══════════════════════════════════════════════════════════════════════════
     # ANTERIOR-POSTERIOR-GRADIENT (PAR) — ganzer Kopf
     # ══════════════════════════════════════════════════════════════════════════
-    section_header("🧭 Anterior-Posterior-Gradient (PAR)", "Ganzer Kopf · ganzes Gehirn")
+    section_header("Anterior-Posterior-Gradient (PAR)", "Ganzer Kopf · ganzes Gehirn")
     _active_settings_note(use_multitaper, use_art_filter)
     st.markdown(
         "<div style='background:#eef3fb;border-left:4px solid #2471a3;border-radius:8px;"
@@ -1353,7 +1356,7 @@ def render():
     # ══════════════════════════════════════════════════════════════════════════
     # EINZELKANAL-ANALYSE
     # ══════════════════════════════════════════════════════════════════════════
-    section_header("🔬 Einzelkanal-Analyse", "Bandpower · FFT · Klinische Ratios pro Kanal")
+    section_header("Einzelkanal-Analyse", "Bandpower · FFT · Klinische Ratios pro Kanal")
     _active_settings_note(use_multitaper, use_art_filter)
 
     defaults = [c for c in ["O1", "O2"] if c in all_eeg] or all_eeg[:min(2, len(all_eeg))]
@@ -1379,7 +1382,7 @@ def render():
     # ══════════════════════════════════════════════════════════════════════════
     # REFERENZ-EPOCH (einmalig, mit Kanal-Auswahl)
     # ══════════════════════════════════════════════════════════════════════════
-    section_header("🔍 Referenz-Epoch", "Interne Validierung · Kanal wählbar · FFT-Overlay")
+    section_header("Referenz-Epoch", "Interne Validierung · Kanal wählbar · FFT-Overlay")
     _active_settings_note(use_multitaper, use_art_filter)
     st.caption(
         "Wähle einen Kanal und navigiere mit dem Slider (← → Pfeiltasten) zu einem "
@@ -1494,11 +1497,11 @@ def render():
         if ap_fg == ap_fg and ap_rg == ap_rg:
             d = abs(ap_fg - ap_rg)
             if d <= 0.5:
-                st.success(f"✅ Konsistent: Gesamt {ap_fg:.1f} Hz · {val_ch_global}-Referenz {ap_rg:.1f} Hz (Δ {d:.1f} Hz)")
+                st.success(f"Konsistent: Gesamt {ap_fg:.1f} Hz · {val_ch_global}-Referenz {ap_rg:.1f} Hz (Δ {d:.1f} Hz)")
             elif d <= 1.5:
-                st.warning(f"⚠️ Leicht abweichend: {ap_fg:.1f} Hz vs. {ap_rg:.1f} Hz (Δ {d:.1f} Hz) — Augen-zu-Segment wählen?")
+                st.warning(f"Leicht abweichend: {ap_fg:.1f} Hz vs. {ap_rg:.1f} Hz (Δ {d:.1f} Hz) — Augen-zu-Segment wählen?")
             else:
-                st.error(f"❌ Inkonsistent: {ap_fg:.1f} Hz vs. {ap_rg:.1f} Hz (Δ {d:.1f} Hz) — Alpha zustandsabhängig.")
+                st.error(f"Inkonsistent: {ap_fg:.1f} Hz vs. {ap_rg:.1f} Hz (Δ {d:.1f} Hz) — Alpha zustandsabhängig.")
         else:
             st.info("Kein Alpha-Peak detektierbar.")
     else:
@@ -1508,7 +1511,7 @@ def render():
     # APPENDIX — Methodenerklärungen
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("---")
-    with st.expander("📖 Appendix — Parameter, Methoden und klinische Interpretation", expanded=False):
+    with st.expander("Appendix — Parameter, Methoden und klinische Interpretation", icon=":material/menu_book:", expanded=False):
         st.markdown("""
 ### Quantitative EEG-Analyse (qEEG) — Methodengrundlagen
 
