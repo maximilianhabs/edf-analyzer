@@ -1,9 +1,11 @@
 [theme]
+# Design-System Phase 0 (2026-08-08, siehe [[project_edf_ui_redesign]]) — Werte gespiegelt aus
+# core/design_tokens.py (ACCENT/BG_SUBTLE/TEXT_PRIMARY). Bei Änderung dort auch hier nachziehen.
 base = "light"
-primaryColor = "#2471a3"
+primaryColor = "#0071e3"
 backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f4f6f8"
-textColor = "#1c2833"
+secondaryBackgroundColor = "#f5f5f7"
+textColor = "#1d1d1f"
 font = "sans serif"
 
 [server]

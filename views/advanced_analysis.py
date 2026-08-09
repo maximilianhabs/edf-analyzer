@@ -496,7 +496,7 @@ def _render_multitaper(edf, edf_path):
 def render():
     apply_global_style()
     edf, edf_path = get_edf_or_stop()
-    st.title("🔬 Erweiterte Analysen & Methodik")
+    st.title(":material/science: Erweiterte Analysen & Methodik")
     st.markdown(
         "**Add-on** zu den bestehenden Seiten — diese bleiben **unverändert** und sind weiterhin "
         "der Default. Hier werden feinere/validierte Verfahren **parallel** angeboten und mit "

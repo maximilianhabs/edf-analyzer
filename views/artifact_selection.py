@@ -581,7 +581,7 @@ def render():
     apply_global_style()
     edf, edf_path = get_edf_or_stop()
 
-    st.title("🧹 Artefaktkorrektur & EEG/EKG-Selektion")
+    st.title(":material/cleaning_services: Artefaktkorrektur & EEG/EKG-Selektion")
     st.markdown(
         "Markiert **grobe Bewegungs-/Globalartefakte** — bewusst **konservativ** (nur klar "
         "Artefaktbelastetes, kein Blinzeln/Slow-Wave-Sleep). Diese Seite ist ein **zweites Gleis**: "

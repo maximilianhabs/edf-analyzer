@@ -207,57 +207,170 @@ def section_header(title: str, subtitle: str = "", color: str = "#2c3e50") -> No
     )
 
 
+def render_banner(kind: str, title: str, body: str, icon: str = None) -> None:
+    """Einheitlicher Status-Banner (Phase 2 des GUI-Redesigns, siehe [[project_edf_ui_redesign]]).
+
+    Ersetzt die zuvor über ~8 Stellen (rhythm_screening.py, ecg_hrv.py, eeg_spectrum.py,
+    aperiodic.py) verstreuten Ad-hoc-st.markdown-Banner mit je eigenen Hex-Werten durch eine
+    Quelle, die die konsolidierten Farben aus core/design_tokens.py nutzt.
+
+    kind: "info" | "success" | "warning" | "danger" — mappt auf INFO/SUCCESS/WARNING/DANGER.
+    body: darf HTML enthalten (z.B. <br> oder <b>), wird nicht escaped.
+    """
+    from core.design_tokens import DANGER, WARNING, SUCCESS, INFO
+    color = {"info": INFO, "success": SUCCESS, "warning": WARNING, "danger": DANGER}.get(kind, INFO)
+    if icon is None:
+        icon = {"info": "ℹ️", "success": "✅", "warning": "⚠️", "danger": "⚠️"}.get(kind, "ℹ️")
+    st.markdown(
+        f"<div style='background:{color}14;border:1.5px solid {color}66;"
+        f"border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:13px;"
+        f"color:#1d1d1f;line-height:1.5'>"
+        f"{icon} <b style='color:{color}'>{title}:</b> {body}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def apply_global_style():
     """Neutrale, hochwertige Basis-Optik. Klinische Farben (Rot/Blau/Grün/Ampel) bleiben
-    ausschließlich für ihre fachliche Bedeutung reserviert und werden hier nicht verändert."""
-    st.markdown("""
+    ausschließlich für ihre fachliche Bedeutung reserviert und werden hier nicht verändert.
+
+    Phase 0 des GUI-Redesigns (User-Vorgabe 2026-08-08, siehe [[project_edf_ui_redesign]]):
+    CSS-Variablen aus core/design_tokens.py + ein paar Utility-Klassen (.eyebrow/.hero-title/
+    .subtitle/.dw-card) als FUNDAMENT für die kommenden Phasen (Navigation, Status-Banner,
+    Karten, Plotly-Theme). Migriert NICHT rückwirkend bestehende Seiten — die nutzen bis zur
+    jeweiligen Phase weiterhin ihre bisherigen Ad-hoc-Styles, nichts bricht."""
+    from core.design_tokens import (BG_SUBTLE, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
+                                    ACCENT, ACCENT_HOVER, DANGER, WARNING, SUCCESS, INFO,
+                                    RADIUS_SM, RADIUS_MD, RADIUS_LG, RADIUS_XL,
+                                    FONT_EYEBROW_PX, FONT_HERO_PX, FONT_SUBTITLE_PX)
+    st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    html, body, [class*="css"] {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    h1, h2, h3, h4, h5, h6 {
-        font-family: 'Inter', sans-serif;
+    :root {{
+        --dw-bg-subtle: {BG_SUBTLE};
+        --dw-surface: {SURFACE};
+        --dw-border: {BORDER};
+        --dw-text-primary: {TEXT_PRIMARY};
+        --dw-text-secondary: {TEXT_SECONDARY};
+        --dw-accent: {ACCENT};
+        --dw-accent-hover: {ACCENT_HOVER};
+        --dw-danger: {DANGER};
+        --dw-warning: {WARNING};
+        --dw-success: {SUCCESS};
+        --dw-info: {INFO};
+        --dw-radius-sm: {RADIUS_SM}px;
+        --dw-radius-md: {RADIUS_MD}px;
+        --dw-radius-lg: {RADIUS_LG}px;
+        --dw-radius-xl: {RADIUS_XL}px;
+    }}
+
+    html, body, [class*="css"] {{
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    }}
+    h1, h2, h3, h4, h5, h6 {{
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
         font-weight: 600;
         letter-spacing: -0.01em;
-        color: #1c2833;
-    }
-    [data-testid="stMetricValue"] { font-weight: 700; }
+        color: var(--dw-text-primary);
+    }}
+    /* Seitentitel (st.title -> h1): Phase 1, engere Laufweite passend zur Design-Token-Skala.
+    Größe bewusst NICHT auf FONT_HERO_PX erzwungen (Streamlits Default liegt schon nah dran,
+    !important-Kämpfe mit internen Responsive-Regeln würden nur Risiko ohne echten Zugewinn
+    bringen). Icon-Glyphen (:material/...:) etwas transparenter, wirken so wie sekundäre
+    Symbole statt bunte Sticker. */
+    h1 {{ letter-spacing: -0.02em; }}
+    h1 [data-testid="stIconMaterial"] {{ opacity: 0.7; vertical-align: -2px; }}
+    [data-testid="stMetricValue"] {{ font-weight: 700; }}
 
-    /* Sidebar / Navigation */
-    [data-testid="stSidebar"] {
-        background: #fafbfc;
-        border-right: 1px solid #e8eaed;
-    }
-    [data-testid="stSidebarNav"] a {
-        border-radius: 8px;
-        margin: 1px 6px;
+    /* Sidebar / Navigation — Phase 1 (2026-08-08): etwas mehr Luft zwischen den Einträgen,
+    aktive Seite in der Akzentfarbe statt Streamlits Standard-Rot, dezenterer Hover. Reines
+    CSS, keine zusätzlichen Komponenten/Rechenlast. */
+    [data-testid="stSidebar"] {{
+        background: var(--dw-bg-subtle);
+        border-right: 1px solid var(--dw-border);
+    }}
+    [data-testid="stSidebarNav"] a {{
+        border-radius: var(--dw-radius-sm);
+        margin: 2px 8px;
+        padding-top: 8px;
+        padding-bottom: 8px;
         font-weight: 500;
-    }
-    [data-testid="stSidebarNav"] a:hover {
-        background: #eef1f4;
-    }
+        color: var(--dw-text-primary);
+        transition: background 0.12s ease;
+    }}
+    [data-testid="stSidebarNav"] a:hover {{
+        background: rgba(0,0,0,0.04);
+    }}
+    [data-testid="stSidebarNav"] a[aria-current="page"] {{
+        background: color-mix(in srgb, var(--dw-accent) 10%, transparent);
+        color: var(--dw-accent);
+        font-weight: 600;
+    }}
+    [data-testid="stSidebarNav"] a[aria-current="page"] span {{
+        color: var(--dw-accent) !important;
+    }}
 
     /* Karten / Container */
-    div[data-testid="stExpander"] {
-        border-radius: 10px;
+    div[data-testid="stExpander"] {{
+        border-radius: var(--dw-radius-md);
         border: 1px solid #e8eaed;
-    }
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        border-radius: 12px !important;
-    }
-    .stButton button { border-radius: 8px; }
-    hr { margin: 0.6rem 0; opacity: 0.5; }
+    }}
+    div[data-testid="stVerticalBlockBorderWrapper"] {{
+        border-radius: var(--dw-radius-md) !important;
+    }}
+    .stButton button {{ border-radius: var(--dw-radius-sm); }}
+    hr {{ margin: 0.6rem 0; opacity: 0.5; }}
+
+    /* ── Phase-0-Utility-Klassen (Typografie-Skala aus dem Referenz-Prompt, auf
+    App-Seitentitel statt Marketing-Hero herunterskaliert) — ab jetzt für neue/migrierte
+    Seiten nutzbar, siehe [[project_edf_ui_redesign]] Phase 1 ────────────────────────────── */
+    .dw-eyebrow {{
+        font-size: {FONT_EYEBROW_PX}px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+        color: var(--dw-text-secondary);
+        margin-bottom: 4px;
+    }}
+    .dw-hero-title {{
+        font-size: {FONT_HERO_PX}px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        color: var(--dw-text-primary);
+        margin: 0 0 6px 0;
+    }}
+    .dw-subtitle {{
+        font-size: {FONT_SUBTITLE_PX}px;
+        font-weight: 400;
+        color: var(--dw-text-secondary);
+        line-height: 1.4;
+        margin: 0 0 20px 0;
+    }}
+    .dw-card {{
+        background: var(--dw-surface);
+        border: 1px solid var(--dw-border);
+        border-radius: var(--dw-radius-lg);
+        padding: 20px 24px;
+    }}
+    .dw-card-subtle {{
+        background: var(--dw-bg-subtle);
+        border: 1px solid var(--dw-border);
+        border-radius: var(--dw-radius-lg);
+        padding: 20px 24px;
+    }}
 
     /* Mobile-Grundbasis: etwas kompaktere Abstände auf schmalen Bildschirmen */
-    @media (max-width: 640px) {
-        h1 { font-size: 1.4rem !important; }
-        h2 { font-size: 1.15rem !important; }
-        h3 { font-size: 1.0rem !important; }
-        [data-testid="stMetricValue"] { font-size: 1.1rem !important; }
-        .block-container { padding-left: 0.8rem !important; padding-right: 0.8rem !important; }
-    }
+    @media (max-width: 640px) {{
+        h1 {{ font-size: 1.4rem !important; }}
+        h2 {{ font-size: 1.15rem !important; }}
+        h3 {{ font-size: 1.0rem !important; }}
+        [data-testid="stMetricValue"] {{ font-size: 1.1rem !important; }}
+        .block-container {{ padding-left: 0.8rem !important; padding-right: 0.8rem !important; }}
+        .dw-hero-title {{ font-size: 26px; }}
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -357,11 +470,28 @@ def load_and_prepare(path: str):
                 short = make_short_name(ch)
                 eeg_map[short] = ch_idx[ch]
 
-    # ECG channels: require minimum confidence of 60% to avoid wearable-EEG artifacts
+    # ECG channels: require minimum confidence of 60% to avoid wearable-EEG artifacts.
+    # Sortierung: Konfidenz zuerst, bei GLEICHSTAND (z. B. mehrere Kandidaten mit 97%,
+    # wie häufig bei diesem Aufnahmesystem) QRS-Formkonsistenz als Tie-Breaker — sonst
+    # entschied bisher die zufällige Dict-Reihenfolge (=Kanalreihenfolge in der EDF-Datei),
+    # wodurch ecg_channels[0] (der überall als "der" EKG-Kanal verwendet wird, z. B.
+    # Report-Export/Glory-Report) nicht zuverlässig der qualitativ beste Kandidat war
+    # (User-Fund 2026-08-08, siehe [[project_edf_ekg_polaritaet_stellen]]).
     _ECG_MIN_CONF = 60.0
+
+    def _ecg_tiebreak(r):
+        # Dieselbe Amplituden-abgeschmolzene Formkonsistenz wie core/channel_classifier.py
+        # ::_ecg_quality() — bewusst dupliziert statt importiert (core/ bleibt entkoppelt
+        # von der Klassifizierer-internen Post-Processing-Logik), siehe
+        # [[project_edf_ekg_polaritaet_stellen]].
+        p2p = r.features.get("p2p_mv", 0.0)
+        tmpl = r.features.get("qrs_template_corr", 0.0)
+        return tmpl * min(1.0, p2p / 0.3)
+
     ecg_channels = [
         ch for ch, r in sorted(
-            classifications.items(), key=lambda x: -x[1].confidence
+            classifications.items(),
+            key=lambda x: (-x[1].confidence, -_ecg_tiebreak(x[1]))
         )
         if r.channel_type == ECG and r.confidence >= _ECG_MIN_CONF
     ]

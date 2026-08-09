@@ -61,7 +61,7 @@ def render():
         st.stop()
     edf_raw = load_and_prepare(edf_path)
 
-    st.title("🔍 Kanal-Identifikation")
+    st.title(":material/search: Kanal-Identifikation")
     st.markdown(
         "Automatische, signalbasierte Kanalerkennung — "
         "herstellerunabhängig. Typ-Korrekturen werden für alle anderen Ansichten übernommen."

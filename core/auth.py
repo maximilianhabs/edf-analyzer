@@ -101,20 +101,26 @@ def _render_login():
     </div>
     """, unsafe_allow_html=True)
 
-    # Zentriertes Formular unter der Karte
+    # Zentriertes Formular unter der Karte. WICHTIG: st.form statt einzelner
+    # text_input+button — bei zwei unabhängigen Widgets löst Enter im Passwortfeld
+    # zwar einen Rerun aus, aber der Button-Klick-Status bleibt in diesem Rerun False
+    # (der Button wurde ja nicht geklickt), daher passierte vorher "nichts" bei Enter,
+    # bis man zusätzlich klickte (User-Fund 2026-08-08). st.form löst bei Enter in
+    # JEDEM enthaltenen Feld automatisch den form_submit_button aus — behebt das direkt.
     _, col, _ = st.columns([1, 2.2, 1])
     with col:
-        pw = st.text_input(
-            "Passwort",
-            type="password",
-            placeholder="Passwort eingeben",
-            label_visibility="collapsed",
-            key="_login_pw",
-            autocomplete="current-password",
-        )
-        login_clicked = st.button(
-            "Anmelden", use_container_width=True, type="primary", key="_login_btn"
-        )
+        with st.form("_login_form", clear_on_submit=False):
+            pw = st.text_input(
+                "Passwort",
+                type="password",
+                placeholder="Passwort eingeben",
+                label_visibility="collapsed",
+                key="_login_pw",
+                autocomplete="current-password",
+            )
+            login_clicked = st.form_submit_button(
+                "Anmelden", use_container_width=True, type="primary"
+            )
 
     if login_clicked and pw:
         if pw == _PASSWORD:

@@ -126,7 +126,7 @@ def _compute_hrv(edf_path, edf):
 # ── Hauptseite ────────────────────────────────────────────────────────────────
 
 def render():
-    st.title("📋 Report")
+    st.title(":material/description: Report")
     st.caption("Tabellarische Gesamtübersicht — Aufnahme, Herzanalyse, EEG-Spektrum.")
 
     edf, edf_path = get_edf_or_stop()

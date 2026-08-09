@@ -97,6 +97,41 @@ def _peak_freq(freqs, psd, lo, hi):
     return float(freqs[mask][np.argmax(psd[mask])]) if mask.sum() > 1 else float("nan")
 
 
+# Bänder für die dominanzabhängige Peak-Erkennung (User-Konzept 2026-08-08): Delta-
+# Untergrenze bewusst 0,5Hz statt der 1,0Hz-Grenze in BANDS/BAND_DICT (dort für Bandpower-
+# Ratios etabliert, hier NICHT verändert) — sonst ließe sich ein sehr langsames Delta
+# (z. B. 0,5-0,8Hz bei schwerer Enzephalopathie/Koma) nicht von einem saubereren 1,5-2Hz-
+# Delta unterscheiden, genau der vom User genannte Anwendungsfall.
+_DOMINANT_PEAK_BANDS = [
+    ("Delta", (0.5, 4.0)),
+    ("Theta", (4.0, 8.0)),
+    ("Alpha", (8.0, 13.0)),  # wird pro Aufruf durch das altersadaptive alpha_band ersetzt
+    ("Beta",  (13.0, 30.0)),
+]
+
+
+def _dominant_band_peak(freqs, psd, alpha_band=(8.0, 13.0)) -> dict:
+    """Bestimmt, welches der 4 Frequenzbänder im Spektrum die meiste Power trägt, und
+    liefert die Peak-Frequenz INNERHALB dieses dominanten Bandes (User-Konzept 2026-08-08:
+    "schau, was dominiert — wenn Alpha, gib den Alpha-Peak; wenn Theta/Delta dominiert,
+    gib DESSEN Peak" statt immer nur den Alpha-Peak zu berechnen, unabhängig davon, ob
+    überhaupt Alpha-Aktivität vorliegt — z. B. bei Enzephalopathie/Koma mit Theta- oder
+    Delta-Grundrhythmus).
+
+    Rückgabe: {"band": "Delta"|"Theta"|"Alpha"|"Beta", "peak_hz": float,
+    "power_pct": float (Anteil des dominanten Bandes an der Gesamtpower der 4 Bänder)}.
+    """
+    bands = [(n, alpha_band if n == "Alpha" else rng) for n, rng in _DOMINANT_PEAK_BANDS]
+    powers = {n: _band_power(freqs, psd, lo, hi) for n, (lo, hi) in bands}
+    total = sum(powers.values())
+    if total <= 0:
+        return {"band": None, "peak_hz": float("nan"), "power_pct": float("nan")}
+    dom_name = max(powers, key=powers.get)
+    lo, hi = dict(bands)[dom_name]
+    return {"band": dom_name, "peak_hz": _peak_freq(freqs, psd, lo, hi),
+            "power_pct": powers[dom_name] / total * 100.0}
+
+
 @st.cache_data(show_spinner="Berechne LZC-Komplexität…")
 def _lzc_cached(seg_bytes: bytes, n: int, fs: float) -> dict:
     """Gecachte LZC-Berechnung (langsam, O(N²)) — Key = Segment-Bytes."""
@@ -402,6 +437,7 @@ def _fft_figure(signals: dict, t_start, t_end, fs, panel_id,
     alpha_peaks = {}
     alpha_cog = {}
     bp_all = {}
+    dominant_peaks = {}
 
     i0 = int(t_start * fs)
     i1 = int(t_end * fs)
@@ -455,14 +491,24 @@ def _fft_figure(signals: dict, t_start, t_end, fs, panel_id,
         alpha_peaks[label] = ap
         alpha_cog[label] = _peak_freq_cog(freqs, psd, a_lo, a_hi)
         bp_all[label] = {name: _band_power(freqs, psd, lo, hi) for name, (lo, hi), _ in BANDS}
+        dominant_peaks[label] = _dominant_band_peak(freqs, psd, alpha_band=(a_lo, a_hi))
 
-        if ap == ap:
-            pv = float(psd[(np.abs(freqs - ap)).argmin()])
-            fig.add_vline(x=ap, line_color=col, line_width=1.5, line_dash="dash")
+        # Peak-Pfeil im Chart zeigt den DOMINANTEN Band-Peak, nicht mehr fest Alpha (User-
+        # Feedback 2026-08-09): bei einer enzephalopathischen Patientin mit überwiegend
+        # Theta/Delta wirkte ein prominenter "α"-Pfeil auf einen flachen, irrelevanten
+        # Alpha-Gipfel irreführend, während der eigentlich interessante Theta-/Delta-Gipfel
+        # unmarkiert blieb. Label + Farbe folgen jetzt dem tatsächlich dominanten Band.
+        _dom = dominant_peaks[label]
+        _dp = _dom.get("peak_hz", float("nan"))
+        if _dp == _dp:
+            _dcol = BAND_COLOR.get(_dom["band"], col)
+            _dinit = {"Delta": "δ", "Theta": "θ", "Alpha": "α", "Beta": "β"}.get(_dom["band"], "")
+            pv = float(psd[(np.abs(freqs - _dp)).argmin()])
+            fig.add_vline(x=_dp, line_color=_dcol, line_width=1.5, line_dash="dash")
             fig.add_annotation(
-                x=ap, y=pv, text=f"α {ap:.1f}",
-                showarrow=True, arrowhead=2, arrowcolor=col,
-                font=dict(size=10, color=col), yanchor="bottom",
+                x=_dp, y=pv, text=f"{_dinit} {_dp:.1f}",
+                showarrow=True, arrowhead=2, arrowcolor=_dcol,
+                font=dict(size=10, color=_dcol), yanchor="bottom",
             )
 
     fig.update_layout(
@@ -471,7 +517,7 @@ def _fft_figure(signals: dict, t_start, t_end, fs, panel_id,
         plot_bgcolor="#fafafa",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)),
     )
-    return fig, alpha_peaks, alpha_cog, bp_all
+    return fig, alpha_peaks, alpha_cog, bp_all, dominant_peaks
 
 
 def _render_bandpower_and_ratios(bp_all, panel_id):
@@ -612,7 +658,7 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
     st.plotly_chart(fig_trend, use_container_width=True, key=f"trend_{panel_id}")
 
     # FFT + Bandpower
-    fig_fft, alpha_peaks, alpha_cog, bp_all = _fft_figure(
+    fig_fft, alpha_peaks, alpha_cog, bp_all, dominant_peaks = _fft_figure(
         {ch_label: sig_full}, t_start, t_end, fs, panel_id,
         multitaper=multitaper, amp_thresh_uv=amp_thresh_uv, alpha_band=alpha_band,
     )
@@ -765,7 +811,7 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
 
 
 def render():
-    st.title("📊 EEG-Spektrum")
+    st.title(":material/bar_chart: EEG-Spektrum")
     st.caption("Spektrogramm, FFT und Bandpower — Konsensus-Panel (O1/O2 + F3/F4) + Einzelkanal.")
 
     edf_path = st.session_state.get("edf_path", "")
@@ -924,7 +970,7 @@ def render():
         # gemittelt — deshalb hier Kanallisten statt der zeitgemittelten Signale.
         mt_label = " · Multitaper" if use_multitaper else " · Welch"
         st.markdown(f"**FFT-Vergleich — Fenster {t_start}–{t_end} s**{mt_label}")
-        fig_fft, alpha_peaks, alpha_cog, bp_all = _fft_figure(
+        fig_fft, alpha_peaks, alpha_cog, bp_all, dominant_peaks = _fft_figure(
             {"Posterior (O1+O2)": [_get("O1"), _get("O2")],
              "Anterior (F3+F4)":  [_get("F3"), _get("F4")]},
             t_start, t_end, fs, "cons",
@@ -971,6 +1017,8 @@ def render():
             "alpha_cog_post_hz":  _cog_post,
             "alpha_cog_ant_hz":   _cog_ant,
             "ap_ratio": _bp_post.get("Alpha", 0) / (_bp_ant.get("Alpha", 0) or 1e-9),
+            "dominant_band_post": dominant_peaks.get("Posterior (O1+O2)"),
+            "dominant_band_ant":  dominant_peaks.get("Anterior (F3+F4)"),
         }
 
         # Kennzahlen-Kacheln
@@ -993,31 +1041,65 @@ def render():
                 return "#e6a817"
             return "#c0392b"
 
-        def _kpi_card(label, value, norm_text, dot_color=None):
+        def _kpi_card(label, value, norm_text, dot_color=None, border_color="#2471a3",
+                      muted=False):
             _dot = (f"<span style='color:{dot_color};font-size:15px;margin-left:6px'>●</span>"
                     if dot_color else "")
+            _op  = "0.55" if muted else "1"
             return (
-                "<div style='background:var(--surface-1,#f8f9fa);border:0.5px solid var(--border);"
-                "border-top:3px solid #2471a3;border-radius:0 10px 10px 0;padding:10px 12px'>"
+                f"<div style='background:var(--surface-1,#f8f9fa);border:0.5px solid var(--border);"
+                f"border-top:3px solid {border_color};border-radius:0 10px 10px 0;"
+                f"padding:10px 12px;opacity:{_op}'>"
                 f"<div style='font-size:11px;color:var(--text-secondary,#6b7684)'>{label}</div>"
                 f"<div style='font-size:20px;font-weight:800;color:var(--text-primary,#1c2833)'>"
                 f"{value}{_dot}</div>"
                 f"<div style='font-size:10px;color:var(--text-muted,#98a3b0);margin-top:3px'>"
                 f"{norm_text}</div></div>")
 
+        # ── Dominante Frequenz je Region (User-Feedback 2026-08-09) ─────────────
+        # Statt eines separaten Disclaimer-Banners: eine Kachel im selben Stil wie die
+        # Alpha-Peak-Kacheln, die BEIDE nebeneinander zeigt — welches Band tatsächlich
+        # dominiert wird über die Randfarbe (BAND_COLOR) sichtbar, die Betonung
+        # (voll/gedämpft) über den Leistungsanteil. Ist Alpha selbst das dominante Band
+        # (häufigster Fall), bleiben Alpha-Peak- und Dominante-Frequenz-Kachel bewusst
+        # gleichrangig (keine Redundanz-Unterdrückung nötig, beide zeigen dasselbe).
+        _dom_post = dominant_peaks.get("Posterior (O1+O2)", {})
+        _dom_ant  = dominant_peaks.get("Anterior (F3+F4)", {})
+        _alpha_pct_post = bp_p.get("Alpha", 0) / total_p * 100
+        _alpha_pct_ant  = bp_a.get("Alpha", 0) / total_a * 100
+
+        def _dom_card(dom, label):
+            band = dom.get("band")
+            if not band:
+                return _kpi_card(label, "—", "kein auswertbares Band", muted=True)
+            pct = dom.get("power_pct", 0.0)
+            val = f"{dom['peak_hz']:.1f} Hz" if dom["peak_hz"] == dom["peak_hz"] else "—"
+            # Betonung nach Dominanz-Stärke: >40% = voll hervorgehoben, <15% = gedämpft
+            return _kpi_card(f"{label} ({band})", val, f"{pct:.0f}% der Bandpower",
+                             border_color=BAND_COLOR.get(band, "#2471a3"), muted=pct < 15)
+
         _apk_p_str = f"{ap_post:.1f} Hz" if ap_post == ap_post else "—"
         _apk_a_str = f"{ap_ant:.1f} Hz"  if ap_ant  == ap_ant  else "—"
-        k1, k2, k3, k4 = st.columns(4)
+        # Alpha-Peak-Kacheln gedämpft, wenn Alpha selbst kaum Anteil hat (<15%) — genau
+        # der vom User beschriebene Fall (enzephalopathische Patientin, Alpha spielt
+        # keine Rolle) soll den Alpha-Peak nicht mehr prominent zeigen.
+        k1, k2, k3 = st.columns(3)
         k1.markdown(_kpi_card("Alpha-Peak posterior", _apk_p_str, "Norm 9–11 Hz",
-                              _apk_dot_cons(ap_post)), unsafe_allow_html=True)
+                              _apk_dot_cons(ap_post), muted=_alpha_pct_post < 15),
+                    unsafe_allow_html=True)
         k2.markdown(_kpi_card("Alpha-Peak anterior", _apk_a_str,
-                              "kein fester Normbereich · sollte < posterior sein"),
+                              "kein fester Normbereich · sollte < posterior sein",
+                              muted=_alpha_pct_ant < 15),
                     unsafe_allow_html=True)
-        k3.markdown(_kpi_card("Rel. Alpha posterior", f"{bp_p.get('Alpha',0)/total_p*100:.1f}%",
+        k3.markdown(_dom_card(_dom_post, "Dominante Frequenz posterior"), unsafe_allow_html=True)
+        k4, k5, k6 = st.columns(3)
+        k4.markdown(_dom_card(_dom_ant, "Dominante Frequenz anterior"), unsafe_allow_html=True)
+        k5.markdown(_kpi_card("Rel. Alpha posterior", f"{_alpha_pct_post:.1f}%",
                               "kein fester %-Normbereich (montage-/referenzabhängig) · "
-                              "siehe Alpha/Theta-Ratio (Norm 1,5–6,0) unten"),
+                              "siehe Alpha/Theta-Ratio (Norm 1,5–6,0) unten",
+                              muted=_alpha_pct_post < 15),
                     unsafe_allow_html=True)
-        k4.markdown(_kpi_card("Rel. Delta anterior", f"{bp_a.get('Delta',0)/total_a*100:.1f}%",
+        k6.markdown(_kpi_card("Rel. Delta anterior", f"{bp_a.get('Delta',0)/total_a*100:.1f}%",
                               "kein fester %-Normbereich (montage-/referenzabhängig) · "
                               "siehe DAR Delta/Alpha-Ratio (Norm 0,0–1,5) unten"),
                     unsafe_allow_html=True)
