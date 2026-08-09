@@ -311,20 +311,33 @@ def collect_sections(edf: dict, edf_path: str, corr_segments=None,
         ef = _eeg_metrics(edf, edf_path, None)
         ec = _eeg_metrics(edf, edf_path, corr_segments) if corr_segments else {}
         if ef:
-            _add_eeg_sections(sections, ef, ec)
+            _add_eeg_sections(sections, ef, ec, age=age)
 
     # ── Validierte Zusatzverfahren (eigen vs. validiert) ──────────────────────
     _add_validated(sections, edf, edf_path, has_ecg, em)
     return sections
 
 
-def _add_eeg_sections(sections, ef, ec):
+def _add_eeg_sections(sections, ef, ec, age=None):
+    from analysis.report_metadata import grade_eeg, EEG_PARAM_DEFS
     gc = ["Parameter", "Gesamt", "Korrigiert", "Einheit", "Norm / Deutung"]
+    gc6 = ["Parameter", "Gesamt", "Korrigiert", "Bewertung", "Einheit", "Referenz"]
 
     def pair(dfull, dcorr, key, sub=None, fmt=".1f"):
         gv = (dfull.get(key, {}).get(sub) if sub else dfull.get(key)) if dfull else None
         cv = (dcorr.get(key, {}).get(sub) if sub else dcorr.get(key)) if dcorr else None
         return _f(gv, fmt), _f(cv, fmt)
+
+    def graded_row(param, key, fmt=".2f"):
+        """Baut eine [Label,Gesamt,Korrigiert,Bewertung,Einheit,Referenz]-Zeile — Bewertung
+        bezieht sich auf den GESAMT-Wert (wie im HRV-Teil). Nutzt dieselben Zonen-Schwellen
+        wie die Live-App (views/eeg_spectrum.py), damit Report und App nicht auseinanderlaufen
+        — siehe [[project_edf_report_audit]] für den Gesamtplan der Report-Überarbeitung."""
+        meta = EEG_PARAM_DEFS[param]
+        gv, cv_ = ef.get(key), (ec.get(key) if ec else None)
+        grade = grade_eeg(param, gv, age=age)
+        return [meta["label"], _f(gv, fmt), _f(cv_, fmt) if ec else "—",
+                grade["label"], meta["unit"], grade["ref_text"]], grade["zone"]
 
     rows = []
     for bn in _BN:
@@ -343,42 +356,74 @@ def _add_eeg_sections(sections, ef, ec):
             rows.append([f"{bn} relativ", g, c, "%", note])
         sections.append({"name": "EEG-Bandpower anterior F3/F4", "columns": gc, "rows": rows})
 
-    sections.append({"name": "EEG — Alpha-Gipfel & A/P-Gradient", "columns": gc, "rows": [
-        ["Alpha-Gipfel posterior", *pair(ef, ec, "ap_post", fmt=".2f"), "Hz", "8–13 (Norm 9–11)"],
-        ["Alpha-Peak CoG posterior", *pair(ef, ec, "cog_post", fmt=".2f"), "Hz", "Schwerpunkt, robuster"],
-        ["Alpha-Gipfel anterior", *pair(ef, ec, "ap_ant", fmt=".2f"), "Hz", "< posterior"],
-        ["Post/Ant Alpha-Ratio", *pair(ef, ec, "ap_ratio", fmt=".2f"), "Ratio", "> 1 posterior-dominant"],
-        ["Alpha-PAR (ganzer Kopf)", _f(ef.get("par"), ".2f"), "—", "—", "> 1 posterior-dominant (nur Gesamt)"],
-        ["Exponent-Gradient post−ant", _f(ef.get("exp_grad"), "+.2f"), "—", "—", "+ = posterior steiler (nur Gesamt)"],
-    ]})
+    rows6, zones6 = [], []
+    for param, key, fmt in [("ap_post", "ap_post", ".2f"), ("ap_ratio", "ap_ratio", ".2f"),
+                            ("par", "par", ".2f")]:
+        r, z = graded_row(param, key, fmt); rows6.append(r); zones6.append(z)
+    # Ungraded Zusatzwerte (kein etablierter eigener Cutoff) im selben, größeren Rahmen
+    rows6.append(["Alpha-Peak CoG posterior", *pair(ef, ec, "cog_post", fmt=".2f"), "—", "Hz",
+                 "Schwerpunkt (robuster als Gipfel)"])
+    zones6.append("info")
+    rows6.append(["Alpha-Gipfel anterior", *pair(ef, ec, "ap_ant", fmt=".2f"), "—", "Hz",
+                 "erwartet < posterior"])
+    zones6.append("info")
+    rows6.append(["Exponent-Gradient post−ant", _f(ef.get("exp_grad"), "+.2f"), "—", "—", "—",
+                 "+ = posterior steiler (nur Gesamt)"])
+    zones6.append("info")
+    sections.append({"name": "EEG — Alpha-Gipfel & A/P-Gradient", "columns": gc6,
+                     "rows": rows6, "zones": zones6})
+
+    # Klinische Frequenzratios: bewusst OHNE Bewertungs-Spalte — die App selbst nutzt hierfür
+    # keine festen, klinisch validierten Cutoffs (Texte sind explizit "orientierend"/
+    # "Frühmarker"), eine erfundene Ampel-Schwelle wäre hier Overclaiming.
     sections.append({"name": "EEG — klinische Frequenzratios (posterior)", "columns": gc, "rows": [
-        ["Delta/Alpha (DAR)", *pair(ef, ec, "dar", fmt=".3f"), "Ratio", "0–1,5 · ↑ Verlangsamung"],
-        ["Theta/Alpha (TAR)", *pair(ef, ec, "tar", fmt=".3f"), "Ratio", "0,2–0,7 · Frühmarker"],
-        ["Alpha/Theta", *pair(ef, ec, "atr", fmt=".3f"), "Ratio", "1,5–6 · Vigilanz (↑ = wach)"],
-        ["Theta/Beta (TBR)", *pair(ef, ec, "tbr", fmt=".3f"), "Ratio", "0,5–2 · Schläfrigkeit"],
-        ["DTAB (D+T)/(A+B)", *pair(ef, ec, "dtab", fmt=".3f"), "Ratio", "< 0,5 · kort. Funktion"],
-    ]})
-    lzf = ef.get("lzc", {}); lzc = ec.get("lzc", {}) if ec else {}
-    sections.append({"name": "EEG — Verlangsamung, Aperiodik (1/f) & Komplexität", "columns": gc, "rows": [
-        ["SEF95", *pair(ef, ec, "sef95"), "Hz", "↓ = Verlangsamung"],
-        ["Medianfrequenz (SEF50)", *pair(ef, ec, "medf"), "Hz", "↓ = Verlangsamung"],
-        ["Aperiod. Exponent 1–20 Hz (eigen)", *pair(ef, ec, "exp_own", fmt=".2f"), "—", f"R²={_f(ef.get('r2_own'), '.2f')} · flach=aktiviert"],
-        ["Alpha flattened", *pair(ef, ec, "flat_alpha", fmt=".2f"), "—", "> 0 = echter Gipfel"],
-        ["Sample Entropy", *pair(ef, ec, "sampen", fmt=".2f"), "—", "↓ = regelmäßig"],
-        ["Permutationsentropie", *pair(ef, ec, "permen", fmt=".2f"), "—", "Bandt-Pompe · ↓ = regelmäßig"],
-        ["LZC (shuffle)", _f(lzf.get("shuffle"), ".2f"), _f(lzc.get("shuffle"), ".2f"), "—", "↑ = komplex"],
-        ["LZC (phase)", _f(lzf.get("phase"), ".2f"), _f(lzc.get("phase"), ".2f"), "—", "> 1 = spektral-unabh."],
+        ["Delta/Alpha (DAR)", *pair(ef, ec, "dar", fmt=".3f"), "Ratio", "0–1,5 · ↑ Verlangsamung (orientierend)"],
+        ["Theta/Alpha (TAR)", *pair(ef, ec, "tar", fmt=".3f"), "Ratio", "0,2–0,7 · Frühmarker (orientierend)"],
+        ["Alpha/Theta", *pair(ef, ec, "atr", fmt=".3f"), "Ratio", "1,5–6 · Vigilanz (orientierend, ↑ = wach)"],
+        ["Theta/Beta (TBR)", *pair(ef, ec, "tbr", fmt=".3f"), "Ratio", "0,5–2 · Schläfrigkeit (orientierend)"],
+        ["DTAB (D+T)/(A+B)", *pair(ef, ec, "dtab", fmt=".3f"), "Ratio", "< 0,5 · kort. Funktion (orientierend)"],
     ]})
 
+    lzf = ef.get("lzc", {}); lzc = ec.get("lzc", {}) if ec else {}
+    rows6, zones6 = [], []
+    r, z = graded_row("exp_own", "exp_own", ".2f")
+    r[5] += f" · R²={_f(ef.get('r2_own'), '.2f')}"
+    rows6.append(r); zones6.append(z)
+    for lbl, key, fmt, note in [
+        ("SEF95", "sef95", ".1f", "↓ = Verlangsamung (orientierend)"),
+        ("Medianfrequenz (SEF50)", "medf", ".1f", "↓ = Verlangsamung (orientierend)"),
+        ("Alpha flattened", "flat_alpha", ".2f", "> 0 = echter Gipfel über dem 1/f-Untergrund"),
+        ("Sample Entropy", "sampen", ".2f", "↓ = regelmäßig (kein etablierter Cutoff)"),
+        ("Permutationsentropie", "permen", ".2f", "Bandt-Pompe · ↓ = regelmäßig (kein Cutoff)"),
+    ]:
+        g, c = pair(ef, ec, key, fmt=fmt)
+        unit = "Hz" if key in ("sef95", "medf") else "—"
+        rows6.append([lbl, g, c, "—", unit, note])
+        zones6.append("info")
+    rows6.append(["LZC (shuffle)", _f(lzf.get("shuffle"), ".2f"), _f(lzc.get("shuffle"), ".2f"),
+                 "—", "—", "↑ = komplex (kein etablierter Cutoff)"])
+    zones6.append("info")
+    rows6.append(["LZC (phase)", _f(lzf.get("phase"), ".2f"), _f(lzc.get("phase"), ".2f"),
+                 "—", "—", "> 1 = spektral-unabhängig"])
+    zones6.append("info")
+    sections.append({"name": "EEG — Verlangsamung, Aperiodik (1/f) & Komplexität",
+                     "columns": gc6, "rows": rows6, "zones": zones6})
+
     # Asymmetrie: Gesamt(abs) + Korrigiert(abs); relative Variante in Validiert-Sektion
-    rows = []
+    rows6, zones6 = [], []
     for lbl in ("O1/O2", "F3/F4"):
         for bn in _BN:
             gv = ef.get("ai", {}).get((lbl, bn, "abs"))
             cv = ec.get("ai", {}).get((lbl, bn, "abs")) if ec else None
-            flag = " ⚠" if (gv == gv and abs(gv) > 20) else ""
-            rows.append([f"AI {bn} ({lbl})", (f"{_f(gv, '.0f')}{flag}"), _f(cv, ".0f"), "%", "|AI| ≤ 20 normal (Nuwer)"])
-    sections.append({"name": "EEG — Hemisphärische Asymmetrie (absolut)", "columns": gc, "rows": rows})
+            grade = grade_eeg("ai", gv)
+            rows6.append([f"AI {bn} ({lbl})", _f(gv, ".0f"), _f(cv, ".0f"),
+                         grade["label"], "%", grade["ref_text"]])
+            zones6.append(grade["zone"])
+    sections.append({"name": "EEG — Hemisphärische Asymmetrie (absolut)", "columns": gc6,
+                     "rows": rows6, "zones": zones6})
+
+    sections.append({"name": "EEG — Begriffserklärungen", "columns": ["Parameter", "Erklärung"],
+                     "rows": [[v["label"], v["definition"]] for v in EEG_PARAM_DEFS.values()]})
 
 
 def _add_validated(sections, edf, edf_path, has_ecg, em):

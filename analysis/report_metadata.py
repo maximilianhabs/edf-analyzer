@@ -88,6 +88,78 @@ _ZONE_LABEL = {"normal": "normal", "pathologisch": "auffällig", "grenzwertig": 
               "info": "—"}
 
 
+# ── EEG-Parameter: Label, Einheit, kurze Erklärung ─────────────────────────────────────────
+EEG_PARAM_DEFS = {
+    "par":         {"label": "Alpha-PAR (ganzer Kopf)", "unit": "Ratio",
+                    "definition": "Anterior-Posterior-Ratio des Alpha-Bands über den ganzen "
+                                  "Kopf — Maß des posterioren Grundrhythmus (Colombo 2023/"
+                                  "Maschke 2025). >1 = physiologisch posterior-dominantes Alpha."},
+    "ap_ratio":    {"label": "Post/Ant Alpha-Ratio", "unit": "Ratio",
+                    "definition": "Verhältnis der Alpha-Power posterior (O1/O2) zu anterior "
+                                  "(F3/F4) — analog zur Alpha-PAR, aber elektrodenpaarbasiert."},
+    "ap_post":     {"label": "Alpha-Gipfel posterior", "unit": "Hz",
+                    "definition": "Frequenz des dominanten Alpha-Peaks über den posterioren "
+                                  "Elektroden (O1/O2) — der klassische posterior dominant rhythm."},
+    "exp_own":     {"label": "Aperiod. Exponent 1–20 Hz", "unit": "—",
+                    "definition": "Steilheit des 1/f-Hintergrundspektrums (aperiodische "
+                                  "Komponente, ohne Alpha/Beta-Rhythmen) — Proxy für die "
+                                  "Erregungs-/Hemmungs-Balance (E/I) des Kortex (Gao/Voytek 2017)."},
+    "ai":          {"label": "Asymmetrie-Index (AI)", "unit": "%",
+                    "definition": "(links−rechts)/(links+rechts) × 100 % je Frequenzband — "
+                                  "Interhemisphären-Vergleich der Bandpower (Nuwer 1997)."},
+}
+
+
+def grade_eeg(param: str, value, age=None, band: str = None) -> dict:
+    """Laborwert-Bewertung eines EEG-Parameters — nutzt dieselben Zonen-Schwellen wie die
+    Live-App-Seiten (`views/eeg_spectrum.py`), damit Report und App nie auseinanderlaufen.
+    `age` nötig für "ap_post" (altersadaptives Alpha-Suchband) und "exp_own" (altersadaptierter
+    Exponenten-Erwartungsbereich). `band` nötig für "ai" (nur informativ im ref_text)."""
+    if value is None or (isinstance(value, float) and value != value):
+        return {"zone": "info", "label": "—", "ref_text": "—"}
+
+    if param in ("par", "ap_ratio"):
+        # Identische Schwellen wie views/eeg_spectrum.py (_pzone/_apl-Logik)
+        if value >= 1.0:
+            zone, label = "normal", "normal"
+        elif value >= 0.6:
+            zone, label = "grenzwertig", "grenzwertig"
+        else:
+            zone, label = "pathologisch", "auffällig"
+        return {"zone": zone, "label": label, "ref_text": "≥ 1,0 (posterior-dominant)"}
+
+    if param == "ai":
+        # Binäres Nuwer-1997-Kriterium, identisch zur Live-App (kein zusätzlicher Zwischenwert
+        # erfunden — nur EIN publizierter Cutoff bekannt)
+        if abs(value) <= 20:
+            zone, label = "normal", "normal"
+        else:
+            zone, label = "pathologisch", "auffällig"
+        return {"zone": zone, "label": label, "ref_text": "|AI| ≤ 20 %"}
+
+    if param == "ap_post":
+        from views.eeg_spectrum import _alpha_band
+        lo, hi = _alpha_band(age if age is not None else 50)
+        if lo <= value <= hi:
+            zone, label = "normal", "normal"
+        elif lo - 1.0 <= value <= hi + 1.0:
+            zone, label = "grenzwertig", "grenzwertig"
+        else:
+            zone, label = "pathologisch", "auffällig"
+        return {"zone": zone, "label": label, "ref_text": f"{lo:.0f}–{hi:.0f} (altersadaptiv)"}
+
+    if param == "exp_own":
+        from views.aperiodic import _age_expected_band
+        lo, hi, _lbl = _age_expected_band(age if age is not None else 50)
+        if lo <= value <= hi:
+            zone, label = "normal", "normal"
+        else:
+            zone, label = "grenzwertig", "grenzwertig"
+        return {"zone": zone, "label": label, "ref_text": f"{lo:.1f}–{hi:.1f} ({_lbl})"}
+
+    return {"zone": "info", "label": "—", "ref_text": "—"}
+
+
 def grade_hrv(param: str, value, age, heart_rate, rmssd_ms=None, is_pediatric: bool = False) -> dict:
     """Einheitliche Laborwert-Bewertung eines HRV-Parameters — Hansen 2024 (Erwachsene)
     bzw. Gąsior 2018 (Kinder), IDENTISCH zur Live-App (`views/ecg_hrv.py::classify_parameter`,
