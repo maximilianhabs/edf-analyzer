@@ -6,19 +6,38 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 
-from core.shared import get_edf_or_stop, section_header, apply_global_style
+from core.shared import get_edf_or_stop, section_header, apply_global_style, status_dot
 from core.channel_classifier import ECG, EEG, EOG, EMG, REF, VITAL, UNKN
 
 
 _TYPE_META = {
-    ECG:   {"icon": "❤️",  "color": "#c0392b", "label": "EKG"},
-    EEG:   {"icon": "🧠",  "color": "#2471a3", "label": "EEG"},
-    EOG:   {"icon": "👁",  "color": "#8e44ad", "label": "EOG"},
-    EMG:   {"icon": "💪",  "color": "#e67e22", "label": "EMG"},
-    REF:   {"icon": "⏚",   "color": "#7f8c8d", "label": "Referenz"},
-    VITAL: {"icon": "📊",  "color": "#27ae60", "label": "Vital"},
-    UNKN:  {"icon": "❓",  "color": "#95a5a6", "label": "Unbekannt"},
+    ECG:   {"icon": "ecg_heart",   "color": "#c0392b", "label": "EKG"},
+    EEG:   {"icon": "neurology",   "color": "#2471a3", "label": "EEG"},
+    EOG:   {"icon": "visibility",  "color": "#8e44ad", "label": "EOG"},
+    EMG:   {"icon": "fitness_center", "color": "#e67e22", "label": "EMG"},
+    REF:   {"icon": "⏚",           "color": "#7f8c8d", "label": "Referenz"},
+    VITAL: {"icon": "vital_signs", "color": "#27ae60", "label": "Vital"},
+    UNKN:  {"icon": "help",        "color": "#95a5a6", "label": "Unbekannt"},
 }
+
+
+def _type_icon_html(meta: dict, size: str = "1.6rem") -> str:
+    """Material-Symbols-Glyph für einen Kanaltyp (Phase 6 GUI-Redesign, siehe
+    [[project_edf_ui_redesign]]) — ersetzt die bisherigen Emoji in `_TYPE_META`. Für
+    unsafe_allow_html-Kontexte (rohes HTML). `REF` behält sein technisches Massesymbol
+    (⏚, kein Emoji, bleibt unverändert)."""
+    icon = meta["icon"]
+    if icon == "⏚":
+        return f"<span style='font-size:{size}'>{icon}</span>"
+    return (f"<span class='material-symbols-outlined' "
+            f"style='font-size:{size};color:{meta['color']}'>{icon}</span>")
+
+
+def _type_icon_md(meta: dict) -> str:
+    """Wie `_type_icon_html`, aber als Streamlit-Shortcode-Text (`:material/...:`) für
+    Widget-Labels (z. B. st.expander), die kein rohes HTML rendern."""
+    icon = meta["icon"]
+    return icon if icon == "⏚" else f":material/{icon}:"
 
 _ALL_TYPES = [EEG, ECG, EOG, EMG, REF, VITAL, UNKN]
 
@@ -54,10 +73,11 @@ def render():
     from core.shared import load_and_prepare, get_edf_path, apply_channel_overrides
     edf_path = get_edf_path()
     if not edf_path or not __import__("os").path.exists(edf_path):
-        st.info("👈 Bitte zuerst auf der Seite **Datei & Patient** eine gültige EDF-Datei wählen.")
+        st.info("Bitte zuerst auf der Seite **Datei & Patient** eine gültige EDF-Datei wählen.",
+               icon=":material/folder_open:")
         st.stop()
     if not st.session_state.get("phi_validated"):
-        st.error("🚫 Datei nicht validiert.")
+        st.error("Datei nicht validiert.", icon=":material/block:")
         st.stop()
     edf_raw = load_and_prepare(edf_path)
 
@@ -81,8 +101,9 @@ def render():
         oc1, oc2 = st.columns([4, 1])
         with oc1:
             st.info(
-                f"✏️ **{n_overrides} manuelle {'Korrektur' if n_overrides==1 else 'Korrekturen'} aktiv** — "
-                "werden in EEG-Viewer, EKG & HRV und Report verwendet."
+                f"**{n_overrides} manuelle {'Korrektur' if n_overrides==1 else 'Korrekturen'} aktiv** — "
+                "werden in EEG-Viewer, EKG & HRV und Report verwendet.",
+                icon=":material/edit:",
             )
         with oc2:
             if st.button("Alle zurücksetzen", type="secondary", use_container_width=True):
@@ -106,7 +127,7 @@ def render():
                 f"<div style='text-align:center;padding:12px 6px;"
                 f"border-radius:10px;border:1px solid {meta['color']}20;"
                 f"background:{meta['color']}08'>"
-                f"<div style='font-size:1.6rem'>{meta['icon']}</div>"
+                f"<div style='font-size:1.6rem'>{_type_icon_html(meta)}</div>"
                 f"<div style='font-size:1.4rem;font-weight:700;color:{meta['color']}'>{n}</div>"
                 f"<div style='font-size:0.75rem;color:#555'>{meta['label']}</div>"
                 f"</div>",
@@ -129,14 +150,15 @@ def render():
 
     if len(_present) < 16:
         st.warning(
-            f"⚠️ **Nur {len(_present)} / 19 Standard-10-20-Elektroden als EEG erkannt** — "
+            f"**Nur {len(_present)} / 19 Standard-10-20-Elektroden als EEG erkannt** — "
             f"fehlen: {', '.join(sorted(_missing))}. Für eine vollständige Montage (z. B. "
             f"Doppelte Banane) reicht das evtl. nicht. Häufige Ursache: Artefakte / "
-            f"Muskelaktivität → betroffene Kanäle unten manuell auf **EEG** korrigieren."
+            f"Muskelaktivität → betroffene Kanäle unten manuell auf **EEG** korrigieren.",
+            icon=":material/warning:",
         )
     elif _missing:
         st.info(
-            f"ℹ️ {len(_present)} / 19 Standard-Elektroden als EEG erkannt · "
+            f"{len(_present)} / 19 Standard-Elektroden als EEG erkannt · "
             f"nicht dabei: {', '.join(sorted(_missing))}"
         )
 
@@ -144,16 +166,22 @@ def render():
         _ecg_names = [ch for ch, r in classifications.items()
                       if overrides.get(ch, r.channel_type) == ECG]
         st.info(
-            f"❤️ **{_n_ecg} EKG-Kandidaten erkannt** ({', '.join(_ecg_names)}) — "
+            f"**{_n_ecg} EKG-Kandidaten erkannt** ({', '.join(_ecg_names)}) — "
             f"physiologisch gibt es meist nur **einen**. Im EKG-Viewer den korrekten Kanal "
-            f"wählen; die übrigen unten ggf. auf einen anderen Typ korrigieren."
+            f"wählen; die übrigen unten ggf. auf einen anderen Typ korrigieren.",
+            icon=":material/ecg_heart:",
         )
 
     # ── Filter & Sort ────────────────────────────────────────────────────────
     section_header("Kanäle im Detail")
-    st.caption("Die **Kopfleiste** jedes Kanals ist nach Erkennungs-Konfidenz eingefärbt: "
-               "🟩 grün = hoch (>70 %) · 🟧 orange = mittel (40–70 %) · 🟥 rot = niedrig (<40 %) — "
-               "bei orange/rot lohnt ein Blick + ggf. manuelle Korrektur.")
+    st.markdown(
+        "<span style='font-size:0.9rem;color:var(--text-secondary,#6b7684)'>"
+        "Die <b>Kopfleiste</b> jedes Kanals ist nach Erkennungs-Konfidenz eingefärbt: "
+        f"{status_dot('success')} hoch (&gt;70&nbsp;%) · {status_dot('warning')} mittel "
+        f"(40–70&nbsp;%) · {status_dot('danger')} niedrig (&lt;40&nbsp;%) — bei "
+        "orange/rot lohnt ein Blick + ggf. manuelle Korrektur.</span>",
+        unsafe_allow_html=True,
+    )
 
     # Compute effective types for filter
     all_eff_types = sorted(set(
@@ -196,7 +224,7 @@ def render():
         # Badge: show override indicator
         override_badge = (
             f" <span style='font-size:10px;background:#e67e22;color:white;"
-            f"padding:1px 6px;border-radius:10px;vertical-align:middle'>✏️ korrigiert</span>"
+            f"padding:1px 6px;border-radius:10px;vertical-align:middle'>korrigiert</span>"
             if override_type else ""
         )
 
@@ -215,9 +243,9 @@ def render():
         )
         _chan_box = st.container(key=_ck)
         with _chan_box, st.expander(
-            f"{meta['icon']} **{ch}** — "
+            f"{_type_icon_md(meta)} **{ch}** — "
             f"{meta['label']} · {result.confidence:.0f}% Konfidenz"
-            + (" ✏️" if override_type else ""),
+            + (" :material/edit:" if override_type else ""),
             expanded=False,
         ):
             r1, r2 = st.columns([1, 2])
@@ -228,11 +256,11 @@ def render():
                     st.markdown(
                         f"<div style='padding:8px 12px;border-radius:10px;"
                         f"border:2px solid {meta['color']};background:{meta['color']}0d'>"
-                        f"<div style='font-size:1.8rem;text-align:center'>{meta['icon']}</div>"
+                        f"<div style='font-size:1.8rem;text-align:center'>{_type_icon_html(meta, '1.8rem')}</div>"
                         f"<div style='text-align:center;font-weight:700;font-size:1.0rem;"
                         f"color:{meta['color']}'>{meta['label']}</div>"
                         f"<div style='text-align:center;font-size:10px;color:#e67e22;margin-top:4px'>"
-                        f"✏️ Manuell (war: {orig_meta['label']})</div>"
+                        f"Manuell (war: {orig_meta['label']})</div>"
                         f"</div>",
                         unsafe_allow_html=True,
                     )
@@ -240,7 +268,7 @@ def render():
                     st.markdown(
                         f"<div style='padding:10px 12px;border-radius:10px;"
                         f"border:2px solid {meta['color']};background:{meta['color']}0d'>"
-                        f"<div style='font-size:2rem;text-align:center'>{meta['icon']}</div>"
+                        f"<div style='font-size:2rem;text-align:center'>{_type_icon_html(meta, '2rem')}</div>"
                         f"<div style='text-align:center;font-weight:700;font-size:1.1rem;"
                         f"color:{meta['color']}'>{meta['label']}</div>"
                         f"<div style='text-align:center;margin-top:6px'>"
@@ -409,9 +437,12 @@ def render():
         section_header("Hilfskanäle")
         hc = st.columns(3)
         for col, label, icon, channels, color in (
-            (hc[0], "EKG", "❤️",  ecg, "#c0392b"),
-            (hc[1], "EOG", "👁",  eog, "#8e44ad"),
-            (hc[2], "EMG", "💪",  emg, "#e67e22"),
+            (hc[0], "EKG", "<span class='material-symbols-outlined' "
+                          f"style='font-size:1.1rem;color:#c0392b'>ecg_heart</span>", ecg, "#c0392b"),
+            (hc[1], "EOG", "<span class='material-symbols-outlined' "
+                          f"style='font-size:1.1rem;color:#8e44ad'>visibility</span>", eog, "#8e44ad"),
+            (hc[2], "EMG", "<span class='material-symbols-outlined' "
+                          f"style='font-size:1.1rem;color:#e67e22'>fitness_center</span>", emg, "#e67e22"),
         ):
             with col:
                 st.markdown(

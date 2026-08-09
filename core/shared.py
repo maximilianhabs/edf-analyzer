@@ -333,6 +333,19 @@ def apply_global_style():
     st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@40,400,0,0');
+
+    /* Phase 6 GUI-Redesign (siehe [[project_edf_ui_redesign]]): Material-Symbols-Glyphen für
+    eigenen HTML-Content (z. B. Kanal-Typ-Icons) — ersetzt Emoji außerhalb der von Streamlit
+    selbst gerenderten `:material/...:`-Shortcodes (Seitentitel/Nav, die brauchen das nicht). */
+    .material-symbols-outlined {{
+        font-family: 'Material Symbols Outlined';
+        font-weight: normal;
+        font-style: normal;
+        line-height: 1;
+        vertical-align: middle;
+        -webkit-font-smoothing: antialiased;
+    }}
 
     :root {{
         --dw-bg-subtle: {BG_SUBTLE};

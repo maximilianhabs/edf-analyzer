@@ -6,7 +6,7 @@ import streamlit as st
 sys.path.insert(0, os.path.dirname(__file__))
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="EDF Analyzer", layout="wide", page_icon="🧠")
+st.set_page_config(page_title="EDF Analyzer", layout="wide", page_icon=":material/neurology:")
 
 from core.auth import require_login, logout_button
 

@@ -57,6 +57,8 @@ def require_login() -> bool:
 def _render_login():
     st.markdown("""
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@40,400,0,0');
+
     /* Sidebar + Header bei Login ausblenden */
     [data-testid="stSidebar"],
     header[data-testid="stHeader"],
@@ -82,7 +84,13 @@ def _render_login():
         box-shadow: 0 4px 28px rgba(0,0,0,0.08);
         text-align: center;
     }
-    .login-icon  { font-size: 2.4rem; margin-bottom: 8px; }
+    .login-icon {
+        font-family: 'Material Symbols Outlined';
+        font-size: 2.6rem;
+        color: #0071e3;
+        margin-bottom: 8px;
+        line-height: 1;
+    }
     .login-title { font-size: 1.3rem; font-weight: 700; color: #1c2833; margin-bottom: 4px; }
     .login-sub   { font-size: 0.82rem; color: #7f8c8d; margin-bottom: 28px; }
 
@@ -94,7 +102,7 @@ def _render_login():
 
     <div class="login-outer">
       <div class="login-card">
-        <div class="login-icon">🧠</div>
+        <div class="login-icon">neurology</div>
         <div class="login-title">EDF Analyzer</div>
         <div class="login-sub">Neuro-Vibe · Zugang geschützt</div>
       </div>
