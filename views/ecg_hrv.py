@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from scipy.signal import find_peaks as _fp
 
-from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info, section_header, safe_slider, render_banner, status_dot
+from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info, section_header, safe_slider, render_banner, status_dot, kpi_tile
 
 
 def _section(title: str, subtitle: str = "") -> None:
@@ -1550,23 +1550,15 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
         _win_hdr = (f"Fenster {_window_active[0]:.0f}–{_window_active[1]:.0f} s"
                     if _window_active is not None else "Gesamtaufnahme")
         st.markdown(f"**Wesentliche Zeitdomäne-Parameter ({_win_hdr})**")
-        _zone_bg  = {"normal": "#eafaf1", "grenzwertig": "#fef9e7", "pathologisch": "#fdedec", "info": "#f4f6f7"}
-        _zone_brd = {"normal": "#27ae60", "grenzwertig": "#f39c12", "pathologisch": "#c0392b", "info": "#7f8c8d"}
-        _zone_txt = {"normal": "#1e8449", "grenzwertig": "#d68910", "pathologisch": "#a93226", "info": "#5d6d7e"}
+        # Zonen-Namen dieser Seite (normal/grenzwertig/pathologisch/info) auf die 5 Standard-
+        # Zonen der gemeinsamen Kachel-Komponente gemappt (Phase 3 GUI-Redesign, siehe
+        # [[project_edf_ui_redesign]] — ersetzt die vorher hier lokal definierte Variante).
+        _zone_map = {"normal": "success", "grenzwertig": "warning",
+                    "pathologisch": "danger", "info": "info"}
 
         def _metric_card(col, label, value_str, zone: str, ref_str: str):
-            bg  = _zone_bg.get(zone, "#f4f6f7")
-            brd = _zone_brd.get(zone, "#aaa")
-            txt = _zone_txt.get(zone, "#333")
-            col.markdown(
-                f"<div style='background:{bg};border:1.5px solid {brd};border-radius:10px;"
-                f"padding:10px 12px;text-align:center;min-height:80px'>"
-                f"<div style='font-size:10px;color:#888;font-weight:600;letter-spacing:.5px'>{label}</div>"
-                f"<div style='font-size:20px;font-weight:800;color:{txt};margin:3px 0'>{value_str}</div>"
-                f"<div style='font-size:10px;color:#999'>{ref_str}</div>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+            col.markdown(kpi_tile(label, value_str, ref_str, zone=_zone_map.get(zone, "info")),
+                        unsafe_allow_html=True)
 
         _hr_cls    = _classify("heart_rate", mean_hr,  patient_age, mean_hr)
         _sdnn_cls  = _classify("sdnn",       sdnn,     patient_age, mean_hr)
