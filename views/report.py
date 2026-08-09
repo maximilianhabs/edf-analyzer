@@ -413,10 +413,10 @@ def render():
     _rep_age, _rep_sex = get_patient_info()
     _rep_pediatric = st.session_state.get("is_pediatric", False)
     @st.cache_data(show_spinner="Erstelle Visual Report …")
-    def _glory_bytes(_path, _disp):
+    def _glory_bytes(_path, _disp, _age, _pediatric):
         from analysis.glory_report import build_glory_pdf
         e = apply_channel_overrides(load_and_prepare(_path))
-        return build_glory_pdf(e, _path, _disp)
+        return build_glory_pdf(e, _path, _disp, age=_age, is_pediatric=_pediatric)
 
     try:
         pdf_bytes, xlsx_bytes = _export_bytes(edf_path, _disp, _rep_age, _rep_sex, _rep_pediatric)
@@ -429,7 +429,7 @@ def render():
             use_container_width=True)
         with ec3:
             try:
-                ec3.download_button("Visual Report (PDF)", _glory_bytes(edf_path, _disp),
+                ec3.download_button("Visual Report (PDF)", _glory_bytes(edf_path, _disp, _rep_age, _rep_pediatric),
                                     icon=":material/palette:", file_name=f"{_base}_visual.pdf", mime="application/pdf",
                                     type="primary", use_container_width=True)
             except Exception as ex:

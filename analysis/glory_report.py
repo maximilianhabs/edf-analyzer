@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import FancyBboxPatch, Ellipse, Polygon, Rectangle
 from scipy.signal import spectrogram
+from analysis.p_wave_analysis import P_WIN
 
 # ── Design-System ─────────────────────────────────────────────────────────────
 C_DELTA, C_THETA, C_ALPHA, C_BETA = "#4a90d9", "#9b59b6", "#27ae60", "#e67e22"
@@ -138,7 +139,7 @@ def _quiet_window(edf, dur, segments, win=10.0):
     return min(valid, key=lambda c: c[1])[0]
 
 
-def _collect(edf, edf_path):
+def _collect(edf, edf_path, age=None, is_pediatric=False):
     """Alle Daten für die Panels einmal einsammeln."""
     from views.eeg_spectrum import _compute_psd, _band_power, _peak_freq
     d = {"sf": edf["sfreq"], "dur": edf["duration_s"], "em": edf.get("eeg_map", {})}
@@ -232,6 +233,42 @@ def _collect(edf, edf_path):
                 d["ecg"] = {"name": ch, "sig": raw * 1000.0, "peaks": pk,
                             "rr_all": rr.rr_ms, "t_all": rr.rr_times_s,
                             "mask": rr.artifact_mask, "rr": clean, "td": td, "fd": fd}
+
+    # ── Laborwert-Bewertung (dieselbe Quelle wie Standard-PDF/Excel, siehe
+    # analysis/report_metadata.py) — ersetzt die reinen KPI-Kacheln durch Balken mit
+    # Normbereich, User-Wunsch 2026-08-09. ────────────────────────────────────────────────
+    from analysis.report_metadata import grade_hrv, grade_eeg
+    d["grades"] = {}
+    if d.get("alpha_peak") == d.get("alpha_peak"):
+        d["grades"]["alpha_peak"] = grade_eeg("ap_post", d["alpha_peak"], age=age)
+    if d.get("par") == d.get("par"):
+        d["grades"]["par"] = grade_eeg("par", d["par"], age=age)
+    if d.get("ecg"):
+        td, fd = d["ecg"]["td"], (d["ecg"]["fd"] or {})
+        hr_val = td.get("mean_hr_bpm")
+        _age = age if age is not None else 50
+        _hr = hr_val if hr_val == hr_val else 70
+        d["grades"]["heart_rate"] = grade_hrv("heart_rate", hr_val, _age, _hr, is_pediatric=is_pediatric)
+        d["grades"]["sdnn"] = grade_hrv("sdnn", td.get("sdnn_ms"), _age, _hr, is_pediatric=is_pediatric)
+        d["grades"]["rmssd"] = grade_hrv("rmssd", td.get("rmssd_ms"), _age, _hr, is_pediatric=is_pediatric)
+        d["grades"]["lf_hf_ratio"] = grade_hrv("lf_hf_ratio", fd.get("lf_hf_ratio"), _age, _hr, is_pediatric=is_pediatric)
+
+    # ── Rhythmus-Screening (AFib-CosEn) + P-Wellen-Ensemble — bisher in KEINEM Report
+    # enthalten (Report-Audit-Fund, siehe [[project_edf_report_audit]]). Läuft auf der
+    # GESAMTEN Aufnahme (wie die App-Seite views/rhythm_screening.py es tut). ──────────────
+    d["rhythm"], d["pwave"] = None, None
+    if d.get("ecg"):
+        try:
+            from analysis.rhythm_screening import classify_afib_risk
+            from analysis.p_wave_analysis import bandpass_ecg, analyze_window
+            e = d["ecg"]
+            sig_uv = e["sig"] * 1000.0  # e["sig"] ist bereits Volt×1000 = mV -> ×1000 = µV
+            fs = d["sf"]
+            d["rhythm"] = classify_afib_risk(sig_uv, e["peaks"], fs)
+            sig_filt = bandpass_ecg(sig_uv, fs)
+            d["pwave"] = analyze_window(sig_filt, e["peaks"], fs, 0.0, len(sig_uv) / fs)
+        except Exception:
+            pass
     return d
 
 
@@ -244,6 +281,45 @@ def _tile(fig, x, y, w, h, label, value, unit, color):
              color=color, ha="center", va="center")
     fig.text(x + w / 2, y + h * 0.30, f"{label}  {unit}", fontsize=8.2,
              color=C_MUTED, ha="center", va="center")
+
+
+_ZONE_COLOR = {"normal": "#27ae60", "grenzwertig": "#e6a817", "pathologisch": "#c0392b", "info": "#7f8c8d"}
+
+
+def _lab_gauge(fig, x, y, w, h, label, value_str, unit, cls):
+    """Laborwert-Balken statt reiner KPI-Kachel (User-Wunsch 2026-08-09: "wie beim
+    Laborwert" — Normbereich schattiert, Marker für den aktuellen Wert, statt nur einer
+    nackten Zahl). `cls` = Rückgabe von analysis.report_metadata.grade_hrv()/grade_eeg()
+    (dieselbe Quelle wie im Standard-PDF/Excel — Visual Report kann dadurch nicht von den
+    anderen Reports abweichen). Fällt auf eine reine Kachel zurück, wenn `cls` keine Zone/
+    Referenz liefert (z. B. kein publizierter Normbereich für diesen Parameter)."""
+    zone = (cls or {}).get("zone", "info")
+    color = _ZONE_COLOR.get(zone, "#7f8c8d")
+    ax = fig.add_axes([x, y, w, h]); ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+    ax.text(0.03, 0.90, label, fontsize=8.3, color=C_MUTED, va="top", ha="left")
+    ax.text(0.03, 0.56, value_str, fontsize=16, fontweight="bold", color=color, va="center", ha="left")
+    if unit:
+        ax.text(0.97, 0.56, unit, fontsize=8, color=C_MUTED, va="center", ha="right")
+    bar_y = 0.14
+    ax.add_patch(Rectangle((0.03, bar_y), 0.94, 0.09, facecolor="#eceff3", edgecolor="none"))
+    smax = (cls or {}).get("scale_max")
+    ref_lo, ref_hi = (cls or {}).get("ref_lo"), (cls or {}).get("ref_hi")
+    if smax and ref_lo is not None:
+        lo = 0.03 + 0.94 * max(0.0, min(1.0, ref_lo / smax))
+        hi_val = ref_hi if ref_hi is not None else smax
+        hi = 0.03 + 0.94 * max(0.0, min(1.0, hi_val / smax))
+        ax.add_patch(Rectangle((lo, bar_y), max(hi - lo, 0.006), 0.09,
+                                facecolor="#27ae60", alpha=0.32, edgecolor="none"))
+        for xx in (lo, hi):
+            ax.plot([xx, xx], [bar_y - 0.03, bar_y + 0.12], color="#1e8449", lw=1.1, alpha=0.8)
+    pos = (cls or {}).get("position")
+    if pos is not None and pos == pos:
+        px = 0.03 + 0.94 * max(0.0, min(1.0, pos))
+        ax.plot([px], [bar_y + 0.045], marker="v", ms=10, color=color, zorder=5,
+                markeredgecolor="white", markeredgewidth=0.6)
+    fig.patches.append(FancyBboxPatch((x, y), w, h, transform=fig.transFigure,
+                                      boxstyle="round,pad=0.004,rounding_size=0.01",
+                                      facecolor="none", edgecolor="#dfe4ea", linewidth=1.0))
 
 
 def _page_cover(pdf, d, disp):
@@ -261,24 +337,26 @@ def _page_cover(pdf, d, disp):
     ax.text(0, 0, f"{q:.0f}%", ha="center", va="center", fontsize=17, fontweight="bold", color="#1e8449")
     ax.text(0, -0.42, "sauberes EEG", ha="center", va="center", fontsize=8, color=C_MUTED)
 
-    # KPI-Kacheln — nur robuste Marker
+    # Laborwert-Balken statt reiner Kacheln (User-Wunsch 2026-08-09) — Normbereich +
+    # Positions-Marker, dieselbe Bewertung wie im Standard-PDF/Excel (d["grades"]).
+    g = d.get("grades", {})
     fig.text(0.035, 0.79, "EEG", fontsize=11, fontweight="bold", color=C_EEG_HDR)
-    tiles = [("Alpha-Peak", _fmt(d.get("alpha_peak"), 1), "Hz", C_ALPHA),
-             ("rel. Alpha post.", _fmt((d.get("rel") or {}).get("Alpha"), 0), "%", C_ALPHA),
-             ("Delta/Alpha", _fmt(d.get("dar"), 2), "", C_DELTA),
-             ("A/P-Gradient", _fmt(d.get("par"), 1), "×", C_M)]
-    for i, (l, v, u, c) in enumerate(tiles):
-        _tile(fig, 0.035 + i * 0.185, 0.63, 0.165, 0.13, l, v, u, c)
+    tiles = [("Alpha-Peak", _fmt(d.get("alpha_peak"), 1), "Hz", g.get("alpha_peak")),
+             ("rel. Alpha post.", _fmt((d.get("rel") or {}).get("Alpha"), 0), "%", None),
+             ("Delta/Alpha", _fmt(d.get("dar"), 2), "", None),
+             ("A/P-Gradient", _fmt(d.get("par"), 1), "×", g.get("par"))]
+    for i, (l, v, u, cls) in enumerate(tiles):
+        _lab_gauge(fig, 0.035 + i * 0.185, 0.63, 0.17, 0.13, l, v, u, cls)
 
     if d.get("ecg"):
         td, fd = d["ecg"]["td"], (d["ecg"]["fd"] or {})
         fig.text(0.035, 0.555, "EKG / HRV", fontsize=11, fontweight="bold", color=C_ECG_HDR)
-        tiles = [("Herzfrequenz", _fmt(td.get("mean_hr_bpm"), 0), "bpm", C_ECG),
-                 ("SDNN", _fmt(td.get("sdnn_ms"), 0), "ms", "#8e44ad"),
-                 ("RMSSD", _fmt(td.get("rmssd_ms"), 0), "ms", "#2980b9"),
-                 ("LF/HF", _fmt(fd.get("lf_hf_ratio"), 2), "", "#d68910")]
-        for i, (l, v, u, c) in enumerate(tiles):
-            _tile(fig, 0.035 + i * 0.185, 0.395, 0.165, 0.13, l, v, u, c)
+        tiles = [("Herzfrequenz", _fmt(td.get("mean_hr_bpm"), 0), "bpm", g.get("heart_rate")),
+                 ("SDNN", _fmt(td.get("sdnn_ms"), 0), "ms", g.get("sdnn")),
+                 ("RMSSD", _fmt(td.get("rmssd_ms"), 0), "ms", g.get("rmssd")),
+                 ("LF/HF", _fmt(fd.get("lf_hf_ratio"), 2), "", g.get("lf_hf_ratio"))]
+        for i, (l, v, u, cls) in enumerate(tiles):
+            _lab_gauge(fig, 0.035 + i * 0.185, 0.395, 0.17, 0.13, l, v, u, cls)
 
     # Zeitleiste mit Artefaktblöcken
     ax = fig.add_axes([0.035, 0.22, 0.93, 0.085])
@@ -572,22 +650,131 @@ def _page_hrv(pdf, d):
     ax.set_title("HRV-Spektrum — Sympathikus vs. Parasympathikus", fontsize=10.5,
                  fontweight="bold", color=C_INK, loc="left", pad=6)
 
-    for i, (l, v, u, c) in enumerate([
-            ("Herzfrequenz", _fmt(td.get("mean_hr_bpm"), 0), "bpm", C_ECG),
-            ("SDNN", _fmt(td.get("sdnn_ms"), 0), "ms", "#8e44ad"),
-            ("RMSSD", _fmt(td.get("rmssd_ms"), 0), "ms", "#2980b9"),
-            ("LF/HF", _fmt(fd.get("lf_hf_ratio"), 2), "", "#d68910")]):
-        _tile(fig, 0.55 + (i % 2) * 0.205, 0.255 - (i // 2) * 0.115, 0.19, 0.10, l, v, u, c)
+    g = d.get("grades", {})
+    for i, (l, v, u, cls) in enumerate([
+            ("Herzfrequenz", _fmt(td.get("mean_hr_bpm"), 0), "bpm", g.get("heart_rate")),
+            ("SDNN", _fmt(td.get("sdnn_ms"), 0), "ms", g.get("sdnn")),
+            ("RMSSD", _fmt(td.get("rmssd_ms"), 0), "ms", g.get("rmssd")),
+            ("LF/HF", _fmt(fd.get("lf_hf_ratio"), 2), "", g.get("lf_hf_ratio"))]):
+        _lab_gauge(fig, 0.55 + (i % 2) * 0.205, 0.255 - (i // 2) * 0.115, 0.195, 0.10, l, v, u, cls)
 
     _cap(fig, 0.065, "Die Poincaré-Wolke zeigt die Regulationsbreite des Herzens: breit = flexibles, "
                      "gesundes autonomes Nervensystem. HF steht für Vagus (Erholung), LF für Regulation.")
     pdf.savefig(fig); plt.close(fig)
 
 
+# ── Seite 7: EKG Rhythmus-Screening & P-Welle ─────────────────────────────────
+# Neu 2026-08-09 (User-Auftrag) — Rhythmus-Screening-Verdikt, PQRST-Ensemble/P-Wellen-
+# Nachweis und RR-/ΔRR-Histogramme fehlten bisher in JEDEM Report komplett, siehe
+# [[project_edf_report_audit]]. Läuft NUR wenn d["rhythm"]/d["pwave"] erfolgreich waren
+# (siehe _collect()) — kein harter Fehler, wenn zu wenige Schläge für eine Auswertung da sind.
+_VERDICT_STYLE = {
+    "afib_verdaechtig": ("#c0392b", "Verdacht auf Vorhofflimmern"),
+    "ektopie_richtung": ("#e6a817", "Erhöhte Rhythmus-Variabilität"),
+    "normal":           ("#27ae60", "Unauffälliger Rhythmus"),
+    "nicht_auswertbar": ("#7f8c8d", "Nicht auswertbar"),
+}
+
+
+def _page_rhythm(pdf, d):
+    fig = _page("EKG — Rhythmus-Screening & P-Welle",
+               "Vorhofflimmern-Screening (CosEn) · PQRST-Schlag-Summation · RR-Verteilung — Screening, keine Diagnose",
+               C_ECG_HDR)
+    e, rhythm, pwave = d["ecg"], d["rhythm"], d["pwave"]
+
+    # ── Verdikt-Badge ──────────────────────────────────────────────────────────
+    if rhythm:
+        col, label = _VERDICT_STYLE.get(rhythm["verdict"], _VERDICT_STYLE["nicht_auswertbar"])
+        conf = rhythm.get("confidence")
+        conf_txt = {"gesichert": "Sicherheit: hoch", "wahrscheinlich": "Sicherheit: mittel",
+                   "verdacht": "Sicherheit: gering"}.get(conf, "")
+        fig.patches.append(FancyBboxPatch((0.035, 0.79), 0.93, 0.115, transform=fig.transFigure,
+                                          boxstyle="round,pad=0.006,rounding_size=0.014",
+                                          facecolor=col + "14", edgecolor=col, linewidth=1.6))
+        fig.text(0.055, 0.865, label + (f"  ·  {conf_txt}" if conf_txt else ""),
+                 fontsize=13.5, fontweight="bold", color=col, va="center")
+        detail = (f"Median-CosEn {rhythm['median_cosen']:.2f}  ·  "
+                 f"{rhythm['n_afib_windows']}/{rhythm['n_windows']} 30s-Fenster im AFib-Bereich "
+                 f"(Lake & Moorman 2011, Sarkar/IOPscience 2015)")
+        if pwave and pwave.get("coherence") == pwave.get("coherence"):
+            pv = pwave["verdict"]
+            pv_txt = {"sichtbar": "P-Welle sichtbar (stützt gegen AFib)",
+                     "eingeschraenkt": "P-Welle eingeschränkt beurteilbar",
+                     "nicht_abgrenzbar": "P-Welle nicht abgrenzbar (stützt AFib-Verdacht)"}.get(pv, "")
+            detail += f"  ·  Kohärenz {pwave['coherence']:.2f} — {pv_txt}"
+        fig.text(0.055, 0.815, detail, fontsize=9, color=C_INK, va="center")
+    else:
+        fig.text(0.055, 0.85, "Rhythmus-Screening nicht auswertbar (zu wenige artefaktfreie Schläge).",
+                 fontsize=11, color=C_MUTED)
+
+    # ── PQRST-Ensemble ─────────────────────────────────────────────────────────
+    ax = fig.add_axes([0.055, 0.42, 0.42, 0.33])
+    if pwave and pwave.get("ensemble") is not None:
+        t_ms, ens, beats = pwave["t_ms"], pwave["ensemble"], pwave["beats"]
+        for b in beats[:: max(1, len(beats) // 60)]:  # max ~60 Einzelschläge zeichnen (Datei-/Renderlast)
+            ax.plot(t_ms, b, color="#c7ccd1", lw=0.4, alpha=0.6, zorder=1)
+        ax.plot(t_ms, ens, color=C_ECG, lw=2.0, zorder=3, label="Ensemble-Median")
+        ax.axvspan(P_WIN[0], P_WIN[1], color="#2980b9", alpha=0.14, zorder=0, label="P-Fenster")
+        ax.axvline(0, color=C_INK, lw=0.8, ls=":", alpha=0.6)
+        ax.set_xlim(t_ms[0], t_ms[-1])
+        ax.legend(frameon=False, fontsize=8, loc="upper right")
+    ax.set_xlabel("Zeit rel. zur R-Zacke (ms)", fontsize=9, color=C_MUTED)
+    ax.set_ylabel("µV", fontsize=9, color=C_MUTED)
+    ax.tick_params(labelsize=8, colors=C_MUTED)
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    ax.set_title("PQRST-Ensemble — Schlag-Summation (P-Wellen-Nachweis)", fontsize=10.5,
+                 fontweight="bold", color=C_INK, loc="left", pad=6)
+
+    # ── RR- und ΔRR-Histogramm (Task Force 1996, HRV-Triangulärindex) ─────────
+    rr = e["rr"] if e else np.array([])
+    ax = fig.add_axes([0.55, 0.42, 0.19, 0.33])
+    if len(rr) >= 5:
+        bw = 1000.0 / 128.0
+        bins = np.arange(rr.min() - bw, rr.max() + 2 * bw, bw)
+        counts, edges = np.histogram(rr, bins=bins)
+        ax.bar(edges[:-1], counts, width=bw, color="#2980b9", alpha=0.85, align="edge")
+        tri = len(rr) / max(counts.max(), 1)
+        ax.text(0.97, 0.94, f"Triangulärindex {tri:.1f}", transform=ax.transAxes,
+                fontsize=8.5, fontweight="bold", color="#2980b9", ha="right", va="top")
+    ax.set_xlabel("RR (ms)", fontsize=8.5, color=C_MUTED)
+    ax.set_ylabel("Anzahl", fontsize=8.5, color=C_MUTED)
+    ax.tick_params(labelsize=7.5, colors=C_MUTED)
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    ax.set_title("RR-Verteilung", fontsize=10, fontweight="bold", color=C_INK, loc="left", pad=5)
+
+    ax = fig.add_axes([0.775, 0.42, 0.19, 0.33])
+    if len(rr) >= 6:
+        drr = np.diff(rr)
+        drr = drr[np.abs(drr) <= 300]
+        if len(drr):
+            bins2 = np.arange(-205, 210, 10)
+            ax.hist(drr, bins=bins2, color="#8e44ad", alpha=0.85)
+            for xx in (-50, 50):
+                ax.axvline(xx, color=C_ECG, lw=1, ls="--", alpha=0.7)
+            pnn50 = (np.abs(drr) > 50).mean() * 100
+            ax.text(0.97, 0.94, f"pNN50 {pnn50:.1f}%", transform=ax.transAxes,
+                    fontsize=8.5, fontweight="bold", color="#8e44ad", ha="right", va="top")
+    ax.set_xlabel("ΔRR (ms)", fontsize=8.5, color=C_MUTED)
+    ax.tick_params(labelsize=7.5, colors=C_MUTED)
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    ax.set_title("ΔRR-Verteilung", fontsize=10, fontweight="bold", color=C_INK, loc="left", pad=5)
+
+    _cap(fig, 0.075, "Eine schmale RR-Säule/geringe ΔRR-Streuung spricht für einen regelmäßigen "
+                     "Rhythmus; die PQRST-Summation zeigt, ob eine zeitlich fixierte P-Welle vor "
+                     "dem Kammerkomplex nachweisbar ist. Screening-Marker, keine Diagnose.")
+    pdf.savefig(fig); plt.close(fig)
+
+
 # ── Öffentliche API ───────────────────────────────────────────────────────────
-def build_glory_pdf(edf: dict, edf_path: str, disp_name: str = "EDF") -> bytes:
-    """Erzeugt den visuellen Report als Vektor-PDF (A4 quer)."""
-    d = _collect(edf, edf_path)
+def build_glory_pdf(edf: dict, edf_path: str, disp_name: str = "EDF",
+                    age=None, is_pediatric: bool = False) -> bytes:
+    """Erzeugt den visuellen Report als Vektor-PDF (A4 quer). `age`/`is_pediatric`: für die
+    Laborwert-Balken (siehe [[project_edf_report_audit]]) — ohne Alter fällt die Bewertung
+    auf den Erwachsenen-Default zurück (wie überall sonst in der App)."""
+    d = _collect(edf, edf_path, age=age, is_pediatric=is_pediatric)
     buf = io.BytesIO()
     with PdfPages(buf) as pdf:
         _page_cover(pdf, d, disp_name)
@@ -598,4 +785,6 @@ def build_glory_pdf(edf: dict, edf_path: str, disp_name: str = "EDF") -> bytes:
         if d.get("ecg"):
             _page_ecg(pdf, d)
             _page_hrv(pdf, d)
+            if d.get("rhythm") or d.get("pwave"):
+                _page_rhythm(pdf, d)
     return buf.getvalue()
