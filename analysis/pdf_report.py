@@ -106,8 +106,19 @@ def build_hrv_pdf(
     method_used: str,
     fd_welch: Optional[dict] = None,
     fd_burg: Optional[dict] = None,
+    is_pediatric: bool = False,
 ) -> bytes:
-    """Baut den klinischen Tabellen-Report (kein Grafik-Export, nur Werte)."""
+    """Baut den klinischen Tabellen-Report (kein Grafik-Export, nur Werte).
+
+    Report-Audit-Fund 2026-08-09 (siehe [[project_edf_report_audit]]): Sektion 1+2 zeigten
+    bisher STATISCHE Erwachsenen-Fixwerte ("Populationsmedian (IQR)" bzw. "Referenzbereich")
+    unabhängig von `patient_age` — obwohl Sektion 4 ("Normwertvergleich", aus `lab_rows`)
+    bereits die korrekte, alters-/HF-adjustierte Hansen-2024/Gąsior-2018-Klassifikation von
+    der Live-Seite (views/ecg_hrv.py) übernimmt. Dieselbe Inkonsistenz wie beim Standard-
+    Report vorher — jetzt behoben: Sektion 1+2 nutzen jetzt `analysis.report_metadata.
+    grade_hrv()` (identische Quelle wie Standard-PDF/Excel/Visual-Report) für Referenztext
+    UND Zonenfarbe des Werts, statt fest im Text stehender Erwachsenen-Zahlen."""
+    from analysis.report_metadata import grade_hrv
     ss = _styles()
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -167,37 +178,51 @@ def build_hrv_pdf(
     el.append(Spacer(1, 8))
 
     # ── Zeitbereich ───────────────────────────────────────────────────────────
+    def _val_cell(value, fmt, zone):
+        col = _ZONE_COLOR.get(zone, _C_VALUE) if zone != "info" else _C_VALUE
+        style = ParagraphStyle("VZ", parent=ss["Cell9"], textColor=col, fontName="Helvetica-Bold")
+        return Paragraph(_nan_str(value, fmt), style)
+
+    g_hr    = grade_hrv("heart_rate", mean_hr, patient_age, mean_hr, is_pediatric=is_pediatric)
+    g_sdnn  = grade_hrv("sdnn",  sdnn,  patient_age, mean_hr, is_pediatric=is_pediatric)
+    g_rmssd = grade_hrv("rmssd", rmssd, patient_age, mean_hr, is_pediatric=is_pediatric)
+    g_pnn50 = grade_hrv("pnn50", pnn50, patient_age, mean_hr, rmssd_ms=rmssd, is_pediatric=is_pediatric)
+
     el.append(Paragraph("1  Zeitbereich (Time Domain)", ss["SectionHead"]))
     td_rows = [
         [Paragraph("Parameter", ss["CellBold"]),
          Paragraph("Wert", ss["CellBold"]),
          Paragraph("Einheit", ss["CellBold"]),
-         Paragraph("Populationsmedian (IQR)", ss["CellBold"]),
+         Paragraph("Referenz (alters-/HF-adjustiert)", ss["CellBold"]),
          Paragraph("Bedeutung", ss["CellBold"])],
         [Paragraph("Herzfrequenz (HR)", ss["Cell9"]),
-         Paragraph(f"{mean_hr:.1f}", ss["Cell9"]),
+         _val_cell(mean_hr, ".1f", g_hr["zone"]),
          Paragraph("bpm", ss["Cell9"]),
-         Paragraph("67  (61–74)", ss["Cell9"]),
+         Paragraph(g_hr["ref_text"], ss["Cell9"]),
          Paragraph("Mittlere Herzrate", ss["Cell9"])],
         [Paragraph("SDNN", ss["Cell9"]),
-         Paragraph(f"{sdnn:.1f}", ss["Cell9"]),
+         _val_cell(sdnn, ".1f", g_sdnn["zone"]),
          Paragraph("ms", ss["Cell9"]),
-         Paragraph("37  (27–54)", ss["Cell9"]),
+         Paragraph(g_sdnn["ref_text"], ss["Cell9"]),
          Paragraph("Globale ANS-Variabilität", ss["Cell9"])],
         [Paragraph("RMSSD", ss["Cell9"]),
-         Paragraph(f"{rmssd:.1f}", ss["Cell9"]),
+         _val_cell(rmssd, ".1f", g_rmssd["zone"]),
          Paragraph("ms", ss["Cell9"]),
-         Paragraph("27  (17–44)", ss["Cell9"]),
+         Paragraph(g_rmssd["ref_text"], ss["Cell9"]),
          Paragraph("Vagaler / parasympathischer Marker", ss["Cell9"])],
         [Paragraph("pNN50", ss["Cell9"]),
-         Paragraph(f"{pnn50:.1f}", ss["Cell9"]),
+         _val_cell(pnn50, ".1f", g_pnn50["zone"]),
          Paragraph("%", ss["Cell9"]),
-         Paragraph("—", ss["Cell9"]),
+         Paragraph(g_pnn50["ref_text"], ss["Cell9"]),
          Paragraph("Vagaler Marker (korreliert mit RMSSD)", ss["Cell9"])],
     ]
     td_table = Table(td_rows, colWidths=[38*mm, 18*mm, 16*mm, 38*mm, 60*mm])
     td_table.setStyle(_section_table_style())
     el.append(td_table)
+    el.append(Paragraph(
+        f"Referenz: {(g_sdnn.get('source') or 'Hansen 2024')} — alters- und herzraten-"
+        "adjustierte untere 5.-Perzentil-Grenze (P5), keine feste Populationszahl.",
+        ss["Small8"]))
     el.append(Spacer(1, 8))
 
     # ── Frequenzbereich ───────────────────────────────────────────────────────
@@ -214,42 +239,53 @@ def build_hrv_pdf(
         lf_norm = fd.get("lf_norm", float("nan"))
         hf_norm = fd.get("hf_norm", float("nan"))
         resp = fd.get("hf_resp_rate", float("nan"))
+        total_power = fd.get("total_power", float("nan"))
+        lf_power = fd.get("lf_power", float("nan"))
+        hf_power = fd.get("hf_power", float("nan"))
+
+        g_tp  = grade_hrv("total_power", total_power, patient_age, mean_hr, is_pediatric=is_pediatric)
+        g_lf  = grade_hrv("lf_power", lf_power, patient_age, mean_hr, is_pediatric=is_pediatric)
+        g_hfp = grade_hrv("hf_power", hf_power, patient_age, mean_hr, is_pediatric=is_pediatric)
+        g_lfhf = grade_hrv("lf_hf_ratio", lf_hf, patient_age, mean_hr, is_pediatric=is_pediatric)
+        g_lfn = grade_hrv("lf_norm", lf_norm, patient_age, mean_hr, is_pediatric=is_pediatric)
+        g_hfn = grade_hrv("hf_norm", hf_norm, patient_age, mean_hr, is_pediatric=is_pediatric)
+        g_resp = grade_hrv("hf_resp_rate", resp, patient_age, mean_hr, is_pediatric=is_pediatric)
 
         fd_rows = [
             [Paragraph("Parameter", ss["CellBold"]),
              Paragraph("Wert", ss["CellBold"]),
              Paragraph("Einheit", ss["CellBold"]),
-             Paragraph("Referenzbereich", ss["CellBold"]),
+             Paragraph("Referenz (alters-/HF-adjustiert)", ss["CellBold"]),
              Paragraph("Bedeutung", ss["CellBold"])],
             [Paragraph("Total Power", ss["Cell9"]),
-             Paragraph(_fv("total_power", ".0f"), ss["Cell9"]),
+             _val_cell(total_power, ".0f", g_tp["zone"]),
              Paragraph("ms²", ss["Cell9"]),
-             Paragraph("≥ 235  (Median 486)", ss["Cell9"]),
+             Paragraph(g_tp["ref_text"], ss["Cell9"]),
              Paragraph("Gesamtvariabilität", ss["Cell9"])],
             [Paragraph("LF-Leistung", ss["Cell9"]),
-             Paragraph(_fv("lf_power", ".0f"), ss["Cell9"]),
+             _val_cell(lf_power, ".0f", g_lf["zone"]),
              Paragraph("ms²", ss["Cell9"]),
-             Paragraph("67–368  (Median 152)", ss["Cell9"]),
+             Paragraph(g_lf["ref_text"], ss["Cell9"]),
              Paragraph("Baroreflex / gemischt", ss["Cell9"])],
             [Paragraph("HF-Leistung", ss["Cell9"]),
-             Paragraph(_fv("hf_power", ".0f"), ss["Cell9"]),
+             _val_cell(hf_power, ".0f", g_hfp["zone"]),
              Paragraph("ms²", ss["Cell9"]),
-             Paragraph("38–263  (Median 100)", ss["Cell9"]),
+             Paragraph(g_hfp["ref_text"], ss["Cell9"]),
              Paragraph("Vagal / respiratorisch", ss["Cell9"])],
             [Paragraph("LF/HF-Ratio", ss["Cell9"]),
-             Paragraph(_nan_str(lf_hf, ".2f"), ss["Cell9"]),
+             _val_cell(lf_hf, ".2f", g_lfhf["zone"]),
              Paragraph("—", ss["Cell9"]),
-             Paragraph("0.5–5.0  (Median 2.8)", ss["Cell9"]),
+             Paragraph(g_lfhf["ref_text"], ss["Cell9"]),
              Paragraph("Sympathovagale Balance", ss["Cell9"])],
             [Paragraph("LF normiert", ss["Cell9"]),
-             Paragraph(_nan_str(lf_norm, ".1f"), ss["Cell9"]),
+             _val_cell(lf_norm, ".1f", g_lfn["zone"]),
              Paragraph("%", ss["Cell9"]),
-             Paragraph("40–70 %", ss["Cell9"]),
+             Paragraph(g_lfn["ref_text"], ss["Cell9"]),
              Paragraph("LF-Anteil (ohne VLF)", ss["Cell9"])],
             [Paragraph("HF normiert", ss["Cell9"]),
-             Paragraph(_nan_str(hf_norm, ".1f"), ss["Cell9"]),
+             _val_cell(hf_norm, ".1f", g_hfn["zone"]),
              Paragraph("%", ss["Cell9"]),
-             Paragraph("20–50 %", ss["Cell9"]),
+             Paragraph(g_hfn["ref_text"], ss["Cell9"]),
              Paragraph("HF-Anteil (ohne VLF) — vagal", ss["Cell9"])],
             [Paragraph("LF-Gipfelfrequenz", ss["Cell9"]),
              Paragraph(_fv("lf_peak_freq", ".3f"), ss["Cell9"]),
@@ -262,9 +298,9 @@ def build_hrv_pdf(
              Paragraph("0.15–0.40 Hz", ss["Cell9"]),
              Paragraph("Respiratorische SA", ss["Cell9"])],
             [Paragraph("Atemfrequenz (RSA)", ss["Cell9"]),
-             Paragraph(_nan_str(resp, ".0f"), ss["Cell9"]),
+             _val_cell(resp, ".0f", g_resp["zone"]),
              Paragraph("/min", ss["Cell9"]),
-             Paragraph("12–20 /min", ss["Cell9"]),
+             Paragraph(g_resp["ref_text"], ss["Cell9"]),
              Paragraph("Aus HF-Gipfelfrequenz × 60", ss["Cell9"])],
         ]
         fd_table = Table(fd_rows, colWidths=[34*mm, 18*mm, 14*mm, 44*mm, 60*mm])
