@@ -514,7 +514,6 @@ def _fft_figure(signals: dict, t_start, t_end, fs, panel_id,
     fig.update_layout(
         xaxis_title="Frequenz (Hz)", yaxis_title="PSD (µV²/Hz)",
         height=260, margin=dict(t=8, b=40, l=65, r=10),
-        plot_bgcolor="#fafafa",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)),
     )
     return fig, alpha_peaks, alpha_cog, bp_all, dominant_peaks
@@ -1444,7 +1443,7 @@ def render():
     _sr_g = max(80.0, float(np.ptp(seg_ref_g)) * 0.6)
     fig_rg.update_layout(xaxis_title="Zeit (s)", yaxis_title="µV",
                          height=180, margin=dict(t=4, b=35, l=60, r=10),
-                         plot_bgcolor="#fafafa", showlegend=False)
+                         showlegend=False)
     fig_rg.update_yaxes(range=[-_sr_g, _sr_g])
     st.plotly_chart(fig_rg, use_container_width=True, key="val_raw_global")
 
@@ -1489,8 +1488,7 @@ def render():
                              annotation_font_size=9, annotation_font_color=bcol)
         fig_vg.update_layout(
             xaxis_title="Frequenz (Hz)", yaxis_title="PSD (normiert)",
-            height=250, margin=dict(t=8, b=40, l=65, r=10), plot_bgcolor="#fafafa",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)),
+            height=250, margin=dict(t=8, b=40, l=65, r=10), legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)),
         )
         st.plotly_chart(fig_vg, use_container_width=True, key="val_fft_global")
         if ap_fg == ap_fg and ap_rg == ap_rg:

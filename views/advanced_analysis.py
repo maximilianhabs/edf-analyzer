@@ -135,8 +135,7 @@ def _render_rpeak_visual(edf, edf_path):
                                                  line=dict(width=1.5, color=color)),
                                      name=label, hovertemplate=label + "<extra></extra>"))
     fig.update_layout(height=300, margin=dict(t=6, b=34, l=50, r=10),
-                      xaxis_title="Zeit (s)", yaxis_title="EKG (mV)", plot_bgcolor="#fafafa",
-                      legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
+                      xaxis_title="Zeit (s)", yaxis_title="EKG (mV)", legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.caption("Marker sollten **genau auf den R-Zacken** sitzen. So lässt sich prüfen, ob ein "
                "Detektor Schläge verpasst, doppelt zählt oder T-Wellen fehlerkennt — bevor man ihm "
@@ -205,7 +204,7 @@ def _render_fooof(edf, edf_path):
             fig.add_vline(x=pk[0], line=dict(color="#16a34a", width=1, dash="dot"))
     fig.update_layout(height=340, xaxis_type="log", yaxis_type="log",
                       xaxis_title="Frequenz (Hz)", yaxis_title="PSD (µV²/Hz)",
-                      plot_bgcolor="#fafafa", margin=dict(t=6, b=36, l=58, r=10),
+                      margin=dict(t=6, b=36, l=58, r=10),
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
@@ -305,8 +304,7 @@ def _render_lombscargle(edf, edf_path):
     fig.add_trace(go.Scatter(x=ls["freqs"], y=_norm(ls["psd"]), mode="lines",
                              name="Lomb-Scargle", line=dict(color="#e67e22", width=1.8)))
     fig.update_layout(height=320, xaxis_title="Frequenz (Hz)", yaxis_title="PSD (normiert)",
-                      xaxis=dict(range=[0, 0.4]), plot_bgcolor="#fafafa",
-                      margin=dict(t=6, b=36, l=55, r=10),
+                      xaxis=dict(range=[0, 0.4]), margin=dict(t=6, b=36, l=55, r=10),
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.caption("**Lomb-Scargle** rechnet direkt auf den ungleichmäßigen RR-Zeitpunkten (**kein "
@@ -417,7 +415,7 @@ def _render_dfa(edf, edf_path):
                                      name=f"{nm} (α={a:.2f})", line=dict(color=col, width=2.5, dash="dash")))
     fig.update_layout(height=320, xaxis_type="log", yaxis_type="log",
                       xaxis_title="Fenstergröße n (Schläge)", yaxis_title="F(n)",
-                      plot_bgcolor="#fafafa", margin=dict(t=6, b=36, l=55, r=10),
+                      margin=dict(t=6, b=36, l=55, r=10),
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.caption(f"{d['n']} RR-Intervalle · **Standard-DFA** nutzt **überlappende** Fenster (50 %) → "
@@ -483,8 +481,7 @@ def _render_multitaper(edf, edf_path):
     fig.add_trace(go.Scatter(x=m["f"], y=m["p"], mode="lines", name="Multitaper (DPSS)",
                              line=dict(color="#e67e22", width=1.8)))
     fig.update_layout(height=320, yaxis_type="log", xaxis_title="Frequenz (Hz)",
-                      yaxis_title="PSD (µV²/Hz)", plot_bgcolor="#fafafa",
-                      margin=dict(t=6, b=36, l=58, r=10),
+                      yaxis_title="PSD (µV²/Hz)", margin=dict(t=6, b=36, l=58, r=10),
                       legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)))
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.caption("**Multitaper** (DPSS, NW=3/K=5) reduziert Spectral Leakage → **schärferer, besser "

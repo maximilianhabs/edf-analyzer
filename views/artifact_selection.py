@@ -120,7 +120,7 @@ def _timeline_figure(res, dur_s: float) -> go.Figure:
                    ticktext=[_mmss(v) for v in ticks], gridcolor="rgba(200,200,200,0.25)"),
         yaxis=dict(title="Kanäle > Schwelle", rangemode="tozero",
                    gridcolor="rgba(200,200,200,0.25)"),
-        plot_bgcolor="#fafafa", showlegend=False,
+        showlegend=False,
     )
     return fig
 
@@ -203,8 +203,7 @@ def _render_spectral_compare(edf, res):
     fig.add_trace(go.Bar(x=bands, y=[corr[b] for b in bands], name="Artefaktkorrigiert",
                          marker_color=[BAND_COLOR[b] for b in bands]))
     fig.update_layout(height=230, margin=dict(t=8, b=30, l=45, r=10), barmode="group",
-                      yaxis_title="Rel. Power (%)", plot_bgcolor="#fafafa",
-                      legend=dict(orientation="h", yanchor="bottom", y=1.02))
+                      yaxis_title="Rel. Power (%)", legend=dict(orientation="h", yanchor="bottom", y=1.02))
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     # Impact-Einordnung
@@ -712,7 +711,7 @@ def render():
             ahfig.update_layout(
                 title=dict(text=f"{_sel_ch} — Amplitudenverteilung (1s-Fenster)", font=dict(size=12)),
                 xaxis_title="Peak-to-Peak (µV)", yaxis_title="Anzahl Fenster", height=260,
-                margin=dict(t=30, b=35, l=45, r=10), plot_bgcolor="#fafafa", bargap=0.02,
+                margin=dict(t=30, b=35, l=45, r=10), bargap=0.02,
             )
             st.plotly_chart(ahfig, use_container_width=True, key="art_amp_hist")
         with ahc2:
@@ -736,7 +735,7 @@ def render():
                                       boxpoints="outliers", marker_size=3, line_width=1))
             bfig.update_layout(
                 yaxis_title="Peak-to-Peak (µV, log)", yaxis_type="log", height=320,
-                margin=dict(t=10, b=40, l=50, r=10), plot_bgcolor="#fafafa", showlegend=False,
+                margin=dict(t=10, b=40, l=50, r=10), showlegend=False,
             )
             st.plotly_chart(bfig, use_container_width=True, key="art_amp_box")
             st.caption("Log-Skala (µV-Amplituden streuen über Größenordnungen). Kanäle mit "

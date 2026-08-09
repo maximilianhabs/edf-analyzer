@@ -776,8 +776,7 @@ def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
         height=max(500, int(total_height / spacing) * 42 + 80),
         margin=dict(t=8, b=48, l=132, r=8),
         legend=dict(orientation="h", y=-0.06, x=0, font=dict(size=11)),
-        plot_bgcolor="#f9f9f9",
-    )
+        )
     return fig
 
 

@@ -478,7 +478,7 @@ def render():
             xaxis=dict(range=[0, 0.42], dtick=0.1, tickformat=".1f"),
             yaxis=dict(type="log", range=[np.log10(y_lo), np.log10(y_hi)]),
             height=260, margin=dict(t=30, b=35, l=50, r=8),
-            plot_bgcolor="#f9f9f9", showlegend=False,
+            showlegend=False,
         )
         return fig
 
@@ -1181,8 +1181,7 @@ def render():
             _dfig.update_layout(
                 title="Tachogramm — RR-Intervalle über die Zeit",
                 xaxis_title="Zeit (s)", yaxis_title="RR (ms)", height=340,
-                margin=dict(t=40, b=40, l=55, r=10), plot_bgcolor="#fafafa",
-                legend=dict(orientation="h", y=1.12),
+                margin=dict(t=40, b=40, l=55, r=10), legend=dict(orientation="h", y=1.12),
             )
             st.plotly_chart(_dfig, use_container_width=True, key="hrv_flip_diag_tacho")
             st.caption(
@@ -1324,7 +1323,6 @@ def render():
         title=dict(text="Tachogramm — Rohdaten", font=dict(size=12), x=0.02),
         yaxis=dict(range=[y_lo_raw, y_hi_raw]),
         height=300, margin=dict(t=28, b=36, l=54, r=8),
-        plot_bgcolor="#f9f9f9",
         legend=dict(orientation="h", y=1.18, x=0, font=dict(size=9)),
     )
 
@@ -1345,7 +1343,6 @@ def render():
         title=dict(text="Tachogramm — bereinigt", font=dict(size=12), x=0.02),
         yaxis=dict(range=[max(0, mean_rr*0.5), mean_rr*1.8]),
         height=300, margin=dict(t=28, b=36, l=54, r=8),
-        plot_bgcolor="#f9f9f9",
         legend=dict(orientation="h", y=1.18, x=0, font=dict(size=9)),
     )
 
@@ -1370,7 +1367,6 @@ def render():
         yaxis=dict(title="RRn+1 (ms)", range=lim_raw),
         title=dict(text="Poincaré — Rohdaten", font=dict(size=12), x=0.02),
         height=300, margin=dict(t=28, b=36, l=54, r=8),
-        plot_bgcolor="#f9f9f9",
         legend=dict(orientation="h", y=1.18, x=0, font=dict(size=9)),
     )
 
@@ -1407,7 +1403,6 @@ def render():
         yaxis=dict(title="RRn+1 (ms)", range=lim_clean),
         title=dict(text="Poincaré — bereinigt", font=dict(size=12), x=0.02),
         height=300, margin=dict(t=28, b=36, l=54, r=8),
-        plot_bgcolor="#f9f9f9",
         legend=dict(orientation="h", y=1.18, x=0, font=dict(size=9)),
     )
 
@@ -1726,8 +1721,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                 fig_rr_hist.update_layout(
                     xaxis_title="RR-Intervall (ms)", yaxis_title="Anzahl Schläge",
                     title=dict(text="RR-Intervall-Histogramm", font=dict(size=12), x=0.02),
-                    height=280, margin=dict(t=28, b=36, l=54, r=8), plot_bgcolor="#f9f9f9",
-                    showlegend=False,
+                    height=280, margin=dict(t=28, b=36, l=54, r=8), showlegend=False,
                 )
                 st.plotly_chart(fig_rr_hist, use_container_width=True)
                 st.caption(f"**HRV-Triangulärindex** ≈ {_tri_index:.1f} (Gesamtzahl NN-Intervalle "
@@ -1761,8 +1755,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                         yaxis_title="Anzahl",
                         title=dict(text="ΔRR-Histogramm (Sukzessivdifferenzen)",
                                   font=dict(size=12), x=0.02),
-                        height=280, margin=dict(t=28, b=36, l=54, r=8), plot_bgcolor="#f9f9f9",
-                        showlegend=False,
+                        height=280, margin=dict(t=28, b=36, l=54, r=8), showlegend=False,
                     )
                     st.plotly_chart(fig_drr_hist, use_container_width=True)
                     st.caption("Verteilung der Schlag-zu-Schlag-Differenzen — ein schmaler, hoher "
@@ -1815,7 +1808,6 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                                tickvals=[4, 6, 8, 11, 16], ticktext=["4", "6", "8", "11", "16"]),
                     yaxis=dict(title="Fluktuation F(n)", type="log"),
                     height=260, margin=dict(t=10, b=40, l=60, r=10),
-                    plot_bgcolor="#fafafa",
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)),
                 )
                 st.plotly_chart(fig_dfa, use_container_width=True)
@@ -1860,7 +1852,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                     yaxis=dict(title="EDR (rel.)", showticklabels=False, zeroline=True,
                                zerolinecolor="#ccc"),
                     height=200, margin=dict(t=8, b=38, l=40, r=10),
-                    plot_bgcolor="#fafafa", showlegend=False,
+                    showlegend=False,
                 )
                 st.plotly_chart(fig_edr, use_container_width=True, key="edr_wave")
             with ec2:
@@ -2416,8 +2408,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                 fig_orient.update_layout(
                     xaxis_title="Zeit (s)", yaxis_title="HR (bpm)",
                     height=180, margin=dict(t=4, b=35, l=55, r=8),
-                    plot_bgcolor="#f9f9f9",
-                )
+                    )
                 st.plotly_chart(fig_orient, use_container_width=True, key="hvt_orient_plot")
                 st.caption("HR-Verlauf zur Orientierung — HVT-Phase zeigt typisch HR-Anstieg.")
 
@@ -2493,8 +2484,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                 fig_hr.update_layout(
                     xaxis_title="Zeit (s)", yaxis_title="Herzrate (bpm)",
                     height=260, margin=dict(t=8, b=40, l=55, r=8),
-                    plot_bgcolor="#f9f9f9",
-                )
+                    )
                 st.plotly_chart(fig_hr, use_container_width=True)
 
                 from analysis.hrv_freq import compute_frequency_domain as _cfd2
@@ -2643,7 +2633,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                             yaxis=dict(title="Reizfrequenz (Hz)", side="left"),
                             yaxis2=dict(title="HR (bpm)", overlaying="y", side="right"),
                             height=220, margin=dict(t=8, b=40, l=55, r=55),
-                            plot_bgcolor="#f9f9f9", showlegend=True,
+                            showlegend=True,
                             legend=dict(orientation="h", yanchor="bottom", y=1.02),
                         )
                         st.plotly_chart(fig_ph, use_container_width=True)

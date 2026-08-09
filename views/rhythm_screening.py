@@ -167,8 +167,7 @@ def render():
             dfig.update_layout(
                 title="Tachogramm — RR-Intervalle über die Zeit",
                 xaxis_title="Zeit (s)", yaxis_title="RR (ms)", height=340,
-                margin=dict(t=40, b=40, l=55, r=10), plot_bgcolor="#fafafa",
-                legend=dict(orientation="h", y=1.12),
+                margin=dict(t=40, b=40, l=55, r=10), legend=dict(orientation="h", y=1.12),
             )
             st.plotly_chart(dfig, use_container_width=True, key="flip_diag_tacho")
             st.caption(
@@ -435,7 +434,7 @@ def render():
         ))
     fig.update_layout(
         xaxis_title="Zeit (s)", yaxis_title="µV", height=340,
-        margin=dict(t=10, b=40, l=55, r=10), plot_bgcolor="#fafafa", showlegend=False,
+        margin=dict(t=10, b=40, l=55, r=10), showlegend=False,
     )
     # WICHTIG: stabiler Key (nicht pro Fenster wechselnd) — ein pro-Fenster wechselnder Key
     # verursachte einen Desync zwischen dem Fenster-Label und dem tatsächlich gezeichneten
@@ -477,8 +476,7 @@ def render():
         hfig.update_layout(
             title=dict(text="RR-Verteilung in diesem Fenster", font=dict(size=12)),
             xaxis_title="RR (ms)", yaxis_title="Anzahl", height=200,
-            margin=dict(t=30, b=35, l=45, r=10), plot_bgcolor="#fafafa",
-            bargap=0.05,
+            margin=dict(t=30, b=35, l=45, r=10), bargap=0.05,
         )
         st.plotly_chart(hfig, use_container_width=True, key="rhythm_rr_hist")
         st.caption(
@@ -516,8 +514,7 @@ def render():
                                   line=dict(color="#1a5276", width=2.5), name="Ensemble (Median)"))
         pfig.update_layout(
             xaxis_title="ms relativ zu R", yaxis_title="µV", height=320,
-            margin=dict(t=10, b=40, l=55, r=10), plot_bgcolor="#fafafa",
-            showlegend=True, legend=dict(orientation="h", y=1.08),
+            margin=dict(t=10, b=40, l=55, r=10), showlegend=True, legend=dict(orientation="h", y=1.08),
         )
         st.plotly_chart(pfig, use_container_width=True, key="pwave_ensemble_canvas")
         _excl_txt = f" ({_pw['n_excluded']} ausgeschlossen)" if _pw["n_excluded"] else ""
