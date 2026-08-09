@@ -1,0 +1,25 @@
+{
+  "created": "2026-08-09T08:56:57.734301",
+  "purpose": "Synthetisches Ground-Truth-EDF #2 (Vorhofflimmern) — KEIN echter Patient. Siehe Docstring in generate_test_edf_afib.py für die elektrophysiologische Begründung der 4 modellierten AFib-Charakteristika.",
+  "format": {
+    "fs_hz": 200.0,
+    "duration_s": 600,
+    "n_eeg_channels": 19,
+    "ecg_channel": "POL X1"
+  },
+  "afib_rhythm": {
+    "model": "i.i.d. RR-Ziehung (KEINE RSA-Modulation, KEIN Trend) — absolute Arrhythmie",
+    "mean_rr_ms": 628.9817587262056,
+    "rr_sd_ms": 115.99328142956347,
+    "mean_hr_bpm": 95.39227357166946,
+    "n_beats": 954,
+    "expected_cosen": "~-0.43 (Literatur AFib-Median -0.5, Range -0.8 bis -0.3; Referenzfall CA1772QO: -0.44) -> verdict sollte 'afib_verdaechtig' sein, in praktisch allen 30s-Fenstern."
+  },
+  "p_wave": {
+    "model": "Kontinuierliches 5-9Hz-Bandpass-Rauschen (~300-540/min, f-Wellen-Bereich 350-600/min), UNKORRELIERT zum R-Zacken-Timing -> mittelt sich in der Ensemble-Bildung heraus",
+    "amplitude_mv": 0.08,
+    "expected_coherence": "~0.10 (deutlich unter COH_UNCERTAIN=0.35) -> classify_p_wave sollte 'nicht_abgrenzbar' liefern, combine_with_pwave sollte die AFib-Confidence anheben."
+  },
+  "qrs_morphology": "Identisches QRS-T-Template wie test_edf_datei.edf (Normal-Referenz) — AFib veraendert die Kammererregung selbst nicht, nur Vorhofaktivitaet und Ueberleitungs-Unregelmaessigkeit.",
+  "eeg_note": "Identischer EEG-Hintergrund wie test_edf_datei.edf (Alpha 10Hz posterior-dominant, Aperiodik-Exponent 2.2) — kein eigener EEG-Befund hier relevant, dient nur der App-Kompatibilitaet als vollstaendiger 19-Kanal-Datensatz. KEIN Artefakt-Burst in dieser Datei (Fokus liegt auf dem EKG)."
+}
