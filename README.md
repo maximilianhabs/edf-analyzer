@@ -73,6 +73,7 @@ Nach dem **Add-on-Prinzip** bleiben die bewährten Standard-Methoden unveränder
 - EDF-Dateien sind **im Repository nicht enthalten** und werden per `.gitignore` ausgeschlossen — es sind keinerlei Patientendaten Teil des Projekts.
 - Beim Upload prüft die App den EDF-Header auf identifizierende Angaben; ein Standalone-Skript (`anonymize.py`) kann Header anonymisieren.
 - Hochgeladene Dateien liegen in einem sitzungseigenen Temp-Ordner und werden durch einen Cleanup-Daemon nach spätestens ~4 h automatisch gelöscht.
+- Wer EDF-Dateien schon *vor* dem Upload lokal anonymisieren möchte, kann dafür das eigenständige Begleit-Tool [edf-anonymizer](https://github.com/maximilianhabs/edf-anonymizer) nutzen — dependency-freies CLI plus optionale Web-Oberfläche, läuft komplett offline auf dem eigenen Rechner.
 
 ## Tech-Stack
 
