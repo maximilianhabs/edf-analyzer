@@ -4,7 +4,7 @@ import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 
-from core.shared import load_and_prepare, section_header, get_patient_info
+from core.shared import load_and_prepare, section_header, get_patient_info, kpi_tile
 from analysis.aperiodic import welch_psd, fit_aperiodic, corrected_peak
 from views.eeg_spectrum import _highpass, _alpha_band, BANDS
 
@@ -232,15 +232,11 @@ def render():
     _r2_col = {"normal": "#27ae60", "grenzwertig": "#e67e22", "pathologisch": "#c0392b"}[_r2_zone]
     _r2_txt = {"normal": "guter Fit", "grenzwertig": "mäßiger Fit", "pathologisch": "schwacher Fit"}[_r2_zone]
 
+    # Phase 5 GUI-Redesign (siehe [[project_edf_ui_redesign]]): vorher eigenständige, dritte
+    # Kachel-Variante neben eeg_spectrum.py/ecg_hrv.py — delegiert jetzt an die gemeinsame
+    # kpi_tile()-Komponente (core/shared.py), Aufrufstellen unverändert.
     def _tile(col, label, value, sub, color="#2471a3"):
-        col.markdown(
-            f"<div style='text-align:center;padding:12px 8px;border-radius:10px;"
-            f"border:1.5px solid {color}40;background:{color}0d'>"
-            f"<div style='font-size:10px;color:#888;font-weight:600;letter-spacing:.5px'>{label}</div>"
-            f"<div style='font-size:22px;font-weight:800;color:{color};margin:3px 0'>{value}</div>"
-            f"<div style='font-size:10px;color:#999'>{sub}</div></div>",
-            unsafe_allow_html=True,
-        )
+        col.markdown(kpi_tile(label, value, sub, border_color=color), unsafe_allow_html=True)
 
     k1, k2, k3, k4, k5 = st.columns(5)
     _tile(k1, "EXPONENT (1–40 Hz)", f"{exp:.2f}", "1/f-Abfall", "#8e44ad")

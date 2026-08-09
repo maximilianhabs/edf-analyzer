@@ -1849,8 +1849,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                     hovertemplate="t=%{x:.1f}s<extra></extra>"))
                 fig_edr.update_layout(
                     xaxis=dict(title="Zeit (s)"),
-                    yaxis=dict(title="EDR (rel.)", showticklabels=False, zeroline=True,
-                               zerolinecolor="#ccc"),
+                    yaxis=dict(title="EDR (rel.)", showticklabels=False, zeroline=True),
                     height=200, margin=dict(t=8, b=38, l=40, r=10),
                     showlegend=False,
                 )

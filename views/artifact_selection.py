@@ -116,10 +116,8 @@ def _timeline_figure(res, dur_s: float) -> go.Figure:
     ticks = list(range(0, int(dur_s) + 1, 60))
     fig.update_layout(
         height=200, margin=dict(t=8, b=34, l=48, r=10),
-        xaxis=dict(title="Zeit (min:s)", tickvals=ticks,
-                   ticktext=[_mmss(v) for v in ticks], gridcolor="rgba(200,200,200,0.25)"),
-        yaxis=dict(title="Kanäle > Schwelle", rangemode="tozero",
-                   gridcolor="rgba(200,200,200,0.25)"),
+        xaxis=dict(title="Zeit (min:s)", tickvals=ticks, ticktext=[_mmss(v) for v in ticks]),
+        yaxis=dict(title="Kanäle > Schwelle", rangemode="tozero"),
         showlegend=False,
     )
     return fig
