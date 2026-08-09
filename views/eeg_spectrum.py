@@ -8,7 +8,7 @@ from scipy.signal import spectrogram
 from scipy.signal import butter, filtfilt
 from scipy.signal.windows import dpss
 
-from core.shared import load_and_prepare, section_header, get_patient_info, safe_slider, status_dot, kpi_tile
+from core.shared import load_and_prepare, apply_channel_overrides, section_header, get_patient_info, safe_slider, status_dot, kpi_tile
 
 # ── Frequenzbänder ────────────────────────────────────────────────────────────
 # Delta-Untergrenze 1.0 Hz — konsistent mit dem 1-Hz-Hochpass und der 1-Hz-PSD-Maske
@@ -166,18 +166,23 @@ def _active_settings_note(use_multitaper: bool, use_art_filter: bool) -> None:
 
 
 @st.cache_data(show_spinner="Berechne A/P-Gradient (PAR)…")
-def _compute_par(edf_path, t_start, t_end, a_lo, a_hi, multitaper, amp_thresh):
+def _compute_par(edf_path, t_start, t_end, a_lo, a_hi, multitaper, amp_thresh, overrides_key=""):
     """Anterior-Posterior-Ratio der absoluten Alpha-Power über den ganzen Kopf.
 
     PAR = geom. Mittel(posteriore absolute Alpha-Fläche) / geom. Mittel(anteriore)
     (Colombo 2023 / Maschke 2025). Split an der Cz-Linie (|y|≤0,2 ausgeschlossen).
     PAR > 1 = posterior-dominantes Alpha (wach/normal), < 1 = anteriorisiert
     (Bewusstseinsminderung/Anästhesie). Zusätzlich Exponent-Gradient (post−ant, 1–20 Hz).
-    """
+
+    `overrides_key` fließt NUR in den Cache-Key ein (Bugfix 2026-08-09: manuelle Kanal-Typ-
+    Korrekturen aus der Kanal-Identifikation wurden hier vorher ignoriert UND selbst nach
+    Behebung hätte st.cache_data ohne diesen Parameter ein veraltetes Ergebnis von vor der
+    Korrektur zurückgegeben — siehe [[project_edf_ekg_polaritaet_stellen]]-Prinzip sinngemäß
+    auf Kanal-Overrides übertragen)."""
     import mne
     from core.shared import ELECTRODE_POS
     from analysis.aperiodic import fit_aperiodic
-    edf = load_and_prepare(edf_path)
+    edf = apply_channel_overrides(load_and_prepare(edf_path))
     fs = edf["sfreq"]
     eeg_map = edf["eeg_map"]
     raw = mne.io.read_raw_edf(edf_path, preload=True, encoding="latin1", verbose=False)
@@ -821,7 +826,7 @@ def render():
         st.error("Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.", icon=":material/block:")
         return
 
-    edf = load_and_prepare(edf_path)
+    edf = apply_channel_overrides(load_and_prepare(edf_path))
     fs = edf["sfreq"]
     eeg_map = edf["eeg_map"]
 
@@ -1229,7 +1234,8 @@ def render():
         _par = {"n_post": 0, "n_ant": 0, "par": float("nan")}
     else:
         _par = _compute_par(edf_path, t_start, t_end, alpha_band[0], alpha_band[1],
-                            use_multitaper, float(amp_thresh))
+                            use_multitaper, float(amp_thresh),
+                            overrides_key=str(sorted(st.session_state.get("channel_overrides", {}).items())))
     if _par["n_post"] >= 2 and _par["n_ant"] >= 2 and _par["par"] == _par["par"]:
         _pv = _par["par"]
         _pzone = "normal" if _pv >= 1.0 else ("grenzwertig" if _pv >= 0.6 else "pathologisch")
