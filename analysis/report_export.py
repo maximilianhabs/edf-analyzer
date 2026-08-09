@@ -47,7 +47,7 @@ def _ai(l, r):
     return (l - r) / s * 100 if s > 1e-9 else float("nan")
 
 
-def _eeg_metrics(edf, edf_path, segments=None):
+def _eeg_metrics(edf, edf_path, segments=None, window_hint_segments=None):
     """Alle EEG-Spektral-Kennzahlen als flaches Dict — einmal Gesamt (segments=None),
     einmal artefaktkorrigiert (segments=Liste, Signale sample-bereinigt)."""
     from views.report import _compute_bandpower
@@ -70,7 +70,22 @@ def _eeg_metrics(edf, edf_path, segments=None):
     if corrected:
         t0, t1 = 0.0, None
     else:
-        ana = min(dur, 300.0); t0 = max(0.0, (dur - ana) / 2); t1 = t0 + ana
+        # Bewusst NICHT ein blindes Mitte-5-min-Fenster (das war der bisherige Ansatz hier
+        # und wich vom Visual/Glory-Report ab — Cross-Report-Konsistenzcheck 2026-08-09 fand
+        # dadurch abweichende PAR-Werte für dieselbe Aufnahme). Stattdessen dasselbe "beste
+        # Alpha-Fenster" wie im Visual Report (analysis/glory_report.py::_best_alpha_window)
+        # — sauberes, repräsentatives Fenster statt eines willkürlichen Zeitausschnitts, siehe
+        # [[feedback_edf_analysefenster_konsistenz]] und [[project_edf_report_audit]].
+        # window_hint_segments: die auto-erkannten Artefakt-Segmente NUR zur Fensterwahl
+        # (auch im "Gesamt"-Modus, wo `segments` selbst None ist/nichts aus der Berechnung
+        # entfernt wird) — vermeidet, ein artefaktbelastetes Fenster als "repräsentativ"
+        # auszuwählen, exakt wie im Visual Report.
+        from analysis.glory_report import _best_alpha_window
+        _bt, _wl = _best_alpha_window(post, sf, dur, window_hint_segments or [])
+        if _bt is not None:
+            t0, t1 = _bt, _bt + _wl
+        else:
+            ana = min(dur, 300.0); t0 = max(0.0, (dur - ana) / 2); t1 = t0 + ana
 
     bp_p, fp, pp, ap_p = _compute_bandpower(post, sf, t0, t1)
     if not bp_p:
@@ -308,7 +323,7 @@ def collect_sections(edf: dict, edf_path: str, corr_segments=None,
 
     # ── EEG ───────────────────────────────────────────────────────────────────
     if em:
-        ef = _eeg_metrics(edf, edf_path, None)
+        ef = _eeg_metrics(edf, edf_path, None, window_hint_segments=corr_segments)
         ec = _eeg_metrics(edf, edf_path, corr_segments) if corr_segments else {}
         if ef:
             _add_eeg_sections(sections, ef, ec, age=age)

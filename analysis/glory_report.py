@@ -181,12 +181,27 @@ def _collect(edf, edf_path, age=None, is_pediatric=False):
             d["rel"] = {k: v / tot * 100 for k, v in bp.items()}
             d["alpha_peak"] = _peak_freq(f, p, 8, 13)
             d["dar"] = bp["Delta"] / (bp["Alpha"] or 1e-9)
-        # A/P-Gradient
+        # A/P-Gradient — nutzt DENSELBEN "ganzer Kopf"-Geometrie-Mittel-PAR wie der Standard-
+        # Report (views/eeg_spectrum.py::_compute_par, auch von der Live-App-Seite genutzt),
+        # STATT eines eigenen, einfacheren O1/O2-vs-F3/F4-Verhältnisses. Cross-Report-
+        # Konsistenzcheck (2026-08-09, siehe [[project_edf_report_audit]]) fand hier eine
+        # ECHTE Divergenz: beide Reports nannten ihren Wert "PAR"/"A/P-Gradient", maßen aber
+        # unterschiedliche Dinge (2-Kanal-Verhältnis vs. kopfweites geometrisches Mittel über
+        # alle posterioren/anterioren Elektroden) — an der Normal-Datei 24,9 vs. 27,6.
         if d["ant"] is not None:
             fa, pa = _compute_psd(cl(d["ant"]), sf, amp_thresh_uv=9999.0)
             if fa is not None and f is not None:
-                d["par"] = _band_power(f, p, 8, 13) / (_band_power(fa, pa, 8, 13) or 1e-9)
                 d["rel_ant"] = {n: _band_power(fa, pa, lo, hi) for n, lo, hi, _ in BANDS}
+        try:
+            from views.eeg_spectrum import _compute_par
+            _bt_par, _wl_par = d.get("spec_window", (None, None))
+            _pt0 = _bt_par if _bt_par is not None else 0.0
+            _pt1 = (_bt_par + _wl_par) if _bt_par is not None else dur
+            parres = _compute_par(edf_path, _pt0, _pt1, 8.0, 13.0, False, 9999.0)
+            if parres["n_post"] >= 2 and parres["n_ant"] >= 2:
+                d["par"] = parres["par"]
+        except Exception:
+            pass
         # Asymmetrie
         d["ai"] = {}
         for lbl, L, R in [("okzipital", o1, o2), ("frontal", f3, f4)]:
@@ -207,32 +222,38 @@ def _collect(edf, edf_path, age=None, is_pediatric=False):
         except Exception:
             d["ap"] = None
 
-    # EKG
+    # EKG — nutzt DENSELBEN Pfad wie der Standard-Report und die EKG&HRV-Live-Seite/das
+    # HRV-PDF (views/ecg_hrv.py::compute_rr, Peak-Erkennung + 4-stufige Hampel-Artefakt-
+    # bereinigung), STATT eines eigenen, unabhängigen detect_r_peaks_polarity_safe()+
+    # build_rr_series()-Pfads. Cross-Report-Konsistenzcheck (2026-08-09, siehe
+    # [[project_edf_report_audit]]) fand hier eine ECHTE Divergenz: an der AFib-Ground-
+    # Truth-Datei wich SDNN um +6,6% ab (86,9 vs. 81,5 ms), weil build_rr_series()' 20%-
+    # Abweichungs-vom-lokalen-Median-Kriterium bei absoluter Arrhythmie (per Definition
+    # jeder Schlag weicht stark vom Nachbarn ab) systematisch zu viele echte AFib-Schläge
+    # als "Ektopie" verwarf — genau im klinisch wichtigsten Fall am ungenauesten.
     d["ecg"] = None
     if edf.get("ecg_channels"):
         ch = edf["ecg_channels"][0]
         if ch in edf.get("ch_idx", {}):
-            from analysis.ecg import detect_r_peaks_polarity_safe, build_rr_series, compute_hrv_time_domain
+            from views.ecg_hrv import compute_rr
+            from analysis.ecg import compute_hrv_time_domain
             from analysis.hrv_freq import compute_frequency_domain
-            raw = edf["data"][edf["ch_idx"][ch]].astype(float)
-            raw = raw - np.median(raw)
-            # Polaritäts-sicherer Pfad (User-Audit 2026-08-08): korrigiertes `raw` wird sowohl
-            # für die Peak-Erkennung als auch für die spätere Roh-EKG-Abbildung im PDF verwendet
-            # (Zeile "sig": raw*1000.0 unten) — sonst zeigt die Report-Seite die R-Zacke bei
-            # invertierten Kanälen nach unten. Siehe [[project_edf_rhythm_screening]].
-            raw, pk, _ = detect_r_peaks_polarity_safe(raw, sf)
-            rr = build_rr_series(pk, sf)
-            if rr is not None:
-                clean = rr.rr_ms[~rr.artifact_mask]
+            rr_data = compute_rr(edf_path, ch)
+            clean = rr_data["rr_ms"]
+            if len(clean) >= 5:
                 td = compute_hrv_time_domain(clean)
                 fd = None
                 try:
-                    fd = compute_frequency_domain(clean, rr.rr_times_s[~rr.artifact_mask], "welch")
+                    fd = compute_frequency_domain(clean, rr_data["times"], "welch")
                 except Exception:
                     pass
-                d["ecg"] = {"name": ch, "sig": raw * 1000.0, "peaks": pk,
-                            "rr_all": rr.rr_ms, "t_all": rr.rr_times_s,
-                            "mask": rr.artifact_mask, "rr": clean, "td": td, "fd": fd}
+                raw = edf["data"][edf["ch_idx"][ch]].astype(float)
+                raw = raw - np.median(raw)
+                if rr_data.get("was_flipped"):
+                    raw = -raw  # dieselbe Polaritätskorrektur wie compute_rr() intern anwendet
+                d["ecg"] = {"name": ch, "sig": raw * 1000.0, "peaks": rr_data["peaks"],
+                            "rr_all": rr_data["rr_ms_raw"], "t_all": rr_data["times_raw"],
+                            "mask": rr_data["removed_mask"], "rr": clean, "td": td, "fd": fd}
 
     # ── Laborwert-Bewertung (dieselbe Quelle wie Standard-PDF/Excel, siehe
     # analysis/report_metadata.py) — ersetzt die reinen KPI-Kacheln durch Balken mit
