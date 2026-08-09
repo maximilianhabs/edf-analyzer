@@ -462,6 +462,31 @@ def render():
             st.session_state[ov_key] = set()
             st.rerun()
 
+    # ── RR-Histogramm für DIESES Fenster (User-Idee 2026-08-08, Punkt 3 des Histogramm-
+    # Konzepts, siehe [[project_edf_ui_redesign]]) — macht die CosEn-Bewertung des Fensters
+    # visuell greifbar: schmale, einzelne Säule = regelmäßig (normal), breit gestreut/mehrere
+    # Häufungen = unregelmäßig (AFib-artig). Nutzt `win_rr` (bereits oben für die Statistikzeile
+    # berechnet), kein neuer Datenpfad, minimale Zusatzlast (max. ~180 Werte bei WIN_S=60s).
+    if len(win_rr) >= 5:
+        _bin_w = 1000.0 / 128.0  # Task-Force-1996-Konvention, wie im RR-Histogramm auf EKG&HRV
+        _rmin, _rmax = float(win_rr.min()), float(win_rr.max())
+        _nbins = max(1, int(np.ceil((_rmax - _rmin) / _bin_w)) + 1)
+        hfig = go.Figure(go.Histogram(
+            x=win_rr, xbins=dict(start=_rmin - _bin_w / 2, size=_bin_w, end=_rmax + _bin_w),
+            marker_color="#2471a3", opacity=0.85))
+        hfig.update_layout(
+            title=dict(text="RR-Verteilung in diesem Fenster", font=dict(size=12)),
+            xaxis_title="RR (ms)", yaxis_title="Anzahl", height=200,
+            margin=dict(t=30, b=35, l=45, r=10), plot_bgcolor="#fafafa",
+            bargap=0.05,
+        )
+        st.plotly_chart(hfig, use_container_width=True, key="rhythm_rr_hist")
+        st.caption(
+            "Eine einzelne, schmale Säule spricht für einen regelmäßigen Rhythmus in diesem "
+            "Fenster; mehrere getrennte Häufungen oder eine breite Streuung für eine "
+            "unregelmäßige RR-Folge (konsistent mit dem CosEn-Urteil oben)."
+        )
+
     # ── PQRST-Ensemble & P-Welle (Stufe②b) ───────────────────────────────────
     # Schlag-Summation (User-Anregung 2026-08-08): alle R-Zacken des aktuellen Fensters
     # ausgerichtet und gemittelt — zeigt P-QRS-T als ein Diagramm. Läuft auf JEDEM Fenster,
