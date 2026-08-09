@@ -110,7 +110,12 @@ _DOMINANT_PEAK_BANDS = [
 ]
 
 
-def _dominant_band_peak(freqs, psd, alpha_band=(8.0, 13.0)) -> dict:
+_APERIODIC_FIT_MIN_R2 = 0.90  # Mindestgüte, ab der der 1/f-Fit für die Dominanz-Auswahl
+# vertraut wird — bei einem schlechten Fit (verrauschtes/kurzes Segment) auf die rohe
+# Bandpower zurückfallen, statt eine unzuverlässige Korrektur anzuwenden.
+
+
+def _dominant_band_peak(freqs, psd, alpha_band=(8.0, 13.0), aperiodic_res: dict = None) -> dict:
     """Bestimmt, welches der 4 Frequenzbänder im Spektrum die meiste Power trägt, und
     liefert die Peak-Frequenz INNERHALB dieses dominanten Bandes (User-Konzept 2026-08-08:
     "schau, was dominiert — wenn Alpha, gib den Alpha-Peak; wenn Theta/Delta dominiert,
@@ -118,15 +123,35 @@ def _dominant_band_peak(freqs, psd, alpha_band=(8.0, 13.0)) -> dict:
     überhaupt Alpha-Aktivität vorliegt — z. B. bei Enzephalopathie/Koma mit Theta- oder
     Delta-Grundrhythmus).
 
+    `aperiodic_res`: optionales Ergebnis von `analysis.aperiodic.fit_aperiodic()` — wenn
+    übergeben (und R² ausreichend), wird die 1/f-BEREINIGTE ("flattened") Bandpower für den
+    Dominanz-VERGLEICH genutzt statt der rohen Summe (Bugfix 2026-08-09, siehe
+    [[project_eeg_dominant_band_1f_bias]]): jedes EEG hat einen abfallenden 1/f-Untergrund,
+    der Delta (0,5–4 Hz) allein durch seine tiefe Lage praktisch immer mehr ROHE Power gibt
+    als Theta — auch wenn dort ein klar sichtbarer Theta-Peak sitzt. Quantitativ verifiziert:
+    mit roher Power gewinnt Delta bei moderater Theta-Amplitude fast immer, mit flattened
+    Power korrekt Theta. Die PEAK-FREQUENZ selbst bleibt immer auf dem rohen Spektrum
+    berechnet — nur die Auswahl, WELCHES Band als dominant gilt, nutzt die bereinigte Größe.
+    Ohne `aperiodic_res` (Default) unverändertes Verhalten (rohe Bandpower).
+
     Rückgabe: {"band": "Delta"|"Theta"|"Alpha"|"Beta", "peak_hz": float,
-    "power_pct": float (Anteil des dominanten Bandes an der Gesamtpower der 4 Bänder)}.
+    "power_pct": float (Anteil des dominanten Bandes an der Gesamtpower der 4 Bänder, IMMER
+    roh — beschreibt den tatsächlichen Leistungsanteil, nicht die Dominanz-Entscheidung)}.
     """
     bands = [(n, alpha_band if n == "Alpha" else rng) for n, rng in _DOMINANT_PEAK_BANDS]
     powers = {n: _band_power(freqs, psd, lo, hi) for n, (lo, hi) in bands}
     total = sum(powers.values())
     if total <= 0:
         return {"band": None, "peak_hz": float("nan"), "power_pct": float("nan")}
-    dom_name = max(powers, key=powers.get)
+
+    compare = powers
+    if aperiodic_res is not None and aperiodic_res.get("r2", 0) >= _APERIODIC_FIT_MIN_R2:
+        from analysis.aperiodic import flattened_power
+        flat = {n: max(0.0, flattened_power(aperiodic_res, lo, hi)) for n, (lo, hi) in bands}
+        if sum(flat.values()) > 0:
+            compare = flat
+
+    dom_name = max(compare, key=compare.get)
     lo, hi = dict(bands)[dom_name]
     return {"band": dom_name, "peak_hz": _peak_freq(freqs, psd, lo, hi),
             "power_pct": powers[dom_name] / total * 100.0}
@@ -433,8 +458,15 @@ def _sg_layout_update(fig, tick_vals, tick_text, title, row=1, col=1):
 
 
 def _fft_figure(signals: dict, t_start, t_end, fs, panel_id,
-                multitaper=False, amp_thresh_uv=9999.0, alpha_band=(8.0, 13.0)):
-    """FFT-Overlay mehrerer Signale in einem Plot."""
+                multitaper=False, amp_thresh_uv=9999.0, alpha_band=(8.0, 13.0),
+                correct_dominant_band=False):
+    """FFT-Overlay mehrerer Signale in einem Plot.
+
+    `correct_dominant_band`: wenn True, wird für die Dominanz-Auswahl (Delta/Theta/Alpha/
+    Beta, siehe `_dominant_band_peak()`) zusätzlich ein 1/f-Fit je Signal berechnet und die
+    Rohleistungs-Verzerrung Richtung Delta korrigiert (siehe [[project_eeg_dominant_band_1f_bias]]).
+    Bewusst hinter demselben "Rechenintensive Maße"-Schalter wie der A/P-Gradient/LZC
+    (User-Performance-Vorgabe) — der zusätzliche Kurven-Fit läuft NICHT bei jedem Rerun."""
     a_lo, a_hi = alpha_band
     colors = {"Posterior (O1+O2)": "#27ae60", "Anterior (F3+F4)": "#e67e22",
               "O1": "#27ae60", "O2": "#2ecc71", "F3": "#e67e22", "F4": "#f39c12"}
@@ -496,7 +528,15 @@ def _fft_figure(signals: dict, t_start, t_end, fs, panel_id,
         alpha_peaks[label] = ap
         alpha_cog[label] = _peak_freq_cog(freqs, psd, a_lo, a_hi)
         bp_all[label] = {name: _band_power(freqs, psd, lo, hi) for name, (lo, hi), _ in BANDS}
-        dominant_peaks[label] = _dominant_band_peak(freqs, psd, alpha_band=(a_lo, a_hi))
+        _ap_res = None
+        if correct_dominant_band:
+            try:
+                from analysis.aperiodic import fit_aperiodic
+                _ap_res = fit_aperiodic(freqs, psd, 1, 20)
+            except Exception:
+                _ap_res = None
+        dominant_peaks[label] = _dominant_band_peak(freqs, psd, alpha_band=(a_lo, a_hi),
+                                                     aperiodic_res=_ap_res)
 
         # Peak-Pfeil im Chart zeigt den DOMINANTEN Band-Peak, nicht mehr fest Alpha (User-
         # Feedback 2026-08-09): bei einer enzephalopathischen Patientin mit überwiegend
@@ -665,6 +705,7 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
     fig_fft, alpha_peaks, alpha_cog, bp_all, dominant_peaks = _fft_figure(
         {ch_label: sig_full}, t_start, t_end, fs, panel_id,
         multitaper=multitaper, amp_thresh_uv=amp_thresh_uv, alpha_band=alpha_band,
+        correct_dominant_band=st.session_state.get("spec_heavy", False),
     )
     st.markdown(f"**FFT — Fenster {win_label}**")
     st.plotly_chart(fig_fft, use_container_width=True, key=f"fft_{panel_id}")
@@ -980,6 +1021,7 @@ def render():
             t_start, t_end, fs, "cons",
             multitaper=use_multitaper, amp_thresh_uv=float(amp_thresh),
             alpha_band=alpha_band,
+            correct_dominant_band=st.session_state.get("spec_heavy", False),
         )
         st.plotly_chart(fig_fft, use_container_width=True, key="fft_cons")
         _band_note = ("" if alpha_band == (8.0, 13.0)
@@ -1222,12 +1264,15 @@ def render():
         unsafe_allow_html=True,
     )
     heavy_calc = st.toggle(
-        "Rechenintensive Maße berechnen (A/P-Gradient hier + LZC-Komplexität weiter "
-        "unten in der Einzelkanal-Analyse)",
+        "Rechenintensive Maße berechnen (A/P-Gradient hier + LZC-Komplexität weiter unten "
+        "+ 1/f-korrigierte dominante Frequenzband-Erkennung in den FFT-Kacheln oben)",
         value=False, key="spec_heavy",
-        help="Beide Maße sind O(N²)/kopfweit und brauchen mehr Rechenzeit. Standard aus, "
-             "damit die Ansicht schnell bleibt — bei Bedarf hier aktivieren; gilt für "
-             "die ganze Seite, nicht nur für den A/P-Gradienten.")
+        help="Alle drei sind rechenintensiver (O(N²)/kopfweit bzw. zusätzlicher 1/f-Kurven-"
+             "Fit je Ableitung). Standard aus, damit die Ansicht schnell bleibt — bei Bedarf "
+             "hier aktivieren; gilt für die ganze Seite. Die 1/f-Korrektur behebt eine "
+             "systematische Verzerrung Richtung Delta bei der Dominante-Frequenz-Erkennung — "
+             "ohne sie wird ein moderater Theta-Rhythmus oft fälschlich als 'Delta-dominant' "
+             "angezeigt.")
     if not heavy_calc:
         st.info("ℹ️ Rechenintensiv — obigen Schalter aktivieren, um den A/P-Gradienten "
                 "(ganzer Kopf) zu berechnen.")
