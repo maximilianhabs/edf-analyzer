@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 from scipy.signal import welch
 
-from core.shared import get_edf_or_stop, load_and_prepare, apply_channel_overrides
+from core.shared import get_edf_or_stop, load_and_prepare, apply_channel_overrides, get_patient_info
 
 
 # ── Hilfsfunktionen ───────────────────────────────────────────────────────────
@@ -402,14 +402,16 @@ def render():
                "Asymmetrie) — je Zeile Wert, Einheit und kurze Norm. Ohne Kommentar.")
 
     @st.cache_data(show_spinner="Erstelle Report-Dateien …")
-    def _export_bytes(_path, _disp):
+    def _export_bytes(_path, _disp, _age, _sex, _pediatric):
         from analysis.report_export import collect_sections, build_excel, build_pdf
         e = apply_channel_overrides(load_and_prepare(_path))
-        secs = collect_sections(e, _path)
+        secs = collect_sections(e, _path, age=_age, sex=_sex, is_pediatric=_pediatric)
         return build_pdf(secs, _disp), build_excel(secs, e, _disp)
 
     _disp = st.session_state.get("edf_display_name", "report")
     _base = _disp.rsplit(".", 1)[0] if _disp else "report"
+    _rep_age, _rep_sex = get_patient_info()
+    _rep_pediatric = st.session_state.get("is_pediatric", False)
     @st.cache_data(show_spinner="Erstelle Visual Report …")
     def _glory_bytes(_path, _disp):
         from analysis.glory_report import build_glory_pdf
@@ -417,7 +419,7 @@ def render():
         return build_glory_pdf(e, _path, _disp)
 
     try:
-        pdf_bytes, xlsx_bytes = _export_bytes(edf_path, _disp)
+        pdf_bytes, xlsx_bytes = _export_bytes(edf_path, _disp, _rep_age, _rep_sex, _rep_pediatric)
         ec1, ec2, ec3 = st.columns(3)
         ec1.download_button("PDF herunterladen", pdf_bytes, icon=":material/description:", file_name=f"{_base}_report.pdf",
                             mime="application/pdf", use_container_width=True)
