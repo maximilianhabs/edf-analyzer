@@ -8,7 +8,7 @@ from scipy.signal import spectrogram
 from scipy.signal import butter, filtfilt
 from scipy.signal.windows import dpss
 
-from core.shared import load_and_prepare, section_header, get_patient_info, safe_slider
+from core.shared import load_and_prepare, section_header, get_patient_info, safe_slider, status_dot
 
 # ── Frequenzbänder ────────────────────────────────────────────────────────────
 # Delta-Untergrenze 1.0 Hz — konsistent mit dem 1-Hz-Hochpass und der 1-Hz-PSD-Maske
@@ -41,22 +41,22 @@ RATIO_INFO = {
 
 
 def _ratio_zone(rinfo: dict, v: float):
-    """Richtungsabhängige Ampel für eine klinische Ratio → (farbe, emoji, label)."""
+    """Richtungsabhängige Ampel für eine klinische Ratio → (farbe, status_dot-HTML, label)."""
     if v != v:
-        return "#7f8c8d", "⚫", "—"
+        return "#7f8c8d", status_dot("neutral"), "—"
     lo_n, hi_n = rinfo["normal"]
     if rinfo["dir"] == "high":
         if v <= hi_n:
-            return "#27ae60", "🟢", "normal"
+            return "#27ae60", status_dot("success"), "normal"
         if v <= rinfo["amber"]:
-            return "#e6a817", "🟡", "leicht erhöht"
-        return "#c0392b", "🔴", "deutlich erhöht"
+            return "#e6a817", status_dot("warning"), "leicht erhöht"
+        return "#c0392b", status_dot("danger"), "deutlich erhöht"
     # dir == "low": nur niedrige Werte auffällig
     if v >= lo_n:
-        return "#27ae60", "🟢", "normal"
+        return "#27ae60", status_dot("success"), "normal"
     if v >= rinfo["amber"]:
-        return "#e6a817", "🟡", "leicht erniedrigt"
-    return "#c0392b", "🔴", "deutlich erniedrigt"
+        return "#e6a817", status_dot("warning"), "leicht erniedrigt"
+    return "#c0392b", status_dot("danger"), "deutlich erniedrigt"
 
 
 def _alpha_band(age) -> tuple:
@@ -556,8 +556,8 @@ def _render_bandpower_and_ratios(bp_all, panel_id):
         # Farbcodierung: >1 posterior-dominant (grün), 0,6–1 abgeschwächt (gelb), <0,6 umgekehrt (rot)
         if ap_ratio == ap_ratio:
             _apz = "#27ae60" if ap_ratio >= 1 else ("#e67e22" if ap_ratio >= 0.6 else "#c0392b")
-            _apl = "🟢 posterior-dominant" if ap_ratio >= 1 else (
-                   "🟡 abgeschwächt" if ap_ratio >= 0.6 else "🔴 umgekehrt/verloren")
+            _apl = f"{status_dot('success')} posterior-dominant" if ap_ratio >= 1 else (
+                   f"{status_dot('warning')} abgeschwächt" if ap_ratio >= 0.6 else f"{status_dot('danger')} umgekehrt/verloren")
         else:
             _apz, _apl = "#7f8c8d", "—"
         with g1:
@@ -1141,8 +1141,8 @@ def render():
             "eine Substanzdefekt-Narbe zeigt oft auch <i>Alpha-Reduktion</i> auf der "
             "betroffenen Seite. Verschiedene Bänder können gleichzeitig asymmetrisch sein "
             "oder nicht — das Muster ist klinisch interpretierbar.<br><br>"
-            "🟢 |AI| ≤ 20 % — physiologisch normal &nbsp;&nbsp;"
-            "🔴 |AI| > 20 % — pathologisch verdächtig (Nuwer 1997, ACNS)</div>",
+            f"{status_dot('success')} |AI| ≤ 20 % — physiologisch normal &nbsp;&nbsp;"
+            f"{status_dot('danger')} |AI| > 20 % — pathologisch verdächtig (Nuwer 1997, ACNS)</div>",
             unsafe_allow_html=True,
         )
         # PSDs berechnen
@@ -1246,8 +1246,9 @@ def render():
         # (Exponent-Gradient, Elektrodenzahl) bewusst kleiner (User-Feedback 2026-08-03).
         pc1, pc2, pc3 = st.columns([2, 1, 2])
         with pc1:
-            _lbl = {"normal": "🟢 posterior-dominant", "grenzwertig": "🟡 abgeschwächt",
-                    "pathologisch": "🔴 anteriorisiert"}[_pzone]
+            _lbl = {"normal": f"{status_dot('success')} posterior-dominant",
+                    "grenzwertig": f"{status_dot('warning')} abgeschwächt",
+                    "pathologisch": f"{status_dot('danger')} anteriorisiert"}[_pzone]
             st.markdown(
                 f"<div style='padding:12px 16px;border-radius:12px;border:2px solid {_pcol};"
                 f"background:{_pcol}0d'>"

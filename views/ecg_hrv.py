@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from scipy.signal import find_peaks as _fp
 
-from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info, section_header, safe_slider, render_banner
+from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info, section_header, safe_slider, render_banner, status_dot
 
 
 def _section(title: str, subtitle: str = "") -> None:
@@ -841,19 +841,20 @@ def render():
                 ref_src = "Gąsior 2018" if is_pediatric else "Hansen 2024"
                 if cls["zone"] == "info":
                     if key == "nn50":
-                        _pn_badge = {"pathologisch": "🔴", "grenzwertig": "🟡",
-                                     "normal": "🟢", "info": "⚪"}[_marker_zone]
+                        _pn_badge = {"pathologisch": status_dot("danger"), "grenzwertig": status_dot("warning"),
+                                     "normal": status_dot("success"), "info": status_dot("neutral")}[_marker_zone]
                         st.caption(
                             f"{_pn_badge} **{int(round(value))}** Intervalle > 50 ms · "
                             f"Absolutzahl (längenabhängig) — klinische Wertung folgt pNN50 "
-                            f"(Marker in pNN50-Farbe)"
+                            f"(Marker in pNN50-Farbe)", unsafe_allow_html=True
                         )
                     else:
                         ref_range = ("Mayer-Wellen ~0.07–0.12 Hz"
                                      if key == "lf_peak_freq" else "deskriptiv")
-                        st.caption(f"⚪ **{value:.3f} {unit}** · {ref_range}")
+                        st.caption(f"{status_dot('neutral')} **{value:.3f} {unit}** · {ref_range}", unsafe_allow_html=True)
                 else:
-                    badge    = {"pathologisch": "🔴", "grenzwertig": "🟡", "normal": "🟢"}[cls["zone"]]
+                    badge    = {"pathologisch": status_dot("danger"), "grenzwertig": status_dot("warning"),
+                                "normal": status_dot("success")}[cls["zone"]]
                     sev_text = f" — {cls['severity']}" if cls["zone"] != "normal" else ""
                     dir_text = f" ({cls['direction']})" if cls["direction"] != "—" else ""
                     if key == "heart_rate":
@@ -873,7 +874,8 @@ def render():
                         norm_txt = f"· 5. Perz.: {cls['p5_threshold']:.1f} {unit} [{ref_src}]"
                     else:
                         norm_txt = ""
-                    st.caption(f"{badge} **{value:.1f} {unit}** · {cls['zone']}{sev_text}{dir_text} {norm_txt}")
+                    st.caption(f"{badge} **{value:.1f} {unit}** · {cls['zone']}{sev_text}{dir_text} {norm_txt}",
+                               unsafe_allow_html=True)
 
             return {"label": label, "value": value, "unit": unit,
                     "marker_label": marker["label"], "marker_type": marker["type"],
@@ -1184,8 +1186,8 @@ def render():
             )
             st.plotly_chart(_dfig, use_container_width=True, key="hrv_flip_diag_tacho")
             st.caption(
-                "🔴 Ohne Korrektur: mehrere parallele Bänder (Peak-Verfeinerung springt auf "
-                "Nebenpunkte). 🟢 Mit Korrektur: eine kompakte, glatte Verteilung — das ist "
+                "Ohne Korrektur: mehrere parallele Bänder (Peak-Verfeinerung springt auf "
+                "Nebenpunkte). Mit Korrektur: eine kompakte, glatte Verteilung — das ist "
                 "der Pfad, den diese Seite jetzt tatsächlich verwendet."
             )
 
@@ -1195,11 +1197,11 @@ def render():
     pct_removed = n_removed / max(n_kept + n_removed, 1) * 100
 
     if pct_removed < 5:
-        qcolor, qicon, qlabel = "#27ae60", "🟢", "Gute Datenqualität"
+        qcolor, qicon, qlabel = "#27ae60", status_dot("success", size=28), "Gute Datenqualität"
     elif pct_removed < 15:
-        qcolor, qicon, qlabel = "#f39c12", "🟡", "Mäßige Datenqualität — Befund mit Vorsicht interpretieren"
+        qcolor, qicon, qlabel = "#f39c12", status_dot("warning", size=28), "Mäßige Datenqualität — Befund mit Vorsicht interpretieren"
     else:
-        qcolor, qicon, qlabel = "#c0392b", "🔴", "Schlechte Datenqualität — HRV-Werte wahrscheinlich nicht valide"
+        qcolor, qicon, qlabel = "#c0392b", status_dot("danger", size=28), "Schlechte Datenqualität — HRV-Werte wahrscheinlich nicht valide"
 
     # ── Analysefenster-Auswahl (nur ohne HV-Protokoll) ────────────────────────
     # Zeitbereichsparameter (v.a. SDNN) und Spektralwerte skalieren mit der

@@ -19,7 +19,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from core.shared import get_edf_or_stop, section_header, safe_slider, render_banner
+from core.shared import get_edf_or_stop, section_header, safe_slider, render_banner, status_dot
 from analysis.ecg import detect_r_peaks_validated
 from analysis.ecg_quality import sqi_segments
 from analysis.rhythm_screening import classify_afib_risk, combine_with_pwave
@@ -172,8 +172,8 @@ def render():
             )
             st.plotly_chart(dfig, use_container_width=True, key="flip_diag_tacho")
             st.caption(
-                "🔴 Ohne Korrektur: mehrere parallele Bänder (Peak-Verfeinerung springt auf "
-                "Nebenpunkte). 🟢 Mit Korrektur: eine kompakte, glatte Verteilung — das ist "
+                "Ohne Korrektur: mehrere parallele Bänder (Peak-Verfeinerung springt auf "
+                "Nebenpunkte). Mit Korrektur: eine kompakte, glatte Verteilung — das ist "
                 "der Pfad, den diese Rhythmus-Screening-Seite tatsächlich verwendet. Die "
                 "EKG&HRV-Seite nutzt aktuell noch den unkorrigierten Pfad."
             )
@@ -222,14 +222,14 @@ def render():
 
     # ── Mehrstufiger Ablauf sichtbar machen (User-Feedback 2026-08-08) ────────
     n_good_seg = sum(1 for s in sqi if s["good"])
-    _step2_status = {"afib_verdaechtig": ("🔴", "#c0392b", "Verdacht"),
-                     "ektopie_richtung": ("🟡", "#e67e22", "Grenzbereich"),
-                     "normal": ("🟢", "#27ae60", "unauffällig"),
-                     "nicht_auswertbar": ("⚪", "#7f8c8d", "n. auswertbar")}[rhythm["verdict"]]
+    _step2_status = {"afib_verdaechtig": (status_dot("danger"), "#c0392b", "Verdacht"),
+                     "ektopie_richtung": (status_dot("warning"), "#e67e22", "Grenzbereich"),
+                     "normal": (status_dot("success"), "#27ae60", "unauffällig"),
+                     "nicht_auswertbar": (status_dot("neutral"), "#7f8c8d", "n. auswertbar")}[rhythm["verdict"]]
     if rhythm["verdict"] == "afib_verdaechtig":
         _step3_txt, _step3_col = "⏭ übersprungen (bei AFib nicht sinnvoll)", "#95a5a6"
     elif ectopy is not None:
-        _step3_txt = f"{'🟡' if ectopy['n_events'] else '🟢'} {ectopy['n_events']} Ereignisse"
+        _step3_txt = f"{status_dot('warning') if ectopy['n_events'] else status_dot('success')} {ectopy['n_events']} Ereignisse"
         _step3_col = "#e67e22" if ectopy["n_events"] else "#27ae60"
     else:
         _step3_txt, _step3_col = "—", "#7f8c8d"
@@ -257,7 +257,7 @@ def render():
         _conf_lbl = {"gesichert": "Sicherheit: hoch (gesichert)",
                     "wahrscheinlich": "Sicherheit: mittel (wahrscheinlich)",
                     "verdacht": "Sicherheit: geringer (Verdacht, z. B. nur kurzer Abschnitt)"}[_conf]
-        _col, _lbl = "#c0392b", f"🔴 Verdacht auf Vorhofflimmern · {_conf_lbl}"
+        _col, _lbl = "#c0392b", f"{status_dot('danger')} Verdacht auf Vorhofflimmern · {_conf_lbl}"
         _detail = (f"{rhythm['n_afib_windows']}/{rhythm['n_windows']} 30s-Fenster mit "
                    f"AFib-artiger Entropie-Signatur (CosEn-Median {rhythm['median_cosen']:.2f}). "
                    "Die normale HRV-Zeit-/Frequenzanalyse auf der EKG&HRV-Seite bleibt zwar "
@@ -273,15 +273,15 @@ def render():
                        f"{'⚠️' if rhythm.get('pwave_contradiction') else 'ℹ️'} "
                        f"{rhythm['pwave_note']}</div>")
     elif rhythm["verdict"] == "ektopie_richtung":
-        _col, _lbl = "#e67e22", "🟡 Erhöhte Rhythmus-Variabilität"
+        _col, _lbl = "#e67e22", f"{status_dot('warning')} Erhöhte Rhythmus-Variabilität"
         _detail = (f"CosEn-Median {rhythm['median_cosen']:.2f} — im Übergangsbereich zwischen "
                    "normal und AFib-artig. Kein klarer AFib-Verdacht, aber unregelmäßiger als "
                    "ein typischer Sinusrhythmus.")
     elif rhythm["verdict"] == "normal":
-        _col, _lbl = "#27ae60", "🟢 Unauffälliger Rhythmus"
+        _col, _lbl = "#27ae60", f"{status_dot('success')} Unauffälliger Rhythmus"
         _detail = f"CosEn-Median {rhythm['median_cosen']:.2f} — im Normal-Sinusrhythmus-Bereich."
     else:
-        _col, _lbl = "#7f8c8d", "⚪ Nicht auswertbar"
+        _col, _lbl = "#7f8c8d", f"{status_dot('neutral')} Nicht auswertbar"
         _detail = "Zu wenige artefaktfreie 30s-Fenster für ein Screening-Urteil."
     st.markdown(
         f"<div style='background:{_col}12;border:2px solid {_col};border-radius:10px;"
@@ -294,7 +294,7 @@ def render():
         st.markdown(
             f"<div style='background:#e67e2212;border-left:4px solid #e67e22;border-radius:8px;"
             f"padding:10px 14px;margin-top:10px;font-size:13px'>"
-            f"🟡 <b>{ectopy['n_events']} Ereignisse</b> ({ectopy['fraction_pct']:.1f}% der Schläge) "
+            f"{status_dot('warning')} <b>{ectopy['n_events']} Ereignisse</b> ({ectopy['fraction_pct']:.1f}% der Schläge) "
             f"mit Kompensationspause-Muster (vorzeitiger Schlag + Pause) — "
             f"{ectopy['n_ves_verdaechtig']}× VES-verdächtig (breiter QRS), "
             f"{ectopy['n_sves_verdaechtig']}× SVES-verdächtig (schmaler QRS). "
@@ -304,9 +304,9 @@ def render():
     # Stufe②b — P-Wellen-Kohärenz-Zusammenfassung (bereits weiter oben berechnet + in die
     # Confidence eingespeist, falls AFib-Verdacht — hier nur noch die Anzeige).
     if _pw_cohs:
-        _pw_overall = {"sichtbar": ("🟢", "P-Welle über die Aufnahme überwiegend sichtbar"),
-                       "eingeschraenkt": ("🟡", "P-Welle eingeschränkt beurteilbar"),
-                       "nicht_abgrenzbar": ("🔴", "P-Welle überwiegend NICHT abgrenzbar — "
+        _pw_overall = {"sichtbar": (status_dot("success"), "P-Welle über die Aufnahme überwiegend sichtbar"),
+                       "eingeschraenkt": (status_dot("warning"), "P-Welle eingeschränkt beurteilbar"),
+                       "nicht_abgrenzbar": (status_dot("danger"), "P-Welle überwiegend NICHT abgrenzbar — "
                                             "stützt AFib-Verdacht zusätzlich")}[
             "sichtbar" if _pw_median >= 0.6 else ("eingeschraenkt" if _pw_median >= 0.35 else "nicht_abgrenzbar")]
         st.markdown(
@@ -365,12 +365,13 @@ def render():
         "Artefakt" if s["category"] == "artifact" else ("Auffällig" if s["category"] == "notable" else "ok")
         for s in sqi if s["t1"] > t0 and s["t0"] < t1
     ]
+    # st.metric() rendert kein HTML -> hier bewusst nur Klartext, kein status_dot()
     if "Artefakt" in _win_seg_status:
-        _seg_status_lbl = "🔴 Artefakt im Fenster"
+        _seg_status_lbl = "Artefakt im Fenster"
     elif "Auffällig" in _win_seg_status:
-        _seg_status_lbl = "🟡 auffällig im Fenster"
+        _seg_status_lbl = "auffällig im Fenster"
     elif _win_seg_status:
-        _seg_status_lbl = "🟢 unauffällig"
+        _seg_status_lbl = "unauffällig"
     else:
         _seg_status_lbl = "—"
     sc1, sc2, sc3, sc4, sc5 = st.columns(5)

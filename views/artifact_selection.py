@@ -20,7 +20,7 @@ _ART_CANVAS = components.declare_component(
 
 from core.shared import (
     apply_global_style, section_header, get_edf_or_stop,
-    load_and_prepare, apply_channel_overrides, get_patient_info, ELECTRODE_POS,
+    load_and_prepare, apply_channel_overrides, get_patient_info, ELECTRODE_POS, status_dot,
 )
 from analysis.artifacts import ArtifactParams, mask_from_edf
 # Reuse der bestehenden Spektrum-Logik OHNE eeg_spectrum.py zu verändern (nur Import).
@@ -533,7 +533,7 @@ def _render_segment_editor(res_auto, dur):
         removed = k in ov["removed"]
         col = st.columns([3, 1.4, 2, 2, 2.2])
         strike = "text-decoration:line-through;opacity:0.5;" if removed else ""
-        col[0].markdown(f"<span style='{strike}'>🔴 {_mmss(s['start_s'])}–{_mmss(s['end_s'])}</span>",
+        col[0].markdown(f"<span style='{strike}'>{status_dot('danger')} {_mmss(s['start_s'])}–{_mmss(s['end_s'])}</span>",
                         unsafe_allow_html=True)
         col[1].markdown(f"<span style='{strike}'>{s['dur_s']}s</span>", unsafe_allow_html=True)
         col[2].markdown(f"<span style='{strike}'>{s['max_ratio']}×</span>"

@@ -231,6 +231,28 @@ def render_banner(kind: str, title: str, body: str, icon: str = None) -> None:
     )
 
 
+def status_dot(zone: str, size: int = 9) -> str:
+    """HTML-Farbpunkt (ersetzt 🔴🟡🟢⚪-Ampel-Emoji, Phase 2 GUI-Redesign, siehe
+    [[project_edf_ui_redesign]]). NUR innerhalb von st.markdown(unsafe_allow_html=True)
+    nutzbar — in st.tabs()/st.expander()-Titeln etc. stattdessen `status_bullet()` verwenden.
+
+    zone: "danger" | "warning" | "success" | "neutral" — mappt auf DANGER/WARNING/SUCCESS
+    aus core/design_tokens.py bzw. neutralgrau.
+    """
+    from core.design_tokens import DANGER, WARNING, SUCCESS
+    color = {"danger": DANGER, "warning": WARNING, "success": SUCCESS}.get(zone, "#86868b")
+    return (f"<span style='display:inline-block;width:{size}px;height:{size}px;"
+            f"border-radius:50%;background:{color};margin-right:5px;vertical-align:middle'>"
+            f"</span>")
+
+
+def status_bullet(zone: str = "neutral") -> str:
+    """Reiner Unicode-Punkt (kein HTML) für Kontexte ohne unsafe_allow_html (Tab-Titel,
+    Expander-Header, st.caption ohne HTML) — ersetzt bunte Ampel-Emoji durch einen
+    neutralen, ruhigeren Marker, ohne Farbe (dort nicht renderbar)."""
+    return "●"
+
+
 def apply_global_style():
     """Neutrale, hochwertige Basis-Optik. Klinische Farben (Rot/Blau/Grün/Ampel) bleiben
     ausschließlich für ihre fachliche Bedeutung reserviert und werden hier nicht verändert.
