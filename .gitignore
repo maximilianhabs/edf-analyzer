@@ -23,6 +23,8 @@ data/
 # für reproduzierbare Regressionstests.
 !tests/fixtures/test_edf_datei.edf
 !tests/fixtures/test_edf_datei_manifest.json
+!tests/fixtures/test_edf_afib.edf
+!tests/fixtures/test_edf_afib_manifest.json
 
 # Outputs — lokal generierte Reports
 reports/output/
