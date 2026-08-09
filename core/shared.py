@@ -253,6 +253,38 @@ def status_bullet(zone: str = "neutral") -> str:
     return "●"
 
 
+_KPI_ZONE_COLOR = {"success": "#27ae60", "warning": "#e67e22", "danger": "#c0392b",
+                   "info": "#2471a3", "neutral": "#86868b"}
+
+
+def kpi_tile(label: str, value: str, sub_text: str = "", zone: str = "info",
+            border_color: str = None, dot_color: str = None, muted: bool = False) -> str:
+    """Einheitliche KPI-Kachel (Phase 3 GUI-Redesign, siehe [[project_edf_ui_redesign]]) —
+    ersetzt die zuvor unabhängig in `views/eeg_spectrum.py` (`_kpi_card`) und
+    `views/ecg_hrv.py` (`_metric_card`) definierten, visuell leicht unterschiedlichen
+    Kachel-Varianten durch EINE gemeinsame Quelle. Continuous-Corner-/Border-Top-Akzent-Stil
+    (Apple-artig, wie im Referenz-Prompt), nutzt `core/design_tokens.py`-Farben als Default.
+
+    zone: "success"|"warning"|"danger"|"info"|"neutral" — bestimmt Rand-/Punktfarbe, sofern
+    `border_color`/`dot_color` nicht explizit übergeben werden (z. B. für bandspezifische
+    Farben wie `BAND_COLOR` in eeg_spectrum.py, die keiner der 5 Zonen entsprechen).
+    `muted=True` dämpft die Kachel optisch (z. B. wenn der Wert kaum Aussagekraft hat).
+    """
+    col = border_color or _KPI_ZONE_COLOR.get(zone, _KPI_ZONE_COLOR["info"])
+    _dot = (f"<span style='color:{dot_color};font-size:15px;margin-left:6px'>●</span>"
+            if dot_color else "")
+    op = "0.55" if muted else "1"
+    return (
+        f"<div style='background:var(--surface-1,#f8f9fa);border:0.5px solid var(--border);"
+        f"border-top:3px solid {col};border-radius:0 10px 10px 0;"
+        f"padding:10px 12px;opacity:{op};min-height:74px'>"
+        f"<div style='font-size:11px;color:var(--text-secondary,#6b7684)'>{label}</div>"
+        f"<div style='font-size:20px;font-weight:800;color:var(--text-primary,#1c2833)'>"
+        f"{value}{_dot}</div>"
+        f"<div style='font-size:10px;color:var(--text-muted,#98a3b0);margin-top:3px'>"
+        f"{sub_text}</div></div>")
+
+
 def apply_global_style():
     """Neutrale, hochwertige Basis-Optik. Klinische Farben (Rot/Blau/Grün/Ampel) bleiben
     ausschließlich für ihre fachliche Bedeutung reserviert und werden hier nicht verändert.

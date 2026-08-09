@@ -8,7 +8,7 @@ from scipy.signal import spectrogram
 from scipy.signal import butter, filtfilt
 from scipy.signal.windows import dpss
 
-from core.shared import load_and_prepare, section_header, get_patient_info, safe_slider, status_dot
+from core.shared import load_and_prepare, section_header, get_patient_info, safe_slider, status_dot, kpi_tile
 
 # ── Frequenzbänder ────────────────────────────────────────────────────────────
 # Delta-Untergrenze 1.0 Hz — konsistent mit dem 1-Hz-Hochpass und der 1-Hz-PSD-Maske
@@ -1043,18 +1043,8 @@ def render():
 
         def _kpi_card(label, value, norm_text, dot_color=None, border_color="#2471a3",
                       muted=False):
-            _dot = (f"<span style='color:{dot_color};font-size:15px;margin-left:6px'>●</span>"
-                    if dot_color else "")
-            _op  = "0.55" if muted else "1"
-            return (
-                f"<div style='background:var(--surface-1,#f8f9fa);border:0.5px solid var(--border);"
-                f"border-top:3px solid {border_color};border-radius:0 10px 10px 0;"
-                f"padding:10px 12px;opacity:{_op}'>"
-                f"<div style='font-size:11px;color:var(--text-secondary,#6b7684)'>{label}</div>"
-                f"<div style='font-size:20px;font-weight:800;color:var(--text-primary,#1c2833)'>"
-                f"{value}{_dot}</div>"
-                f"<div style='font-size:10px;color:var(--text-muted,#98a3b0);margin-top:3px'>"
-                f"{norm_text}</div></div>")
+            return kpi_tile(label, value, norm_text, border_color=border_color,
+                            dot_color=dot_color, muted=muted)
 
         # ── Dominante Frequenz je Region (User-Feedback 2026-08-09) ─────────────
         # Statt eines separaten Disclaimer-Banners: eine Kachel im selben Stil wie die
