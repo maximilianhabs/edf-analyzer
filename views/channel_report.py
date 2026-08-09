@@ -372,11 +372,9 @@ def render():
                         fig_prev.update_layout(
                             height=160,
                             margin=dict(t=4, b=32, l=55, r=6),
-                            xaxis=dict(title="Zeit (s)", showgrid=True,
-                                       gridcolor="#ebebeb", dtick=1),
+                            xaxis=dict(title="Zeit (s)", showgrid=True, dtick=1),
                             yaxis=dict(title=y_label, showgrid=False,
-                                       zeroline=True, zerolinecolor="#ccc",
-                                       zerolinewidth=0.8),
+                                       zeroline=True, zerolinewidth=0.8),
                             showlegend=False,
                         )
                         st.plotly_chart(fig_prev, use_container_width=True,

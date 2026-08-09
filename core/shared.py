@@ -765,8 +765,7 @@ def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
                           annotation_font_size=9, annotation_position="top left")
 
     fig.update_layout(
-        xaxis=dict(title="Zeit (s)", range=[t[0], t[-1]],
-                   showgrid=True, gridcolor="#ebebeb", dtick=1),
+        xaxis=dict(title="Zeit (s)", range=[t[0], t[-1]], showgrid=True, dtick=1),
         yaxis=dict(
             range=[-spacing * 0.8, total_height + spacing * 0.3],
             tickvals=offsets,
