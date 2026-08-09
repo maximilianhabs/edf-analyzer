@@ -33,12 +33,6 @@ def _type_icon_html(meta: dict, size: str = "1.6rem") -> str:
             f"style='font-size:{size};color:{meta['color']}'>{icon}</span>")
 
 
-def _type_icon_md(meta: dict) -> str:
-    """Wie `_type_icon_html`, aber als Streamlit-Shortcode-Text (`:material/...:`) für
-    Widget-Labels (z. B. st.expander), die kein rohes HTML rendern."""
-    icon = meta["icon"]
-    return icon if icon == "⏚" else f":material/{icon}:"
-
 _ALL_TYPES = [EEG, ECG, EOG, EMG, REF, VITAL, UNKN]
 
 _CONFIDENCE_COLOR = {
@@ -193,7 +187,7 @@ def render():
             "Typ-Filter",
             options=all_eff_types,
             default=all_eff_types,
-            format_func=lambda t: f"{_TYPE_META.get(t, {}).get('icon','?')} {_TYPE_META.get(t, {}).get('label', t)}",
+            format_func=lambda t: _TYPE_META.get(t, {}).get("label", t),
             label_visibility="collapsed",
         )
     with sort_col:
@@ -228,22 +222,40 @@ def render():
             if override_type else ""
         )
 
-        # ── Kopfleiste nach Konfidenz einfärben ──────────────────────────────
-        # Ganze Klickleiste des Expanders tönen (statt Ampel-Icon): scoped CSS
-        # über einen keyed Container (Streamlit-Klasse .st-key-<key>).
+        # ── Kopfleiste nach Konfidenz einfärben + Typ-Icon farblich absetzen ──
+        # Ganze Klickleiste des Expanders nach Konfidenz tönen (Hintergrund/Randfarbe) UND
+        # zusätzlich, unabhängig davon, das Typ-Icon (EEG/EKG/…) in der jeweiligen Typfarbe
+        # zeigen (User-Feedback 2026-08-09: im zusammengeklappten Header war das Icon bisher
+        # farblos, obwohl die Zusammenfassungs-Kacheln oben schon farbcodiert sind). Da
+        # st.expander()-Label kein rohes HTML/individuelle Farben rendert, wird der native
+        # `:material/...:`-Shortcode NICHT genutzt — stattdessen zeichnet ein CSS `::before`
+        # auf dem scoped `.st-key-<key>`-Container das Icon selbst in der Typfarbe; die
+        # Kanalbezeichnung (**{ch}**, von Streamlit als <strong> gerendert) wird über den
+        # `strong`-Selektor ebenfalls in der Typfarbe eingefärbt, der Rest der Zeile bleibt
+        # regulär schwarz — genau die vom User gewünschte selektive Färbung.
         _ck = "chan_" + re.sub(r"[^0-9A-Za-z]", "_", ch)
+        _icon_is_symbol = meta["icon"] == "⏚"
+        _icon_font = "inherit" if _icon_is_symbol else "'Material Symbols Outlined'"
         st.markdown(
             f"<style>.st-key-{_ck} details > summary{{"
             f"background:{c_conf}1f !important;"
             f"border-left:5px solid {c_conf} !important;"
-            f"border-radius:8px !important;}}"
+            f"border-radius:8px !important;"
+            f"padding-left:34px !important;"
+            f"position:relative !important;}}"
+            f".st-key-{_ck} details > summary::before{{"
+            f"content:'{meta['icon']}';"
+            f"font-family:{_icon_font};font-weight:normal;font-style:normal;"
+            f"color:{meta['color']};font-size:17px;line-height:1;"
+            f"position:absolute;left:11px;top:50%;transform:translateY(-50%);}}"
+            f".st-key-{_ck} details > summary strong{{color:{meta['color']} !important;}}"
             f".st-key-{_ck} details > summary:hover{{background:{c_conf}33 !important;}}"
             f"</style>",
             unsafe_allow_html=True,
         )
         _chan_box = st.container(key=_ck)
         with _chan_box, st.expander(
-            f"{_type_icon_md(meta)} **{ch}** — "
+            f"**{ch}** — "
             f"{meta['label']} · {result.confidence:.0f}% Konfidenz"
             + (" :material/edit:" if override_type else ""),
             expanded=False,
@@ -292,7 +304,7 @@ def render():
                     "Typ",
                     options=_ALL_TYPES,
                     index=current_idx,
-                    format_func=lambda t: f"{_TYPE_META[t]['icon']} {_TYPE_META[t]['label']}",
+                    format_func=lambda t: _TYPE_META[t]["label"],
                     key=f"override_sel_{ch}",
                     label_visibility="collapsed",
                 )
