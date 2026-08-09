@@ -150,3 +150,59 @@ def classify_afib_risk(sig: np.ndarray, r_peaks: np.ndarray, fs: float,
 
     return {"verdict": verdict, "confidence": confidence, "median_cosen": median_c,
             "n_windows": len(vals), "n_afib_windows": n_afib, "windows": windows}
+
+
+def combine_with_pwave(rhythm: dict, pwave_median_coherence: float, pwave_n_windows: int,
+                        min_windows: int = 3) -> dict:
+    """Kombiniert das CosEn-Verdikt mit der P-Wellen-Kohärenz (Stufe②b, `analysis/
+    p_wave_analysis.py`) — zwei UNABHÄNGIGE Evidenzquellen für dieselbe Frage (User-Anstoß
+    2026-08-08: "wer eine saubere, sichere P-Welle hat, hat eher kein AFib").
+
+    Nur relevant, wenn bereits `verdict=="afib_verdaechtig"` UND genug P-Wellen-Fenster
+    auswertbar sind (`min_windows`, sonst zu unsicher für eine Korrektur). Ändert NICHTS an
+    der binären Verdikt-Schwelle (weiterhin CosEn-basiert) — nur an der `confidence`-Stufe:
+    - P-Welle NICHT abgrenzbar (Median-Kohärenz < 0,35, wie bei AFib erwartet) → STÜTZT den
+      AFib-Verdacht → Confidence eine Stufe anheben (verdacht→wahrscheinlich→gesichert).
+    - P-Welle SICHTBAR (Median-Kohärenz ≥ 0,6, wie bei Sinusrhythmus erwartet) → WIDERSPRICHT
+      dem AFib-Verdacht (könnte z. B. Ektopie statt AFib sein) → Confidence eine Stufe senken,
+      plus explizites Widerspruchs-Flag für die UI.
+    - Dazwischen (0,35–0,6, "eingeschränkt beurteilbar") → neutral, keine Änderung.
+
+    Rückgabe: Kopie von `rhythm`, ergänzt um `confidence` (ggf. angepasst), `pwave_note` (str),
+    `pwave_contradiction` (bool).
+    """
+    from analysis.p_wave_analysis import COH_VISIBLE, COH_UNCERTAIN
+
+    out = dict(rhythm)
+    out["pwave_note"] = None
+    out["pwave_contradiction"] = False
+
+    if rhythm.get("verdict") != "afib_verdaechtig" or pwave_median_coherence != pwave_median_coherence:
+        return out
+    if pwave_n_windows < min_windows:
+        out["pwave_note"] = (f"Zu wenige P-Wellen-Fenster ({pwave_n_windows}) für eine "
+                             "verlässliche Zusatzbewertung — Confidence unverändert.")
+        return out
+
+    _levels = ["verdacht", "wahrscheinlich", "gesichert"]
+    cur = rhythm.get("confidence") or "verdacht"
+    idx = _levels.index(cur) if cur in _levels else 0
+
+    if pwave_median_coherence < COH_UNCERTAIN:
+        idx = min(idx + 1, len(_levels) - 1)
+        out["pwave_note"] = (f"P-Welle über die Aufnahme NICHT abgrenzbar (Median-Kohärenz "
+                             f"{pwave_median_coherence:.2f}) — stützt den AFib-Verdacht, "
+                             "Sicherheitsstufe angehoben.")
+    elif pwave_median_coherence >= COH_VISIBLE:
+        idx = max(idx - 1, 0)
+        out["pwave_contradiction"] = True
+        out["pwave_note"] = (f"P-Welle über die Aufnahme SICHTBAR (Median-Kohärenz "
+                             f"{pwave_median_coherence:.2f}) — widerspricht dem CosEn-basierten "
+                             "AFib-Verdacht (z. B. Ektopie statt AFib möglich), Sicherheitsstufe "
+                             "gesenkt. Bitte Einzelfall genauer prüfen.")
+    else:
+        out["pwave_note"] = (f"P-Welle eingeschränkt beurteilbar (Median-Kohärenz "
+                             f"{pwave_median_coherence:.2f}) — keine Änderung der Confidence.")
+
+    out["confidence"] = _levels[idx]
+    return out

@@ -19,10 +19,10 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from core.shared import get_edf_or_stop, section_header, safe_slider
+from core.shared import get_edf_or_stop, section_header, safe_slider, render_banner
 from analysis.ecg import detect_r_peaks_validated
 from analysis.ecg_quality import sqi_segments
-from analysis.rhythm_screening import classify_afib_risk
+from analysis.rhythm_screening import classify_afib_risk, combine_with_pwave
 from analysis.ectopy_detection import ectopy_summary
 from analysis.p_wave_analysis import bandpass_ecg, analyze_window as p_analyze_window, P_WIN
 
@@ -92,7 +92,7 @@ def _detect_flip_diagnostic(edf_path: str, ch: str):
 
 
 def render():
-    st.title("🫀 Rhythmus-Screening")
+    st.title(":material/monitor_heart: Rhythmus-Screening")
     st.caption(
         "Add-on — prüft auf Vorhofflimmern-Verdacht (CosEn, Lake & Moorman 2011) und "
         "Extrasystolen-Hinweise (Kompensationspause + QRS-Breite), VOR der eigentlichen "
@@ -132,16 +132,13 @@ def render():
     # ist, während echte Aufnahmen es systematisch nicht sind. Text bewusst als neutrale
     # Information, NICHT als Fehler-/Warnhinweis formuliert — siehe [[project_edf_rhythm_screening]].
     if was_flipped:
-        st.markdown(
-            "<div style='background:#eaf2fa;border:1.5px solid #5b8fc7;border-radius:8px;"
-            "padding:10px 14px;margin-bottom:10px;font-size:13px'>"
-            "ℹ️ <b>Kanal-Polaritätskonvention erkannt und für die Darstellung angepasst:</b> "
+        render_banner(
+            "info", "Kanal-Polaritätskonvention erkannt und für die Darstellung angepasst",
             "Die QRS-Auslenkung ist im Rohsignal dieses Kanals negativ dominant. Das ist bei "
             "diesem Kanal (POL X1) die durchgehende, verlässliche Konvention dieses "
             "Aufnahmesystems — kein Hinweis auf ein Problem bei dieser Ableitung. Für die "
             "Darstellung und Analyse wird die Polarität automatisch so ausgerichtet, dass die "
-            "R-Zacke wie klinisch gewohnt nach oben zeigt; alle Zahlen bleiben unverändert gültig."
-            "</div>", unsafe_allow_html=True)
+            "R-Zacke wie klinisch gewohnt nach oben zeigt; alle Zahlen bleiben unverändert gültig.")
 
         # Vergleichs-Diagnose "mit/ohne Flip" (User-Anfrage 2026-08-08): macht den Effekt an
         # DIESER konkreten Aufnahme sichtbar, statt nur zu behaupten. Zeigt exakt den Fehler,
@@ -204,6 +201,21 @@ def render():
     # AFib). Bleiben in der Analyse (good=True), werden aber separat markiert/gezeigt.
     notable_zones = [(s["t0"], s["t1"], s["reason"]) for s in sqi if s.get("category") == "notable"]
     rhythm = classify_afib_risk(sig_uv, peaks, fs)
+
+    # Stufe②b — P-Wellen-Kohärenz über alle 30s-CosEn-Fenster aggregiert, VOR der
+    # Confidence-Anzeige berechnet (User-Vorgabe 2026-08-08: "wer eine saubere, sichere
+    # P-Welle hat, hat eher kein AFib" — als ZWEITE, unabhängige Evidenzquelle in die
+    # Sicherheitsstufe einspeisen, nicht nur informativ danebenstellen). Läuft weiterhin
+    # IMMER, nicht nur bei AFib-Verdacht (Visualisierung im Fenster-Navigator unten).
+    _pw_cohs, _pw_verdicts = [], []
+    for _w in rhythm["windows"]:
+        _pr = p_analyze_window(sig_filt, peaks, fs, _w["t0"], _w["t1"])
+        if _pr and _pr["coherence"] == _pr["coherence"]:
+            _pw_cohs.append(_pr["coherence"]); _pw_verdicts.append(_pr["verdict"])
+    _pw_median = float(np.median(_pw_cohs)) if _pw_cohs else float("nan")
+    if rhythm["verdict"] == "afib_verdaechtig":
+        rhythm = combine_with_pwave(rhythm, _pw_median, len(_pw_cohs))
+
     ectopy = None
     if rhythm["verdict"] != "afib_verdaechtig":
         ectopy = ectopy_summary(sig_uv, peaks, fs)
@@ -250,8 +262,16 @@ def render():
                    f"AFib-artiger Entropie-Signatur (CosEn-Median {rhythm['median_cosen']:.2f}). "
                    "Die normale HRV-Zeit-/Frequenzanalyse auf der EKG&HRV-Seite bleibt zwar "
                    "berechenbar, ist bei Vorhofflimmern aber methodisch nicht valide. "
-                   "Sicherheitsstufe = Persistenz (Fensteranteil) + Tiefe der Entropie-Signatur — "
+                   "Sicherheitsstufe = Persistenz (Fensteranteil) + Tiefe der Entropie-Signatur, "
+                   "jetzt zusätzlich mit P-Wellen-Nachweis abgeglichen (Stufe②b, siehe unten) — "
                    "auch bei 'gesichert' ein Screening-Marker, keine Diagnose.")
+        if rhythm.get("pwave_note"):
+            _pw_box_col = "#c0392b" if rhythm.get("pwave_contradiction") else "#2471a3"
+            _detail += (f"<div style='margin-top:8px;padding:6px 10px;background:{_pw_box_col}0d;"
+                       f"border-left:3px solid {_pw_box_col};border-radius:4px;font-size:12px;"
+                       f"color:{_pw_box_col}'>"
+                       f"{'⚠️' if rhythm.get('pwave_contradiction') else 'ℹ️'} "
+                       f"{rhythm['pwave_note']}</div>")
     elif rhythm["verdict"] == "ektopie_richtung":
         _col, _lbl = "#e67e22", "🟡 Erhöhte Rhythmus-Variabilität"
         _detail = (f"CosEn-Median {rhythm['median_cosen']:.2f} — im Übergangsbereich zwischen "
@@ -281,16 +301,9 @@ def render():
             "Anteil-Größenordnung, nicht exakter Zählwert — detektorabhängig.</div>",
             unsafe_allow_html=True)
 
-    # Stufe②b — P-Wellen-Kohärenz über alle 30s-CosEn-Fenster aggregiert (User-Vorgabe
-    # 2026-08-08: läuft IMMER, nicht nur bei AFib-Verdacht — zweite, von der RR-Irregularität
-    # unabhängige Evidenzquelle). Details/Visualisierung im Fenster-Navigator unten.
-    _pw_cohs, _pw_verdicts = [], []
-    for _w in rhythm["windows"]:
-        _pr = p_analyze_window(sig_filt, peaks, fs, _w["t0"], _w["t1"])
-        if _pr and _pr["coherence"] == _pr["coherence"]:
-            _pw_cohs.append(_pr["coherence"]); _pw_verdicts.append(_pr["verdict"])
+    # Stufe②b — P-Wellen-Kohärenz-Zusammenfassung (bereits weiter oben berechnet + in die
+    # Confidence eingespeist, falls AFib-Verdacht — hier nur noch die Anzeige).
     if _pw_cohs:
-        _pw_median = float(np.median(_pw_cohs))
         _pw_overall = {"sichtbar": ("🟢", "P-Welle über die Aufnahme überwiegend sichtbar"),
                        "eingeschraenkt": ("🟡", "P-Welle eingeschränkt beurteilbar"),
                        "nicht_abgrenzbar": ("🔴", "P-Welle überwiegend NICHT abgrenzbar — "
@@ -555,10 +568,43 @@ def render():
         st.markdown(
             "**Ablauf:** ① Signalqualität prüfen (Orphanidou et al. 2015, angepasste Schwellen) "
             "→ ② Vorhofflimmern-Screening (CosEn, Lake & Moorman 2011) auf den verbleibenden, "
-            "artefaktfreien Abschnitten → ③ bei unauffälligem Rhythmus zusätzlich nach "
-            "Extrasystolen-Mustern suchen (Kompensationspause + QRS-Breite).\n\n"
+            "artefaktfreien Abschnitten, jetzt zusätzlich mit P-Wellen-Nachweis abgeglichen "
+            "(Stufe②b) → ③ bei unauffälligem Rhythmus zusätzlich nach Extrasystolen-Mustern "
+            "suchen (Kompensationspause + QRS-Breite).\n\n"
             "**Wichtig:** Alle Werte sind Screening-Hinweise, keine Diagnosen. Die automatische "
             "Artefakt-Erkennung ist konservativ, aber nicht perfekt — bitte die Artefakt-Galerie "
             "und den Fenster-Navigator stichprobenhaft gegenprüfen. Einzelne Fehldetektionen "
             "können oben per Klick entfernt werden."
+        )
+
+    with st.expander("🔬 Stufe①-Regeln im Detail — wonach wird ein 10s-Segment als Artefakt "
+                     "verworfen?", expanded=False):
+        st.markdown(
+            "Jedes 10s-Segment durchläuft bis zu 6 Regeln (`analysis/ecg_quality.py`). Ein "
+            "Segment gilt als **Artefakt** (wird von CosEn/Ektopie-Erkennung ausgeschlossen), "
+            "sobald EINE der 4 folgenden Regeln zutrifft:\n\n"
+            "1. **Flatline** — rollierende Standardabweichung < 5µV über ein 300ms-Fenster, "
+            "in mehr als 10% des Segments → Sättigung/Elektroden-Diskonnektion.\n"
+            "2. **Lücke** — größter Abstand zwischen zwei R-Zacken im Segment > 3s → "
+            "vermutlich verpasster Schlag.\n"
+            "3. **Template-Korrelation** — Pearson-Korrelation jedes Schlags mit dem "
+            "Segment-Mittel-QRS < 0,66 (bzw. 0,35 im nachsichtigeren AFib-Screening-Modus, "
+            "da AFib selbst schwankende Morphologie erzeugt) → kein erkennbarer, "
+            "wiederkehrender QRS-Komplex.\n"
+            "4. **🎯 Amplituden-Plausibilität** (die von dir angefragte Regel): Für jeden "
+            "Schlag wird die Spitze-zu-Spitze-Amplitude (`peak-to-peak`) in einem Fenster um "
+            "die R-Zacke gemessen. Referenz ist die **globale** Baseline — der Median-Wert "
+            "über die GESAMTE Aufnahme, nicht nur das einzelne Segment (bewusst so: ein "
+            "Artefakt, der ein ganzes 10s-Segment gleichmäßig betrifft, hätte sonst keinen "
+            "internen Ausreißer und würde unentdeckt bleiben). Ein Schlag gilt als "
+            "amplituden-unplausibel, wenn seine Amplitude **unter 30%** oder **über 300%** "
+            "(das 0,3- bis 3,0-fache) der globalen Baseline liegt. Liegen **mehr als 30% "
+            "der Schläge** im Segment außerhalb dieses Bereichs, wird das gesamte Segment "
+            "als Artefakt verworfen (z. B. Bewegungsartefakt, Impedanzprüfung, lockere "
+            "Elektrode).\n\n"
+            "Zwei weitere Regeln (HF außerhalb 40–180 bpm, extreme RR-Variabilität) verwerfen "
+            "NICHT mehr automatisch — sie gelten seit dem User-Feedback vom 2026-08-08 als "
+            "**\"auffällig\"** statt als Artefakt (siehe amber Galerie oben), da z. B. "
+            "schnelles Vorhofflimmern selbst der gesuchte Befund sein kann, kein "
+            "Signalfehler."
         )

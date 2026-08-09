@@ -47,7 +47,7 @@ def _cleanup_old_uploads() -> None:
 
 
 def render():
-    st.title("📂 Datei & Patient")
+    st.title(":material/folder_open: Datei & Patient")
     st.caption("Lade die EDF-Datei hoch und trage Alter/Geschlecht ein — gilt für die gesamte Analyse.")
 
     UPLOAD_DIR = _session_upload_dir()

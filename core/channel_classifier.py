@@ -153,8 +153,14 @@ def classify_channels(
         results[ch] = _classify_one(feats[i], ch, is_bids_eeg_file=is_bids_eeg_file)
 
     # Post-process: keep at most the best 2 ECG candidates.
-    # Quality score = confidence × amplitude, so a weak crosstalk channel (low p2p)
-    # loses to a dedicated lead even at equal confidence.
+    # Quality score = QRS-Formkonsistenz PRIMÄR, Amplitude nur als Tie-Breaker (User-Fund
+    # 2026-08-08, siehe [[project_edf_ekg_polaritaet_stellen]]): eine rein amplituden-
+    # basierte Gewichtung ließ wiederholt hochamplitudige Crosstalk-Kanäle (z. B. POL T1/T2)
+    # die dedizierte, aber niedrigervoltige echte Ableitung (POL X1) verdrängen — obwohl X1s
+    # QRS-Form empirisch deutlich konsistenter/charakteristischer ist (Median-Korrelation
+    # 0,995 vs. 0,92 bei mehreren Referenzfällen). EKG ist ein sehr wiederkehrendes Signal —
+    # diese Konsistenz ist der zuverlässigere Marker für "echter dedizierter EKG-Kanal" als
+    # rohe Amplitude, die auch durch Bewegungsartefakt/Elektrodennähe entstehen kann.
     # A second channel is only kept if it also has strong ECG evidence (p2p > 0.5 mV
     # and confidence > 75 %) — this preserves dual-lead setups (e.g. NeuroFax X + T)
     # while removing low-amplitude ECG-artifact channels.
@@ -163,7 +169,15 @@ def classify_channels(
         def _ecg_quality(item):
             _, r = item
             p2p = r.features.get("p2p_mv", 0)
-            return r.confidence * min(p2p, 3.0)  # cap at 3 mV
+            tmpl = r.features.get("qrs_template_corr", 0.0)
+            # Amplituden-Plausibilitäts-Untergrenze (0,3mV): Korrelation allein ist bei sehr
+            # schwachen/verrauschten Kanälen (p2p < 0,3mV, praktisch Rauschniveau für ein
+            # direktes EKG) nicht robust — ein zufällig leicht höherer Korrelationswert auf
+            # einem Kanal mit 0,08mV Amplitude darf nicht gegen einen plausiblen 1,4mV-Kanal
+            # gewinnen (gefunden 2026-08-08 an EEG_0002). Lineares Abschmelzen statt harter
+            # Schwelle, damit knapp-unter-0,3mV-Kanäle nicht abrupt rausfallen.
+            eff_tmpl = tmpl * min(1.0, p2p / 0.3)
+            return eff_tmpl * 1000.0 + min(p2p, 3.0)
 
         ecg_list.sort(key=lambda x: -_ecg_quality(x))
         for ch, r in ecg_list[1:]:
@@ -256,7 +270,8 @@ def _compute_features(sig: np.ndarray, sfreq: float) -> dict:
     if f["is_flat"]:
         for k in ("kurtosis","dom_freq","spectral_entropy",
                   "delta_rel","theta_rel","alpha_rel","beta_rel",
-                  "gamma_rel","slow_rel","hf_rel","qrs_rate","rhythmicity"):
+                  "gamma_rel","slow_rel","hf_rel","qrs_rate","rhythmicity",
+                  "qrs_template_corr"):
             f[k] = 0.0
         return f
 
@@ -317,6 +332,7 @@ def _compute_features(sig: np.ndarray, sfreq: float) -> dict:
 
     best_rate     = 0.0
     best_rhythmic = 0.0
+    best_template_corr = 0.0
 
     for sig_bp, min_dist_s in _sig_variants:
         for polarity in (sig_bp, -sig_bp):
@@ -344,9 +360,36 @@ def _compute_features(sig: np.ndarray, sfreq: float) -> dict:
                 if rhythmicity > best_rhythmic:
                     best_rate     = rate
                     best_rhythmic = rhythmicity
+                    # Morphologie-Konsistenz (User-Fund 2026-08-08, siehe
+                    # [[project_edf_ekg_polaritaet_stellen]]): EKG ist ein sehr
+                    # charakteristisches, hoch wiederkehrendes Signal — ein dedizierter
+                    # EKG-Kanal hat eine fast identische QRST-Form von Schlag zu Schlag,
+                    # während Crosstalk/Bewegungsartefakt auf anderen Kanälen (die
+                    # zufällig ähnliche Amplitude/Rate haben können) typischerweise NICHT
+                    # so konsistent ist. Median-Template über alle Schläge (±80ms um den
+                    # Peak), dann Median der Pearson-Korrelation jedes Einzelschlags zum
+                    # Template — analog analysis/ecg_quality.py Regel 4, hier bewusst ohne
+                    # Cross-Package-Import leichtgewichtig neu implementiert.
+                    half_w = int(0.08 * sfreq)
+                    beats = [polarity[p - half_w:p + half_w] for p in peaks
+                            if p - half_w >= 0 and p + half_w <= len(polarity)]
+                    if len(beats) >= 4:
+                        beats_arr = np.array(beats)
+                        template = np.median(beats_arr, axis=0)
+                        tmpl_c = template - template.mean()
+                        tmpl_std = np.std(tmpl_c)
+                        if tmpl_std > 0:
+                            corrs = []
+                            for b in beats_arr:
+                                bc, bstd = b - b.mean(), np.std(b)
+                                if bstd > 0:
+                                    corrs.append(float(np.mean(bc * tmpl_c) / (bstd * tmpl_std)))
+                            if corrs:
+                                best_template_corr = float(np.median(corrs))
 
-    f["qrs_rate"]    = best_rate
-    f["rhythmicity"] = best_rhythmic
+    f["qrs_rate"]           = best_rate
+    f["rhythmicity"]        = best_rhythmic
+    f["qrs_template_corr"]  = best_template_corr
 
     return f
 
@@ -455,6 +498,18 @@ def _classify_one(f: dict, ch_name: str, is_bids_eeg_file: bool = False) -> Chan
         if kurt > 100:
             scores[ECG] -= 20
             reasons[ECG].append(f"Kurtosis {kurt:.0f} (Artefaktspike, kein QRS)")
+
+        # QRS-Formkonsistenz (User-Fund 2026-08-08): der entscheidende Unterschied zwischen
+        # einem echten, dedizierten EKG-Kanal und einem Kanal, der nur zufällig ähnliche
+        # Amplitude/Rate durch Crosstalk zeigt — siehe Herleitung oben in _compute_features().
+        tmpl_corr = f.get("qrs_template_corr", 0.0)
+        if tmpl_corr > 0.6:
+            scores[ECG] += 25 * tmpl_corr
+            reasons[ECG].append(f"QRS-Formkonsistenz {tmpl_corr:.2f} (wiederkehrende Morphologie)")
+        elif 0 < tmpl_corr < 0.3 and f.get("qrs_rate", 0) > 0:
+            scores[ECG] -= 10
+            reasons[ECG].append(f"QRS-Formkonsistenz niedrig ({tmpl_corr:.2f}) — evtl. "
+                                "Crosstalk/Artefakt statt dediziertem EKG")
 
         # Rhythmicity bonus — additional evidence on top of rate score
         if rhyth > 0.75:

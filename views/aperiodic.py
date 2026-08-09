@@ -114,7 +114,7 @@ def _exponent_hint(exp: float, age) -> str:
 
 
 def render():
-    st.title("🌀 Aperiodische Komponente (1/f)")
+    st.title(":material/waves: Aperiodische Komponente (1/f)")
 
     # ── Biomarker-Headline (Biologie zuerst) ──────────────────────────────────
     st.markdown(

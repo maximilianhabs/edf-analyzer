@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from scipy.signal import find_peaks as _fp
 
-from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info, section_header, safe_slider
+from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info, section_header, safe_slider, render_banner
 
 
 def _section(title: str, subtitle: str = "") -> None:
@@ -152,7 +152,7 @@ def _hex_to_rgba(hex_color: str, alpha: float) -> str:
 
 
 def render():
-    st.title("❤️ EKG & HRV")
+    st.title(":material/favorite: EKG & HRV")
 
     # ── Imports & Konstanten (für Closures) ───────────────────────────────────
     from analysis.hrv_reference import (
@@ -1146,16 +1146,13 @@ def render():
     # wie views/rhythm_screening.py, dort ausführlich hergeleitet + gegengeprüft mit
     # SYNTH_groundtruth.edf, siehe [[project_edf_rhythm_screening]]) ─────────────────────────
     if rr_data.get("was_flipped"):
-        st.markdown(
-            "<div style='background:#eaf2fa;border:1.5px solid #5b8fc7;border-radius:8px;"
-            "padding:10px 14px;margin-bottom:10px;font-size:13px'>"
-            "ℹ️ <b>Kanal-Polaritätskonvention erkannt und für die Darstellung angepasst:</b> "
+        render_banner(
+            "info", "Kanal-Polaritätskonvention erkannt und für die Darstellung angepasst",
             "Die QRS-Auslenkung ist im Rohsignal dieses Kanals negativ dominant. Das ist bei "
             "diesem Kanal (POL X1) die durchgehende, verlässliche Konvention dieses "
             "Aufnahmesystems — kein Hinweis auf ein Problem bei dieser Ableitung. Für die "
             "Darstellung und Analyse wird die Polarität automatisch so ausgerichtet, dass die "
-            "R-Zacke wie klinisch gewohnt nach oben zeigt; alle Zahlen bleiben unverändert gültig."
-            "</div>", unsafe_allow_html=True)
+            "R-Zacke wie klinisch gewohnt nach oben zeigt; alle Zahlen bleiben unverändert gültig.")
         with st.expander("🔍 Polaritäts-Check: Analyse mit vs. ohne Korrektur anzeigen"):
             from analysis.ecg import flip_diagnostic
             _sig0 = edf["data"][edf["ch_idx"][ecg_ch]].astype(np.float64)
@@ -1706,6 +1703,79 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
             st.plotly_chart(fig_rr_clean, use_container_width=True)
         with col_d:
             st.plotly_chart(fig_poin_clean, use_container_width=True)
+
+        # ── Histogramme (User-Idee 2026-08-08): "geometrische" HRV-Methode nach Task Force
+        # 1996 — RR-Intervall-Histogramm (→ HRV-Triangulärindex) + ΔRR-Histogramm (macht
+        # pNN50/NN50 visuell greifbar, mit den ±50ms-Schwellen eingezeichnet). Rein auf
+        # bereits vorhandenen Daten (rr_ms), kein neuer Berechnungspfad — Kosten: 2× np.histogram
+        # + 2 Plotly-Bar-Traces, keine spürbare Mehrlast. ─────────────────────────────────────
+        if len(rr_ms) >= 10:
+            _section("📊 Histogramme", "Geometrische HRV-Darstellung (Task Force 1996)")
+            col_h1, col_h2 = st.columns(2)
+
+            with col_h1:
+                # Bin-Breite 1000/128 ms ≈ 7,8125ms — Task-Force-Konvention für den
+                # HRV-Triangulärindex (Gesamtzahl NN / Höhe des höchsten Balkens).
+                _bin_w = 1000.0 / 128.0
+                _edges = np.arange(rr_ms.min() - _bin_w, rr_ms.max() + 2 * _bin_w, _bin_w)
+                _counts, _edges = np.histogram(rr_ms, bins=_edges)
+                _tri_index = len(rr_ms) / _counts.max() if _counts.max() > 0 else float("nan")
+                fig_rr_hist = go.Figure()
+                fig_rr_hist.add_trace(go.Bar(
+                    x=_edges[:-1] + _bin_w / 2, y=_counts, width=_bin_w * 0.9,
+                    marker_color="#2471a3", opacity=0.85,
+                    hovertemplate="RR≈%{x:.0f}ms · %{y} Schläge<extra></extra>",
+                ))
+                fig_rr_hist.add_vline(x=mean_rr, line_dash="dot", line_color="#27ae60",
+                                      line_width=1.5, annotation_text=f"∅ {mean_rr:.0f}ms",
+                                      annotation_font_size=10)
+                fig_rr_hist.update_layout(
+                    xaxis_title="RR-Intervall (ms)", yaxis_title="Anzahl Schläge",
+                    title=dict(text="RR-Intervall-Histogramm", font=dict(size=12), x=0.02),
+                    height=280, margin=dict(t=28, b=36, l=54, r=8), plot_bgcolor="#f9f9f9",
+                    showlegend=False,
+                )
+                st.plotly_chart(fig_rr_hist, use_container_width=True)
+                st.caption(f"**HRV-Triangulärindex** ≈ {_tri_index:.1f} (Gesamtzahl NN-Intervalle "
+                          "÷ Höhe des höchsten Balkens, Bin-Breite 7,8ms nach Task-Force-1996-"
+                          "Konvention) — je höher, desto größer die Gesamtvariabilität, "
+                          "unabhängig von der genauen Kurvenform.")
+
+            with col_h2:
+                _drr = np.diff(rr_ms)
+                if len(_drr) >= 5:
+                    _dedges = np.arange(-200, 205, 10.0)
+                    _dcounts, _dedges = np.histogram(_drr, bins=_dedges)
+                    fig_drr_hist = go.Figure()
+                    fig_drr_hist.add_trace(go.Bar(
+                        x=_dedges[:-1] + 5.0, y=_dcounts, width=9.0,
+                        marker_color="#8e44ad", opacity=0.85,
+                        hovertemplate="ΔRR≈%{x:.0f}ms · %{y}×<extra></extra>",
+                    ))
+                    for _xv in (-50, 50):
+                        fig_drr_hist.add_vline(x=_xv, line_dash="dash", line_color="#c0392b",
+                                               line_width=1.2)
+                    fig_drr_hist.add_annotation(
+                        x=0.02, y=0.98, xref="paper", yref="paper", showarrow=False,
+                        align="left", xanchor="left", yanchor="top",
+                        text=f"pNN50 = {pnn50:.1f}% außerhalb ±50ms (rote Linien)",
+                        font=dict(size=10, color="#c0392b"),
+                        bgcolor="rgba(255,255,255,0.75)", borderpad=3,
+                    )
+                    fig_drr_hist.update_layout(
+                        xaxis_title="ΔRR — Differenz aufeinanderfolgender Schläge (ms)",
+                        yaxis_title="Anzahl",
+                        title=dict(text="ΔRR-Histogramm (Sukzessivdifferenzen)",
+                                  font=dict(size=12), x=0.02),
+                        height=280, margin=dict(t=28, b=36, l=54, r=8), plot_bgcolor="#f9f9f9",
+                        showlegend=False,
+                    )
+                    st.plotly_chart(fig_drr_hist, use_container_width=True)
+                    st.caption("Verteilung der Schlag-zu-Schlag-Differenzen — ein schmaler, hoher "
+                              "Peak um 0 zeigt eine sehr geringe Beat-to-Beat-Variabilität "
+                              "(\"starre Herzfrequenz\"), eine breite Streuung eine hohe "
+                              "vagale Modulation. Macht pNN50/NN50 direkt sichtbar statt nur "
+                              "als abstrakte Zahl.")
 
         # ── DFA α₁ — fraktale Korrelationsstruktur ─────────────────────────────
         _section("🧬 DFA α₁ — fraktale Dynamik", "Detrended Fluctuation Analysis (Peng 1995)")

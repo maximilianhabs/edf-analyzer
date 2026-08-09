@@ -10,7 +10,7 @@ from core.shared import (
 
 
 def render():
-    st.title("🧠 EEG-Viewer")
+    st.title(":material/psychology: EEG-Viewer")
 
     edf, edf_path = get_edf_or_stop()
     sfreq = edf["sfreq"]
