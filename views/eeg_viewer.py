@@ -44,7 +44,7 @@ def render():
             ecg_channels_avail = edf["ecg_channels"]
             show_ecg_lane = bool(ecg_channels_avail)
             if show_ecg_lane:
-                st.caption(f"❤️ EKG-Spur fix unten: **{ecg_channels_avail[0]}** (eigene mV-Skala)")
+                st.caption(f"EKG-Spur fix unten: **{ecg_channels_avail[0]}** (eigene mV-Skala)")
 
     pairs = MONTAGES[montage_name]
 
@@ -53,10 +53,10 @@ def render():
     _missing_el = sorted(_needed - set(edf["eeg_map"].keys()))
     if _missing_el:
         st.warning(
-            f"⚠️ Für die Montage **{montage_name}** fehlen "
+            f"Für die Montage **{montage_name}** fehlen "
             f"{len(_missing_el)} Elektrode(n): **{', '.join(_missing_el)}** — die "
             f"betroffenen Ableitungen bleiben leer. Häufig Fehlklassifikation "
-            f"(Artefakt/Muskel) → in **🔍 Kanal-Identifikation** auf EEG korrigieren."
+            f"(Artefakt/Muskel) → in **Kanal-Identifikation** auf EEG korrigieren."
         )
 
     with col_head:
@@ -77,7 +77,7 @@ def render():
     _ep_anns = [a for a in edf["annotations"] if t_s <= a["onset_s"] <= t_s + eeg_epoch_sec]
     if any(any(k in a["description"].upper() for k in _CAL_KEYS) for a in _ep_anns):
         st.info(
-            "⚙️ **Kalibrier-/Impedanzphase in dieser Epoche** (z. B. REC START · IMP CHECK · "
+            "**Kalibrier-/Impedanzphase in dieser Epoche** (z. B. REC START · IMP CHECK · "
             "A1+A2 OFF) — hier ist das EEG technisch bedingt flach bzw. ungültig "
             "(gemeinsames Kalibriersignal hebt sich in bipolarer Montage auf). "
             "Für echtes EEG eine **spätere Epoche** wählen."

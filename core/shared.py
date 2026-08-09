@@ -98,7 +98,7 @@ def render_sidebar_status():
                 "font-size:12px;"
                 "line-height:1.5;"
                 "'>"
-                "📂 <b>Keine Datei geladen</b><br>"
+                "<span class='material-symbols-outlined' style='font-size:0.95em;vertical-align:-2px'>folder_open</span> <b>Keine Datei geladen</b><br>"
                 "<span style='font-size:11px'>Bitte auf <i>Datei &amp; Patient</i> starten.</span>"
                 "</div>",
                 unsafe_allow_html=True,
@@ -129,13 +129,19 @@ def render_sidebar_status():
             anns = edf.get("annotations", [])
             has_hv = any("HVT" in a.get("description","").upper() for a in anns)
 
+        _ecg_icon_span = ("<span class='material-symbols-outlined' "
+                         "style='font-size:0.95em;vertical-align:-2px'>ecg_heart</span> ")
+
         _has_phi = st.session_state.get("phi_has_patient_data", False)
         if not validated:
-            phi_badge = "<span style='color:#e67e22;font-size:10px;font-weight:700'>⚠ nicht geprüft</span>"
+            phi_badge = (f"{status_dot('warning')}<span style='color:#e67e22;font-size:10px;"
+                        f"font-weight:700'>nicht geprüft</span>")
         elif _has_phi:
-            phi_badge = "<span style='color:#e67e22;font-size:10px;font-weight:700'>⚠ PHI — DSGVO beachten</span>"
+            phi_badge = (f"{status_dot('warning')}<span style='color:#e67e22;font-size:10px;"
+                        f"font-weight:700'>PHI — DSGVO beachten</span>")
         else:
-            phi_badge = "<span style='color:#27ae60;font-size:10px;font-weight:700'>✓ anonymisiert</span>"
+            phi_badge = (f"{status_dot('success')}<span style='color:#27ae60;font-size:10px;"
+                        f"font-weight:700'>anonymisiert</span>")
 
         st.markdown(
             f"<div style='"
@@ -156,7 +162,7 @@ def render_sidebar_status():
             f"<div style='font-size:12px;font-weight:600;color:#1c2833;"
             f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
             f"margin-bottom:10px;' title='{file_name}'>"
-            f"📄 {file_name}"
+            f"<span class='material-symbols-outlined' style='font-size:0.95em;vertical-align:-2px'>description</span> {file_name}"
             f"</div>"
             # Metriken-Grid
             f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:6px'>"
@@ -175,7 +181,8 @@ def render_sidebar_status():
             f"<div style='background:#f8f9fa;border-radius:8px;padding:6px 8px'>"
             f"<div style='font-size:10px;color:#888'>Merkmale</div>"
             f"<div style='font-size:12px;font-weight:600;color:#1c2833'>"
-            f"{'❤️ ' if has_ecg else ''}{'💨 HV' if has_hv else ''}"
+            f"{_ecg_icon_span if has_ecg else ''}"
+            f"{'HV' if has_hv else ''}"
             f"{'—' if not has_ecg and not has_hv else ''}"
             f"</div>"
             f"</div>"
@@ -1025,10 +1032,12 @@ def get_edf_or_stop():
     """Lädt die EDF-Datei oder stoppt die Seite mit Hinweis, falls keine gültige Datei gewählt ist."""
     edf_path = get_edf_path()
     if not edf_path or not os.path.exists(edf_path):
-        st.info("👈 Bitte zuerst auf der Seite **Datei & Patient** eine gültige EDF-Datei wählen.")
+        st.info("Bitte zuerst auf der Seite **Datei & Patient** eine gültige EDF-Datei wählen.",
+               icon=":material/folder_open:")
         st.stop()
     if not st.session_state.get("phi_validated"):
-        st.error("🚫 Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.")
+        st.error("Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.",
+                 icon=":material/block:")
         st.stop()
     edf = load_and_prepare(edf_path)
     edf = apply_channel_overrides(edf)

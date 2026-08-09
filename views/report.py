@@ -134,7 +134,7 @@ def render():
     dur_s = edf["duration_s"]
 
     # ── 1. Aufnahme ───────────────────────────────────────────────────────────
-    with st.expander("📂 Aufnahme & Metadaten", expanded=True):
+    with st.expander("Aufnahme & Metadaten", icon=":material/folder_open:", expanded=True):
         meta_df = pd.DataFrame([
             {"Parameter": "Dateiname",      "Wert": st.session_state.get("edf_display_name", "—")},
             {"Parameter": "Dauer",          "Wert": f"{dur_s / 60:.1f} min  ({int(dur_s)} s)"},
@@ -172,7 +172,7 @@ def render():
             st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
     # ── 2. Herzanalyse / HRV ──────────────────────────────────────────────────
-    with st.expander("❤️ Herzanalyse — HRV", expanded=False):
+    with st.expander("Herzanalyse — HRV", icon=":material/ecg_heart:", expanded=False):
         if not edf.get("ecg_channels"):
             st.info("Kein EKG-Kanal in dieser Aufnahme erkannt.")
         else:
@@ -258,7 +258,7 @@ def render():
                     st.dataframe(fd_df, hide_index=True, use_container_width=True)
 
     # ── 3. EEG-Spektralanalyse ────────────────────────────────────────────────
-    with st.expander("📊 EEG-Spektralanalyse", expanded=False):
+    with st.expander("EEG-Spektralanalyse", icon=":material/bar_chart:", expanded=False):
         eeg_map = edf.get("eeg_map", {})
         if not eeg_map:
             st.info("Keine EEG-Kanäle gefunden.")
@@ -419,20 +419,20 @@ def render():
     try:
         pdf_bytes, xlsx_bytes = _export_bytes(edf_path, _disp)
         ec1, ec2, ec3 = st.columns(3)
-        ec1.download_button("📄 PDF herunterladen", pdf_bytes, file_name=f"{_base}_report.pdf",
+        ec1.download_button("PDF herunterladen", pdf_bytes, icon=":material/description:", file_name=f"{_base}_report.pdf",
                             mime="application/pdf", use_container_width=True)
         ec2.download_button(
-            "📊 Excel herunterladen", xlsx_bytes, file_name=f"{_base}_report.xlsx",
+            "Excel herunterladen", xlsx_bytes, icon=":material/bar_chart:", file_name=f"{_base}_report.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True)
         with ec3:
             try:
-                ec3.download_button("🎨 Visual Report (PDF)", _glory_bytes(edf_path, _disp),
-                                    file_name=f"{_base}_visual.pdf", mime="application/pdf",
+                ec3.download_button("Visual Report (PDF)", _glory_bytes(edf_path, _disp),
+                                    icon=":material/palette:", file_name=f"{_base}_visual.pdf", mime="application/pdf",
                                     type="primary", use_container_width=True)
             except Exception as ex:
                 st.caption(f"Visual Report nicht verfügbar: {ex}")
-        st.caption("**🎨 Visual Report** = grafischer Abstract (A4 quer, 6 Seiten): Roh-EEG, "
+        st.caption("**Visual Report** = grafischer Abstract (A4 quer, 6 Seiten): Roh-EEG, "
                    "Spektrogramm, Bandverteilung, A/P-Gradient, Asymmetrie, EKG mit QRS-Erkennung, "
                    "RR vor/nach Bereinigung, Poincaré & HRV-Spektrum — nur robuste Marker, "
                    "zum Zeigen und Präsentieren.")

@@ -22,10 +22,10 @@ def _default_vs_alt_badge(default_label: str, alt_label: str) -> None:
         "<div style='display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 12px 0'>"
         "<span style='background:#2980b90d;border:1px solid #2980b955;border-radius:6px;"
         "padding:3px 10px;font-size:12px;color:#2471a3'>"
-        f"🔵 <b>Default</b> (bestehende Seiten): {default_label}</span>"
+        f"<span style='display:inline-block;width:9px;height:9px;border-radius:50%;background:#2980b9;margin-right:4px;vertical-align:middle'></span><b>Default</b> (bestehende Seiten): {default_label}</span>"
         "<span style='background:#e67e220d;border:1px solid #e67e2255;border-radius:6px;"
         "padding:3px 10px;font-size:12px;color:#c0722a'>"
-        f"🟠 <b>Alternative</b> (hier geprüft): {alt_label}</span>"
+        f"<span style='display:inline-block;width:9px;height:9px;border-radius:50%;background:#e67e22;margin-right:4px;vertical-align:middle'></span><b>Alternative</b> (hier geprüft): {alt_label}</span>"
         "</div>", unsafe_allow_html=True)
 
 

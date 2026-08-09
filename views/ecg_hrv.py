@@ -559,7 +559,7 @@ def render():
                     "<div style='background:#c0392b14;border:2px solid #c0392b;border-radius:10px;"
                     "padding:12px 16px;margin-bottom:10px'>"
                     "<div style='font-size:15px;font-weight:800;color:#c0392b'>"
-                    "⚠️ Auffällig starre Herzfrequenz</div>"
+                    f"{status_dot('danger')} Auffällig starre Herzfrequenz</div>"
                     "<div style='font-size:13px;color:#555;margin-top:4px'>"
                     f"Praktisch keine Schlag-zu-Schlag-Variabilität: pNN50={_pnn50:.2f}% "
                     f"(nahe 0), CV={_cv:.1f}% (sehr niedrig), SDNN={_sdnn:.1f}ms "
@@ -577,26 +577,26 @@ def render():
                 f"ANS-Tendenz: <b>{_ans_lbl}</b></div>",
                 unsafe_allow_html=True,
             )
-            with st.expander("ℹ️ Diagramm-Erklärung"):
+            with st.expander("Diagramm-Erklärung", icon=":material/info:"):
                 st.markdown(_ANS_LEGEND)
         except Exception:
             pass
 
         if sdnn_warning:
             st.warning(
-                "⚠️ **SDNN kompromittiert** — Atemfrequenz während HV > 0.4 Hz verschiebt die "
+                "**SDNN kompromittiert** — Atemfrequenz während HV > 0.4 Hz verschiebt die "
                 "respiratorische Sinusarrhythmie aus dem HF-Band. SDNN steigt mechanisch. "
                 "Wert wird angezeigt, ist aber **nicht mit Ruhewerten vergleichbar**."
             )
         if _freq_too_short:
             st.warning(
-                f"⚠️ **Frequenzdomäne eingeschränkt** — nur {len(rr_seg)} Schläge analysiert. "
+                f"**Frequenzdomäne eingeschränkt** — nur {len(rr_seg)} Schläge analysiert. "
                 f"Task Force 1996 fordert ≥ 300 Schläge (~5 min) für valide LF/HF-Werte. "
                 f"LF, HF und LF/HF sind orientierend — **nicht für klinische Entscheidungen geeignet**."
             )
         elif freq_warning:
             st.info(
-                "ℹ️ Frequenzdomäne (LF/HF/Total) in diesem Segment methodisch eingeschränkt: "
+                "Frequenzdomäne (LF/HF/Total) in diesem Segment methodisch eingeschränkt: "
                 "kurze Segmentdauer und/oder respiratorische Artefakte. Werte orientierend."
             )
 
@@ -609,7 +609,7 @@ def render():
         _hf_band_invalid = (_hf_pf == _hf_pf) and (_hf_pf > 0.40)
         if _hf_band_invalid:
             st.warning(
-                f"⚠️ **HF-Band biologisch ungültig** — Atemfrequenz-Gipfel liegt bei "
+                f"**HF-Band biologisch ungültig** — Atemfrequenz-Gipfel liegt bei "
                 f"**{_hf_pf:.3f} Hz ({_resp:.0f}/min)**, außerhalb des standardisierten "
                 f"HF-Bandes (0.15–0.40 Hz). HF Power und HF normiert sind in diesem "
                 f"Segment nicht interpretierbar. **Vagusbeurteilung ausschließlich über "
@@ -665,7 +665,7 @@ def render():
                 with row_l:
                     st.markdown(f"**{label}**")
                 with row_r:
-                    st.caption("⚫ nicht berechenbar — Segment zu kurz oder Artefakte")
+                    st.caption("nicht berechenbar — Segment zu kurz oder Artefakte")
                 return None
 
             cls    = _classify(key, value, patient_age, _mean_hr,
@@ -903,11 +903,11 @@ def render():
 
     if not ecg_channels:
         st.warning(
-            "⚠️ **Kein EKG-Kanal automatisch erkannt.** "
+            "**Kein EKG-Kanal automatisch erkannt.** "
             "Bitte wähle manuell einen Kanal aus der Liste — das EKG-Signal hat typisch "
             "0.5–5 mV Peak-to-Peak und zeigt eine regelmäßige Pulsfrequenz (40–160/min)."
         )
-        with st.expander("🔍 Diagnose — warum wurde kein Kanal erkannt?", expanded=False):
+        with st.expander("Diagnose — warum wurde kein Kanal erkannt?", icon=":material/search:", expanded=False):
             st.markdown(
                 "Die automatische Erkennung prüft jeden Nicht-EEG-Kanal auf:\n"
                 "- **Amplitude** 0.1–50 mV Peak-to-Peak (nach DC-Offset-Entfernung)\n"
@@ -1155,7 +1155,7 @@ def render():
             "Aufnahmesystems — kein Hinweis auf ein Problem bei dieser Ableitung. Für die "
             "Darstellung und Analyse wird die Polarität automatisch so ausgerichtet, dass die "
             "R-Zacke wie klinisch gewohnt nach oben zeigt; alle Zahlen bleiben unverändert gültig.")
-        with st.expander("🔍 Polaritäts-Check: Analyse mit vs. ohne Korrektur anzeigen"):
+        with st.expander("Polaritäts-Check: Analyse mit vs. ohne Korrektur anzeigen", icon=":material/search:"):
             from analysis.ecg import flip_diagnostic
             _sig0 = edf["data"][edf["ch_idx"][ecg_ch]].astype(np.float64)
             _sig0 = _sig0 - _sig0.mean()
@@ -1485,20 +1485,20 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
 """, unsafe_allow_html=True)
 
     tab_rr, tab_freq, tab_befund, tab_hv = st.tabs([
-        "📈 RR & Zeitdomäne",
-        "🌊 Frequenzdomäne",
-        "📋 HRV-Befund",
-        "💨 Hyperventilation",
+        ":material/show_chart: RR & Zeitdomäne",
+        ":material/waves: Frequenzdomäne",
+        ":material/assignment: HRV-Befund",
+        ":material/air: Hyperventilation",
     ])
 
     # ── Tab 1: RR & Zeitdomäne ────────────────────────────────────────────────
     with tab_rr:
-        _section("📈 RR & Zeitdomäne",
+        _section("RR & Zeitdomäne",
                  "QRS-Erkennung · Zeitdomäne-Parameter · Tachogramm · Poincaré-Plot")
         if has_hv:
             hv_dur = ((phases["hvt_end"] or 0) - (phases["hvt_start"] or 0))
             st.info(
-                f"⚡ **Hyperventilation automatisch erkannt** · "
+                f"**Hyperventilation automatisch erkannt** · "
                 f"HVT START {phases['hvt_start']:.0f}s → END {phases['hvt_end']:.0f}s "
                 f"({hv_dur:.0f} s ≈ {hv_dur/60:.1f} min) · "
                 f"Post-HV-Fenster: +120 s · "
@@ -1517,7 +1517,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                 f"mittlere R-Amplitude {ref_mv:.2f} mV"
             )
         else:
-            st.info("ℹ️ Keine R-Peaks in dieser Epoche erkannt — andere Epoche wählen oder Kanal prüfen.")
+            st.info("Keine R-Peaks in dieser Epoche erkannt — andere Epoche wählen oder Kanal prüfen.")
         _ecg_nav_bar("bottom", include_slider=False)
 
         st.divider()
@@ -1537,7 +1537,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
             with _wc2:
                 if _window_active is not None:
                     st.caption(
-                        f"🎯 Aktives Fenster: **{_window_active[0]:.0f} – {_window_active[1]:.0f} s** "
+                        f"Aktives Fenster: **{_window_active[0]:.0f} – {_window_active[1]:.0f} s** "
                         f"({(_window_active[1]-_window_active[0])/60:.1f} min, {len(rr_ms)+1} Schläge)"
                     )
 
@@ -1699,7 +1699,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
         # bereits vorhandenen Daten (rr_ms), kein neuer Berechnungspfad — Kosten: 2× np.histogram
         # + 2 Plotly-Bar-Traces, keine spürbare Mehrlast. ─────────────────────────────────────
         if len(rr_ms) >= 10:
-            _section("📊 Histogramme", "Geometrische HRV-Darstellung (Task Force 1996)")
+            _section("Histogramme", "Geometrische HRV-Darstellung (Task Force 1996)")
             col_h1, col_h2 = st.columns(2)
 
             with col_h1:
@@ -1765,7 +1765,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                               "als abstrakte Zahl.")
 
         # ── DFA α₁ — fraktale Korrelationsstruktur ─────────────────────────────
-        _section("🧬 DFA α₁ — fraktale Dynamik", "Detrended Fluctuation Analysis (Peng 1995)")
+        _section("DFA α₁ — fraktale Dynamik", "Detrended Fluctuation Analysis (Peng 1995)")
         st.markdown(
             "<div style='background:linear-gradient(90deg,#27ae6014,transparent);"
             "border-left:5px solid #27ae60;border-radius:8px;padding:14px 18px;margin:2px 0 8px 0'>"
@@ -1829,7 +1829,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
             st.info("ℹ️ DFA α₁ nicht berechenbar — zu wenige Schläge (mind. ~32 nötig).")
 
         # ── Atmung: EDR (ECG-Derived Respiration) ──────────────────────────────
-        _section("🫁 Atmung — EDR", "Aus der R-Zacken-Amplitude rekonstruiert (Moody 1985)")
+        _section("Atmung — EDR", "Aus der R-Zacken-Amplitude rekonstruiert (Moody 1985)")
         from analysis.ecg import edr_from_ecg as _edr_fn
         _edr = None
         if ecg_ch and ecg_ch in edf.get("ecg_filtered", {}):
@@ -1874,13 +1874,13 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                 if _rsa_rate == _rsa_rate:
                     _diff = abs(_edr_rate - _rsa_rate)
                     if _diff <= 3:
-                        st.success(f"✅ Konsistent mit RSA-Schätzung ({_rsa_rate:.1f}/min, "
+                        st.success(f"Konsistent mit RSA-Schätzung ({_rsa_rate:.1f}/min, "
                                    f"Δ {_diff:.1f}) — Atemfrequenz belastbar.")
                     elif _diff <= 6 or abs(_edr_rate*2 - _rsa_rate) <= 3:
-                        st.warning(f"⚠️ Weicht von RSA ab ({_rsa_rate:.1f}/min). Mögliche "
+                        st.warning(f"Weicht von RSA ab ({_rsa_rate:.1f}/min). Mögliche "
                                    f"Harmonische/Subharmonische — mit Vorsicht interpretieren.")
                     else:
-                        st.warning(f"⚠️ Deutliche Abweichung zur RSA ({_rsa_rate:.1f}/min) — "
+                        st.warning(f"Deutliche Abweichung zur RSA ({_rsa_rate:.1f}/min) — "
                                    f"Atemfrequenz unsicher (unkontrollierte Atmung/Artefakte).")
             st.caption(
                 "**EDR** rekonstruiert die Atmung aus der atembedingten Schwankung der "
@@ -1891,14 +1891,14 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
 
     # ── Tab 2: Frequenzdomäne ─────────────────────────────────────────────────
     with tab_freq:
-        _section("🌊 Frequenzdomäne (HRV)", seg_label)
+        _section("Frequenzdomäne (HRV)", seg_label)
         if has_hv:
             st.caption("PSD-Analyse basiert ausschließlich auf dem Prä-HV-Segment (Ruhebedingung).")
 
         if len(rr_ms_analysis) < 30 or not _fd_ok:
             _dur_min = edf["duration_s"] / 60
             st.warning(
-                f"⚠️ **HRV-Frequenzanalyse hier nicht möglich** — nur "
+                f"**HRV-Frequenzanalyse hier nicht möglich** — nur "
                 f"**{len(rr_ms_analysis)} RR-Intervalle** im {seg_label}-Segment "
                 f"(Aufnahme {_dur_min:.1f} min). Nötig sind mindestens ~30, für belastbare "
                 f"Werte deutlich mehr."
@@ -1909,7 +1909,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                 "HF 0,15–0,40 Hz (Atmung). Um solche Rhythmen überhaupt messen zu können, "
                 "braucht man **Minuten, nicht Sekunden** — die **Task Force 1996** empfiehlt "
                 "**5 Minuten** für die Kurzzeit-HRV.\n\n"
-                "✅ **Die Zeitbereichs-Werte** (SDNN, RMSSD, pNN50 …) im Tab **RR & Zeitdomäne** "
+                "**Die Zeitbereichs-Werte** (SDNN, RMSSD, pNN50 …) im Tab **RR & Zeitdomäne** "
                 "**bleiben nutzbar** — sie brauchen keine Minuten-Rhythmen."
             )
             if has_hv:
@@ -1919,13 +1919,13 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
             _dur_min = edf["duration_s"] / 60
             if _n_beats < 300:
                 st.warning(
-                    f"⚠️ **LF/HF orientierend** — {_n_beats} Schläge analysiert "
+                    f"**LF/HF orientierend** — {_n_beats} Schläge analysiert "
                     f"({_dur_min:.1f} min). Task Force 1996 fordert ≥ 300 Schläge (~5 min) "
                     f"für statistisch valide Frequenzdomäne-Werte."
                 )
             if _dur_min < 5:
                 st.info(
-                    f"ℹ️ **VLF-Band nicht interpretierbar** — Aufnahmedauer {_dur_min:.1f} min. "
+                    f"**VLF-Band nicht interpretierbar** — Aufnahmedauer {_dur_min:.1f} min. "
                     f"VLF (0.003–0.04 Hz, Periode 25–300 s) benötigt mindestens 5 min für "
                     f"≥ 1 vollständigen Zyklus. VLF-Zone im Diagramm ist rein orientierend."
                 )
@@ -1937,7 +1937,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
             if _ngap > 0:
                 _gfrac = fd.get("gap_fraction", 0.0)
                 st.warning(
-                    f"⚠️ **{_ngap} große Zeitlücke(n)** in der RR-Reihe "
+                    f"**{_ngap} große Zeitlücke(n)** in der RR-Reihe "
                     f"(längste {_mgap:.1f} s, zusammen {_gfrac*100:.0f}% der Zeitachse). "
                     f"Diese Bereiche werden formerhaltend interpoliert (PCHIP, kein "
                     f"Overshoot), tragen aber keine echte HRV-Information — LF/HF/Total "
@@ -2008,28 +2008,28 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
             _fq(fq[4], "HF normiert", f"{_hfn:.0f}" if _hfn==_hfn else "—", " %", "vagaler Anteil")
             st.caption(
                 "Volle Normwerte, Farbkodierung und Interpretation der Frequenzparameter findest du "
-                "im Reiter **📋 HRV-Befund**. **LF/HF** ist als Sympathovagal-Balance umstritten "
+                "im Reiter **HRV-Befund**. **LF/HF** ist als Sympathovagal-Balance umstritten "
                 "(Billman 2013) — nur als Trend/unter Provokation verwenden.")
 
     # ── Tab 3: HRV-Befund ─────────────────────────────────────────────────────
     with tab_befund:
-        _section("📋 HRV-Befund — Normwertvergleich", seg_label)
+        _section("HRV-Befund — Normwertvergleich", seg_label)
 
         if is_pediatric:
             st.info(
-                f"👶 **Pädiatrische Referenzwerte aktiv — {pediatric_age_group}** · "
+                f"**Pädiatrische Referenzwerte aktiv — {pediatric_age_group}** · "
                 "Gąsior et al. 2018 (Front Physiol), n=312 Kinder 6–13 J., HR-adjustiert."
             )
         elif patient_age < 15:
             st.warning(
-                f"⚠️ Patient ist {patient_age} Jahre — bitte **Pädiatrischer Patient** aktivieren."
+                f"Patient ist {patient_age} Jahre — bitte **Pädiatrischer Patient** aktivieren."
             )
 
         pdf_lab_rows, metrics_pre = _render_lab_panel(
             rr_ms_analysis, r_times_analysis, panel_id="pre"
         )
 
-        with st.expander("📖 Parameter-Erklärungen, Synonyme & Quellen"):
+        with st.expander("Parameter-Erklärungen, Synonyme & Quellen", icon=":material/menu_book:"):
             st.markdown("""
 #### Zeitbereich
 
@@ -2322,13 +2322,13 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
         col_dl1, col_dl2 = st.columns(2)
         with col_dl1:
             st.download_button(
-                "📥 HRV-Ergebnisse als Excel exportieren",
+                "HRV-Ergebnisse als Excel exportieren", icon=":material/download:",
                 data=xlsx_buf,
                 file_name=f"hrv_export_{os.path.splitext(os.path.basename(edf_path))[0]}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
         with col_dl2:
-            if st.button("📄 PDF-Report erzeugen"):
+            if st.button("PDF-Report erzeugen", icon=":material/description:"):
                 from analysis.pdf_report import build_hrv_pdf
                 with st.spinner("Erzeuge PDF…"):
                     pdf_bytes = build_hrv_pdf(
@@ -2344,7 +2344,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                 st.session_state["pdf_bytes"] = pdf_bytes
             if "pdf_bytes" in st.session_state:
                 st.download_button(
-                    "💾 PDF herunterladen",
+                    "PDF herunterladen", icon=":material/download:",
                     data=st.session_state["pdf_bytes"],
                     file_name=f"hrv_report_{os.path.splitext(os.path.basename(edf_path))[0]}.pdf",
                     mime="application/pdf",
@@ -2352,7 +2352,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
 
     # ── Tab 4: Hyperventilation ───────────────────────────────────────────────
     with tab_hv:
-        _section("💨 Hyperventilation & Erholung",
+        _section("Hyperventilation & Erholung",
                  "HRV-Analyse pro Phase · Vagaler Rebound")
 
         dur_s        = int(edf["duration_s"])
@@ -2362,10 +2362,10 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
         if not has_hv and not _manual_active:
             col_info_nohv, col_btn_nohv = st.columns([5, 1])
             with col_info_nohv:
-                st.info("ℹ️ **Keine Hyperventilation** in dieser Aufnahme erkannt (keine HVT-Annotations).")
+                st.info("**Keine Hyperventilation** in dieser Aufnahme erkannt (keine HVT-Annotations).")
             with col_btn_nohv:
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                if st.button("➕ HV manuell", use_container_width=True, key="hvt_manual_add_btn",
+                if st.button("HV manuell", icon=":material/add:", use_container_width=True, key="hvt_manual_add_btn",
                              help="HV-Phasen manuell setzen (z.B. wenn Annotations fehlen)"):
                     st.session_state[_manual_key] = True
                     st.rerun()
@@ -2374,13 +2374,13 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                 hv_dur = ((phases["hvt_end"] or 0) - (phases["hvt_start"] or 0))
                 if hv_dur < 60:
                     st.warning(
-                        f"⚠️ **HVT sehr kurz ({hv_dur:.0f} s < 60 s)** — bitte Annotations prüfen. "
+                        f"**HVT sehr kurz ({hv_dur:.0f} s < 60 s)** — bitte Annotations prüfen. "
                         f"Dauer zu kurz für valide HRV-Phasenanalyse. Manuelle Anpassung empfohlen."
                     )
                 col_info, col_btn = st.columns([5, 1])
                 with col_info:
                     st.info(
-                        f"⚡ **Automatisch erkannt** · "
+                        f"**Automatisch erkannt** · "
                         f"HVT {phases['hvt_start']:.0f}s → {phases['hvt_end']:.0f}s "
                         f"({hv_dur:.0f} s) · Post-HV +120 s · "
                         + (f"Foto: {len(phases['photo_events'])} Schritte"
@@ -2388,14 +2388,14 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                     )
                 with col_btn:
                     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                    if st.button("✏️ Anpassen", use_container_width=True, key="hvt_override_btn"):
+                    if st.button("Anpassen", icon=":material/edit:", use_container_width=True, key="hvt_override_btn"):
                         st.session_state[_manual_key] = True
                         st.rerun()
             else:
                 if not has_hv:
-                    st.info("ℹ️ Keine HVT-Annotations im EDF — Phasen manuell gesetzt.")
+                    st.info("Keine HVT-Annotations im EDF — Phasen manuell gesetzt.")
                 else:
-                    st.warning("✏️ Manuelle Phasengrenzen aktiv — Auto-Erkennung überschrieben.")
+                    st.warning("Manuelle Phasengrenzen aktiv — Auto-Erkennung überschrieben.", icon=":material/edit:")
 
                 hr_s_all = 60000 / rr_ms
                 fig_orient = go.Figure()
@@ -2534,16 +2534,17 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                     )
                 st.dataframe(pd.DataFrame(cmp_rows), hide_index=True, use_container_width=True)
                 st.caption(
-                    "⚠ SDNN während HVT kompromittiert (mechanische Atemvariabilität, nicht autonome Modulation). "
+                    "SDNN während HVT kompromittiert (mechanische Atemvariabilität, nicht autonome Modulation). "
                     "LF/HF während HVT ebenfalls eingeschränkt interpretierbar — RSA verschiebt sich aus dem HF-Band."
                 )
 
                 if seg_post and seg_pre:
                     rb = assess_vagal_rebound(seg_pre, seg_post)
+                    _rb_zone = {"🟢": "success", "🟡": "warning", "🔴": "danger"}.get(rb["icon"], "neutral")
                     st.markdown(
                         f"<div style='padding:10px 14px;border-radius:8px;"
                         f"border:1px solid {rb['color']}55;background:{rb['color']}11;margin:6px 0'>"
-                        f"<span style='font-size:18px'>{rb['icon']}</span> "
+                        f"{status_dot(_rb_zone, size=13)} "
                         f"<strong>{rb['text']}</strong><br>"
                         f"<span style='font-size:12px;color:#555'>"
                         f"HR Δ: {rb['delta_hr']:+.1f} bpm ({rb['pct_hr']:+.1f}%) · "
@@ -2558,11 +2559,11 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
 
                 st.divider()
 
-                tab_labels = ["🫁 HVT aktiv"]
+                tab_labels = [":material/air: HVT aktiv"]
                 if seg_post:
-                    tab_labels.append("🟢 Post-HV Erholung")
+                    tab_labels.append(":material/monitor_heart: Post-HV Erholung")
                 if phases["has_photo"]:
-                    tab_labels.append("💡 Fotostimulation")
+                    tab_labels.append(":material/lightbulb: Fotostimulation")
 
                 tabs      = st.tabs(tab_labels)
                 tab_idx   = 0
