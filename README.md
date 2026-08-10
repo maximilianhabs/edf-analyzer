@@ -33,8 +33,11 @@ docker run -p 8501:8501 -e EDF_PASSWORD=deinPasswort edf-analyzer
 
 ```bash
 pip install -r requirements.txt
-streamlit run app.py
+EDF_PASSWORD=deinPasswort streamlit run app.py
 ```
+
+`EDF_PASSWORD` ist eine Pflicht-Umgebungsvariable — ohne sie startet die App aus
+Sicherheitsgründen nicht (kein Default-Passwort im Quellcode).
 
 Danach [http://localhost:8501](http://localhost:8501) öffnen. Der Upload erwartet eine EDF-Datei (max. 200 MB).
 
@@ -74,6 +77,18 @@ Nach dem **Add-on-Prinzip** bleiben die bewährten Standard-Methoden unveränder
 - Beim Upload prüft die App den EDF-Header auf identifizierende Angaben; ein Standalone-Skript (`anonymize.py`) kann Header anonymisieren.
 - Hochgeladene Dateien liegen in einem sitzungseigenen Temp-Ordner und werden durch einen Cleanup-Daemon nach spätestens ~4 h automatisch gelöscht.
 - Wer EDF-Dateien schon *vor* dem Upload lokal anonymisieren möchte, kann dafür das eigenständige Begleit-Tool [edf-anonymizer](https://github.com/maximilianhabs/edf-anonymizer) nutzen — dependency-freies CLI plus optionale Web-Oberfläche, läuft komplett offline auf dem eigenen Rechner.
+
+## Sicherheit
+
+Der App-Zugang ist per Passwort geschützt (`EDF_PASSWORD`, Pflicht-Umgebungsvariable, siehe
+Schnellstart). Bis 2026-08-10 hatte der Quellcode ein Default-Passwort als Fallback hinterlegt,
+falls die Variable fehlte — das war insofern ein Fehler, als das Repo damals (noch privat) für
+eine öffentliche Veröffentlichung vorbereitet wurde und dieser Fallback dann für jeden
+einsehbar gewesen wäre. Behoben, bevor das Repo öffentlich ging: kein Fallback mehr, die App
+startet ohne gesetzte Variable nicht. Details siehe [CHANGELOG.md](CHANGELOG.md). Sollte dir
+ein sicherheitsrelevantes Problem auffallen, bitte über ein
+[GitHub Security Advisory](https://github.com/maximilianhabs/edf-analyzer/security/advisories/new)
+statt über ein öffentliches Issue melden.
 
 ## Tech-Stack
 

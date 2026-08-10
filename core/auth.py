@@ -11,7 +11,11 @@ import time
 import streamlit as st
 
 # ── Konfiguration ──────────────────────────────────────────────────────────────
-_PASSWORD   = os.environ.get("EDF_PASSWORD", "[REDACTED_PASSWORD]")
+# Kein Default-Fallback (Sicherheits-Fix, siehe CHANGELOG/SECURITY.md): ein öffentlich
+# lesbarer Fallback wäre im Quellcode für jeden sichtbar. EDF_PASSWORD ist daher
+# Pflicht-Env-Var; ohne sie startet die App mit einer klaren Fehlermeldung statt eines
+# unsicheren Default-Passworts.
+_PASSWORD = os.environ.get("EDF_PASSWORD")
 _COOKIE_KEY = "edf_auth_v1"
 _COOKIE_EXP = 30  # Tage
 
@@ -33,6 +37,13 @@ def _fresh_token() -> str:
 
 def require_login() -> bool:
     """Prüft Auth. Gibt True zurück wenn eingeloggt, sonst Login-Formular."""
+
+    if not _PASSWORD:
+        st.error(
+            "Konfigurationsfehler: Umgebungsvariable `EDF_PASSWORD` ist nicht gesetzt. "
+            "Die App startet aus Sicherheitsgründen ohne Default-Passwort nicht."
+        )
+        st.stop()
 
     # 1. Session bereits authentifiziert
     if st.session_state.get("_edf_auth"):
