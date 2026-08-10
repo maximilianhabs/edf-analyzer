@@ -5,7 +5,7 @@ import streamlit as st
 
 from core.shared import (
     MONTAGES, get_edf_or_stop, get_filtered_eeg, get_bipolar_epoch,
-    eeg_figure, render_head_diagram, epoch_nav,
+    eeg_figure, render_head_diagram, window_nav_controls,
 )
 
 
@@ -20,10 +20,8 @@ def render():
 
     with col_panel:
         with st.container(border=True):
-            col_m, col_ep, col_s = st.columns([2.2, 1, 1])
+            col_m, col_s = st.columns([3.2, 1])
             montage_name = col_m.selectbox("Montage (DGKN)", list(MONTAGES.keys()), index=0)
-            eeg_epoch_sec = col_ep.selectbox("Epochenlänge", [5, 10, 20, 30], index=1,
-                                              format_func=lambda v: f"{v} s")
             spacing = col_s.number_input("µV / Spur", 20, 600, 150, step=10)
 
             st.markdown(
@@ -67,33 +65,41 @@ def render():
             fig_head.update_layout(height=190, margin=dict(t=5, b=5, l=5, r=5))
             st.plotly_chart(fig_head, use_container_width=True)
 
-    ep = epoch_nav(edf, "ep_eeg", "EEG", epoch_sec=eeg_epoch_sec)
-    t_s = ep * eeg_epoch_sec
-    i_s, i_e = int(t_s * sfreq), int((t_s + eeg_epoch_sec) * sfreq)
-    t = np.arange(i_s, i_e) / sfreq
+    # Ganze Aufnahme geplottet (kein Ausschneiden mehr nötig) — zwei einfache Regler
+    # (Fensterbreite + Position) steuern die Ansicht zuverlässig; der native Plotly-
+    # Rangeslider unter dem Chart bleibt als zusätzliche Scroll-Möglichkeit erhalten.
+    t_s_eeg, eeg_window_sec = window_nav_controls(edf, "ep_eeg")
+    n_samples = edf["n_samples"]
+    t = np.arange(n_samples) / sfreq
+    view_range = [t_s_eeg, t_s_eeg + eeg_window_sec]
 
-    # Kalibrier-/Impedanzphase erkennen — dort ist das EEG technisch bedingt flach
+    # Kalibrier-/Impedanzphase erkennen — Hinweis gilt für die ganze Aufnahme (nicht mehr
+    # an ein Fenster gebunden, da man jetzt frei über die komplette Aufzeichnung scrollt).
     _CAL_KEYS = ("CAL", "IMP CHECK", "IMPEDANCE", "A1+A2 OFF", "KALIBR")
-    _ep_anns = [a for a in edf["annotations"] if t_s <= a["onset_s"] <= t_s + eeg_epoch_sec]
-    if any(any(k in a["description"].upper() for k in _CAL_KEYS) for a in _ep_anns):
+    _cal_anns = [a for a in edf["annotations"]
+                 if any(k in a["description"].upper() for k in _CAL_KEYS)]
+    if _cal_anns:
+        _cal_times = ", ".join(f"{a['onset_s']:.0f}s" for a in _cal_anns[:6])
         st.info(
-            "**Kalibrier-/Impedanzphase in dieser Epoche** (z. B. REC START · IMP CHECK · "
-            "A1+A2 OFF) — hier ist das EEG technisch bedingt flach bzw. ungültig "
-            "(gemeinsames Kalibriersignal hebt sich in bipolarer Montage auf). "
-            "Für echtes EEG eine **spätere Epoche** wählen."
+            f"**Kalibrier-/Impedanzphase(n) in dieser Aufnahme** (z. B. REC START · "
+            f"IMP CHECK · A1+A2 OFF) bei: {_cal_times} — dort ist das EEG technisch "
+            f"bedingt flach bzw. ungültig (gemeinsames Kalibriersignal hebt sich in "
+            f"bipolarer Montage auf). Zu diesen Zeitpunkten scrollen, um es zu prüfen."
         )
 
     filtered_data = get_filtered_eeg(edf["data"], edf["eeg_map"], sfreq, low_hz, high_hz)
-    derivs = get_bipolar_epoch(filtered_data, edf["eeg_map"], pairs, i_s, i_e)
+    derivs = get_bipolar_epoch(filtered_data, edf["eeg_map"], pairs, 0, n_samples)
 
     if show_ecg_lane and ecg_channels_avail:
         ecg_ch_lane = ecg_channels_avail[0]
-        ecg_sig_mv = edf["ecg_filtered"][ecg_ch_lane][i_s:i_e] * 1000
+        ecg_sig_mv = edf["ecg_filtered"][ecg_ch_lane] * 1000
         ecg_centered = ecg_sig_mv - np.median(ecg_sig_mv)
-        # Auto-Flip: R-Zacke soll positiv oben sein
+        # Auto-Flip: R-Zacke soll positiv oben sein (über die gesamte Aufnahme entschieden)
         if abs(ecg_centered.min()) > abs(ecg_centered.max()):
             ecg_centered = -ecg_centered
-        ecg_sens_mv = max(np.abs(ecg_centered).max() * 1.15, 0.3)
+        # Robuste Skalierung (99. Perzentil statt Maximum) — bei voller Aufnahme kann ein
+        # einzelner Artefakt-Ausschlag sonst die Skala für die gesamte Kurve verzerren.
+        ecg_sens_mv = max(np.percentile(np.abs(ecg_centered), 99) * 1.15, 0.3)
         scale_factor = (spacing / 2) / ecg_sens_mv
         ecg_scaled = ecg_centered * scale_factor
         derivs = derivs + [(
@@ -102,11 +108,13 @@ def render():
         )]
 
     # ── EEG-Kurve — volle Breite, kein Platzverlust durch Seitenspalte mehr ──
-    fig = eeg_figure(derivs, t, spacing, edf["annotations"], t_s, t_s + eeg_epoch_sec)
+    fig = eeg_figure(derivs, t, spacing, edf["annotations"], view_range=view_range)
     st.plotly_chart(fig, use_container_width=True)
-    st.caption(f"Bandpass: {low_hz:.2f}–{high_hz} Hz")
+    st.caption(
+        f"Bandpass: {low_hz:.2f}–{high_hz} Hz — Fensterbreite/Position oben einstellen, "
+        f"oder direkt im Regler unter dem Plot scrollen ({t_s_eeg:.0f}s–{t_s_eeg + eeg_window_sec:.0f}s)."
+    )
 
-    epoch_anns = [a for a in edf["annotations"] if t_s <= a["onset_s"] <= t_s + eeg_epoch_sec]
-    if epoch_anns:
-        st.caption("Annotations: " + " | ".join(
-            f"{a['onset_s']:.1f}s → {a['description']}" for a in epoch_anns))
+    if edf["annotations"]:
+        st.caption("Annotationen in dieser Aufnahme: " + " | ".join(
+            f"{a['onset_s']:.1f}s → {a['description']}" for a in edf["annotations"][:40]))

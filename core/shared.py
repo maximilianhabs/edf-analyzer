@@ -480,6 +480,27 @@ def apply_global_style():
     </style>
     """, unsafe_allow_html=True)
 
+    # Nativer Plotly-Rangeslider (unter EEG-/EKG-Charts, siehe eeg_figure/ecg_figure)
+    # soll NUR zum Scrollen dienen, nicht zum Verstellen der Fensterbreite — die Breite
+    # wird über die eigenen Regler (window_nav_controls) gesteuert. Plotly bindet den
+    # Resize-Drag an die Zieh-Griffe (rangeslider-grabber-min/-max) sowie an Klicks in
+    # die abgedunkelten Außenbereichen (rangeslider-bg/-mask-min/-mask-max); per CSS
+    # pointer-events:none werden genau diese Hit-Flächen deaktiviert. Die mittlere
+    # Slidebox (rangeslider-slidebox) bleibt unangetastet — sie verschiebt beim Ziehen
+    # IMMER beide Fensterkanten um denselben Betrag (reines Pan, siehe Plotly-Quelltext
+    # rangeslider/draw.js::mouseMove, case 'slideBox'), verändert die Breite also nie.
+    st.markdown("""
+    <style>
+    .rangeslider-bg,
+    .rangeslider-mask-min,
+    .rangeslider-mask-max,
+    .rangeslider-grabber-min,
+    .rangeslider-grabber-max {
+        pointer-events: none !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 
 def render_head_diagram(pairs):
     """Schematischer 10-20-Kopf mit der aktuellen Montagenkette farbig eingezeichnet."""
@@ -727,8 +748,11 @@ def get_bipolar_epoch(d, eeg_map, pairs, i_s, i_e):
     return result
 
 
-def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
-    """EEG-Plot mit Kettenspacern zwischen Gruppen."""
+def eeg_figure(derivs, t, spacing, annotations, view_range=None):
+    """EEG-Plot mit Kettenspacern zwischen Gruppen — plottet die GESAMTE Aufnahme (`t`/`derivs`
+    sollten volle Länge haben) und zeigt einen nativen Plotly-Rangeslider unter dem Chart zum
+    Scrollen/Zoomen über die komplette Aufzeichnung. `view_range=[t0, t1]` setzt nur die
+    anfängliche Sichtfenster-Breite (z. B. [0, 10] für 10 s Start-Ansicht)."""
     GAP = spacing * 1.2
 
     offsets = []
@@ -755,7 +779,9 @@ def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
         if seg is not None:
             # EEG-Konvention: negativ oben → Signal negieren außer bei EKG-Lane
             plot_seg = seg if chain == "EKG" else -seg
-            fig.add_trace(go.Scatter(
+            # Scattergl (WebGL) statt Scatter — nötig für die volle Aufnahme (u. U. Millionen
+            # Punkte über alle Ableitungen), Scatter (SVG) würde den Browser einfrieren lassen.
+            fig.add_trace(go.Scattergl(
                 x=t, y=plot_seg + offset, mode="lines",
                 name=chain, legendgroup=chain, showlegend=show_leg,
                 line=dict(width=1.6, color=color),
@@ -763,7 +789,7 @@ def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
                 customdata=hover_values,
             ))
         else:
-            fig.add_trace(go.Scatter(
+            fig.add_trace(go.Scattergl(
                 x=[t[0], t[-1]], y=[offset, offset], mode="lines",
                 line=dict(width=0.5, color="#ccc", dash="dot"),
                 showlegend=False, hoverinfo="skip",
@@ -777,15 +803,18 @@ def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
             fig.add_hline(y=sep_y, line_dash="dot", line_color="#cccccc", line_width=1)
         prev_chain = chain
 
+    # Alle Annotationen einzeichnen (nicht mehr auf ein Fenster begrenzt — die ganze
+    # Aufnahme ist geplottet, man scrollt per Rangeslider dorthin).
     for ann in annotations:
-        o = ann["onset_s"]
-        if t_s <= o <= t_e:
-            fig.add_vline(x=o, line_dash="dot", line_color="#e67e22", line_width=1.2,
-                          annotation_text=ann["description"][:22],
-                          annotation_font_size=9, annotation_position="top left")
+        fig.add_vline(x=ann["onset_s"], line_dash="dot", line_color="#e67e22", line_width=1.2,
+                      annotation_text=ann["description"][:22],
+                      annotation_font_size=9, annotation_position="top left")
 
     fig.update_layout(
-        xaxis=dict(title="Zeit (s)", range=[t[0], t[-1]], showgrid=True, dtick=1),
+        xaxis=dict(
+            title="Zeit (s)", range=view_range or [t[0], t[-1]], showgrid=True,
+            rangeslider=dict(visible=True, thickness=0.07),
+        ),
         yaxis=dict(
             range=[-spacing * 0.8, total_height + spacing * 0.3],
             tickvals=offsets,
@@ -799,8 +828,14 @@ def eeg_figure(derivs, t, spacing, annotations, t_s, t_e):
     return fig
 
 
-def ecg_figure(t, sig_mv, sensitivity_mv, lp_hz=None):
-    """EKG-Plot. sensitivity_mv = sichtbarer ±-Bereich der y-Achse in mV."""
+def ecg_figure(t, sig_mv, sensitivity_mv, lp_hz=None, view_range=None, r_peaks=None):
+    """EKG-Plot über die GESAMTE Aufnahme (`t`/`sig_mv` sollten volle Länge haben) mit
+    nativem Plotly-Rangeslider unter dem Chart zum Scrollen/Zoomen. `view_range=[t0, t1]`
+    setzt nur die anfängliche Sichtfenster-Breite (z. B. [0, 10] für 10 s Start-Ansicht).
+    `sensitivity_mv` = sichtbarer ±-Bereich der y-Achse in mV.
+    `r_peaks` optional: (t_peaks_s, y_mv_roh, symbols, colors) für R-Zacken-Marker-Overlay
+    (Werte VOR der Baseline-Zentrierung — die Funktion zentriert sie selbst mit).
+    """
     sig_plot = sig_mv.copy()
 
     if lp_hz is not None:
@@ -818,16 +853,27 @@ def ecg_figure(t, sig_mv, sensitivity_mv, lp_hz=None):
     y_min, y_max = -sensitivity_mv, sensitivity_mv
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
+    # Scattergl (WebGL) statt Scatter — nötig für die volle Aufnahme (potenziell
+    # Hunderttausende Punkte), Scatter (SVG) würde beim Zoomen ruckeln/einfrieren.
+    fig.add_trace(go.Scattergl(
         x=t, y=sig_centered, mode="lines",
-        line=dict(color="#c0392b", width=1.8),
+        line=dict(color="#c0392b", width=1.4),
         hovertemplate="%{y:.3f} mV<extra></extra>",
+        name="EKG", showlegend=False,
     ))
+    if r_peaks is not None:
+        r_t, r_v, symbols, colors = r_peaks
+        fig.add_trace(go.Scattergl(
+            x=r_t, y=np.asarray(r_v) - baseline, mode="markers", name="R-Peaks",
+            marker=dict(symbol=symbols, size=9, color=colors, line=dict(width=1, color="#333")),
+            hovertemplate="R-Peak t=%{x:.3f}s  %{y:.3f} mV<extra></extra>",
+        ))
+
     fig.update_layout(
         xaxis=dict(
-            title="Zeit (s)", range=[t[0], t[-1]],
-            showgrid=True, gridcolor="#f5c6c6", gridwidth=0.8, dtick=0.2,
-            minor=dict(showgrid=True, gridcolor="#fce8e8", gridwidth=0.5, dtick=0.04),
+            title="Zeit (s)", range=view_range or [t[0], t[-1]],
+            showgrid=True, gridcolor="#f5c6c6", gridwidth=0.8,
+            rangeslider=dict(visible=True, thickness=0.07),
         ),
         yaxis=dict(
             title="Amplitude (mV)", range=[y_min, y_max],
@@ -837,7 +883,7 @@ def ecg_figure(t, sig_mv, sensitivity_mv, lp_hz=None):
         height=420,
         margin=dict(t=8, b=48, l=70, r=8),
         plot_bgcolor="#fff8f8",
-        showlegend=False,
+        showlegend=bool(r_peaks),
     )
     return fig
 
@@ -887,69 +933,54 @@ def safe_slider(label, lo, hi, value=None, **kwargs):
     return st.slider(label, lo, hi, value, **kwargs)
 
 
-def epoch_nav(edf, key, label="EEG", epoch_sec=None):
-    """Rendert prominente Navigationszeile, gibt aktuellen Epochenindex zurück."""
-    e_sec = epoch_sec or EPOCH_SEC
-    n_eps = max(1, int(edf["duration_s"] // e_sec))
-    if key not in st.session_state:
-        st.session_state[key] = 0
-    ep = min(st.session_state[key], n_eps - 1)
-    st.session_state[key] = ep
-    t_s = ep * e_sec
-    t_e = t_s + e_sec
-    pct = (ep + 1) / n_eps * 100
+def window_nav_controls(edf, key, default_window=10, max_window=30, min_window=1,
+                         width_label="Fensterbreite (s)", pos_label="Position (s)"):
+    """Zwei einfache, gut greifbare Streamlit-Regler ÜBER dem Chart: Fensterbreite
+    (1–max_window s, Standard `default_window` s) und Scroll-Position (0 s bis Ende).
 
-    st.markdown("""
-<style>
-div[data-testid="stHorizontalBlock"]:has(> div > div > button[kind="secondary"]) button[kind="secondary"] {
-    min-height: 44px !important;
-    font-size: 17px !important;
-    font-weight: 700 !important;
-}
-</style>
-""", unsafe_allow_html=True)
+    Grund: die winzigen Zieh-Griffe am nativen Plotly-Rangeslider (unter dem Chart) sind
+    schwer präzise zu greifen — vor allem zum GEZIELTEN Ändern der Fensterbreite. Diese
+    beiden Slider übernehmen das zuverlässig; der Rangeslider im Chart bleibt zusätzlich
+    als visuelle Gesamtübersicht bestehen und lässt sich weiterhin frei zum Scrollen ziehen,
+    ist aber nicht mehr die einzige Möglichkeit dafür — bei jedem Rerun (z. B. Breite
+    geändert) wird die Chart-Ansicht wieder exakt auf (Position, Breite) aus diesen beiden
+    Reglern gesetzt.
 
-    c_first, c_prev, c_info, c_next, c_last = st.columns([1, 1, 8, 1, 1])
-    with c_first:
-        if st.button("⏮", key=f"{key}_first", disabled=(ep == 0),
-                     help="Erste Epoche", use_container_width=True):
-            st.session_state[key] = 0
-            st.rerun()
-    with c_prev:
-        if st.button("◀", key=f"{key}_prev", disabled=(ep == 0),
-                     help="Vorherige Epoche (−10 s)", use_container_width=True):
-            st.session_state[key] -= 1
-            st.rerun()
-    with c_info:
-        st.markdown(
-            f"<div style='text-align:center;padding:9px 0 6px;"
-            f"background:#f4f6f9;border-radius:8px;border:1px solid #d0d6de'>"
-            f"<span style='font-size:13px;color:#888'>Epoche</span>&ensp;"
-            f"<b style='font-size:18px;color:#2c3e50'>{ep+1}</b>"
-            f"<span style='font-size:13px;color:#888'>&nbsp;/&nbsp;{n_eps}</span>"
-            f"&ensp;<span style='color:#ccc'>|</span>&ensp;"
-            f"<b style='font-size:14px'>{t_s:.0f}s – {t_e:.0f}s</b>"
-            f"&ensp;<span style='color:#ccc'>|</span>&ensp;"
-            f"<span style='font-size:12px;color:#888'>{pct:.0f}% · {edf['duration_s']/60:.1f} min gesamt</span>"
-            f"</div>", unsafe_allow_html=True)
-    with c_next:
-        if st.button("▶", key=f"{key}_next", disabled=(ep >= n_eps - 1),
-                     help="Nächste Epoche (+10 s)", use_container_width=True):
-            st.session_state[key] += 1
-            st.rerun()
-    with c_last:
-        if st.button("⏭", key=f"{key}_last", disabled=(ep >= n_eps - 1),
-                     help="Letzte Epoche", use_container_width=True):
-            st.session_state[key] = n_eps - 1
-            st.rerun()
+    Returns: (t_start_s, window_sec)
+    """
+    dur = edf["duration_s"]
+    hi_window = int(max(min_window, min(max_window, dur)))
+    win_key = f"{key}_window_sec"
+    start_key = f"{key}_start_s"
 
-    new_ep = safe_slider(f"Epoche auswählen ({label})", 1, n_eps, ep + 1,
-                         key=f"{key}_slider_{e_sec}", label_visibility="collapsed")
-    if new_ep - 1 != ep:
-        st.session_state[key] = new_ep - 1
-        st.rerun()
+    if win_key not in st.session_state:
+        st.session_state[win_key] = int(min(default_window, hi_window))
+    st.session_state[win_key] = int(min(max(st.session_state[win_key], min_window), hi_window))
 
-    return st.session_state[key]
+    c_pos, c_win = st.columns([3, 1])
+    with c_win:
+        if hi_window > min_window:
+            window_sec = st.slider(width_label, min_window, hi_window, key=win_key,
+                                    help=f"Max. {max_window} s")
+        else:
+            st.caption(f"Fenster: {hi_window} s")
+            window_sec = hi_window
+
+    max_start = max(0.0, dur - window_sec)
+    if start_key not in st.session_state:
+        st.session_state[start_key] = 0.0
+    st.session_state[start_key] = min(max(st.session_state[start_key], 0.0), max_start)
+
+    with c_pos:
+        if max_start > 0:
+            step = max(0.5, min(window_sec / 4, 5.0))
+            t_s = st.slider(pos_label, 0.0, max_start, key=start_key, step=step,
+                             help=f"{dur/60:.1f} min gesamt")
+        else:
+            st.caption("Gesamte Aufnahme passt in ein Fenster — nichts zu scrollen.")
+            t_s = 0.0
+
+    return t_s, window_sec
 
 
 def get_edf_path():

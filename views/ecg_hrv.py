@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from scipy.signal import find_peaks as _fp
 
-from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info, section_header, safe_slider, render_banner, status_dot, kpi_tile
+from core.shared import ecg_figure, window_nav_controls, get_edf_or_stop, get_patient_info, section_header, render_banner, status_dot, kpi_tile
 
 
 def _section(title: str, subtitle: str = "") -> None:
@@ -1012,50 +1012,11 @@ def render():
 </style>
 """, unsafe_allow_html=True)
 
-    # ── Wiederverwendbare Navigationsleiste ───────────────────────────────────
-    _n_eps_ecg = max(1, int(edf["duration_s"] // EPOCH_SEC))
-
-    def _ecg_nav_bar(loc: str, include_slider: bool = True):
-        """Epoch-Navigation + Sensitivitäts-Kontrolle. loc='top'|'bottom' für eindeutige Keys."""
-        _n  = _n_eps_ecg
-        _ep = min(st.session_state.get("ep_ecg", 0), _n - 1)
+    # ── Sensitivitäts-Kontrolle (Ausschlag-Skalierung, unabhängig von der Nav) ─────
+    def _ecg_sens_bar(loc: str):
+        """Sensitivitäts-Kontrolle (±mV-Skalierung). loc='top'|'bottom' für eindeutige Keys."""
         _si = st.session_state.ecg_sens_idx
-        _t0 = _ep * EPOCH_SEC
-        _t1 = _t0 + EPOCH_SEC
-        _pct = (_ep + 1) / _n * 100
-
-        # Einzeilige Column-Reihe — keine Verschachtelung, damit alle Buttons sichtbar sind
-        cf, cp, ci, cn, cl, csm, csv, csp = st.columns([1.6, 1.6, 9, 1.6, 1.6, 1.6, 3.2, 1.6])
-
-        with cf:
-            if st.button("⏮", key=f"en_first_{loc}", disabled=(_ep == 0),
-                         help="Erste Epoche", use_container_width=True):
-                st.session_state.ep_ecg = 0; st.rerun()
-        with cp:
-            if st.button("◀", key=f"en_prev_{loc}", disabled=(_ep == 0),
-                         help="−10 s", use_container_width=True):
-                st.session_state.ep_ecg = _ep - 1; st.rerun()
-        with ci:
-            st.markdown(
-                f"<div style='text-align:center;padding:10px 6px 8px;"
-                f"background:#eef2ff;border-radius:8px;border:1px solid #c3d0f0;line-height:1.4'>"
-                f"<span style='font-size:11px;color:#6b80b0;letter-spacing:.5px'>EPOCHE</span>"
-                f"&ensp;<b style='font-size:19px;color:#1a3a6b'>{_ep+1}</b>"
-                f"<span style='font-size:12px;color:#6b80b0'>&thinsp;/&thinsp;{_n}</span>"
-                f"&ensp;<span style='color:#c3d0f0;font-size:14px'>│</span>&ensp;"
-                f"<b style='font-size:13px;color:#2c3e50'>{_t0:.0f}&thinsp;s – {_t1:.0f}&thinsp;s</b>"
-                f"&ensp;<span style='color:#c3d0f0;font-size:14px'>│</span>&ensp;"
-                f"<span style='font-size:11px;color:#8899bb'>{_pct:.0f}% &middot; {edf['duration_s']/60:.1f}&thinsp;min</span>"
-                f"</div>", unsafe_allow_html=True,
-            )
-        with cn:
-            if st.button("▶", key=f"en_next_{loc}", disabled=(_ep >= _n - 1),
-                         help="+10 s", use_container_width=True):
-                st.session_state.ep_ecg = _ep + 1; st.rerun()
-        with cl:
-            if st.button("⏭", key=f"en_last_{loc}", disabled=(_ep >= _n - 1),
-                         help="Letzte Epoche", use_container_width=True):
-                st.session_state.ep_ecg = _n - 1; st.rerun()
+        csm, csv, csp = st.columns([1.6, 3.2, 1.6])
         with csm:
             _prev_s = f"→ ±{_SENS_OPTIONS[max(0, _si-1)]:.3g} mV" if _si > 0 else ""
             if st.button("−", key=f"en_sm_{loc}", disabled=(_si == 0),
@@ -1077,34 +1038,29 @@ def render():
                          use_container_width=True):
                 st.session_state.ecg_sens_idx += 1; st.rerun()
 
-        if include_slider:
-            _new_ep = safe_slider(
-                "Epoche direkt anspringen", 1, _n,
-                min(st.session_state.get("ep_ecg", 0), _n - 1) + 1,
-                key=f"ep_ecg_slider_{EPOCH_SEC}",
-                label_visibility="collapsed",
-            )
-            if _new_ep - 1 != _ep:
-                st.session_state.ep_ecg = _new_ep - 1; st.rerun()
-
-    _ecg_nav_bar("top")
+    # Ganze Aufnahme geplottet (kein Ausschneiden mehr nötig) — zwei einfache Regler
+    # (Fensterbreite + Position) steuern die Ansicht zuverlässig; der native Plotly-
+    # Rangeslider unter dem Chart bleibt als zusätzliche Scroll-Möglichkeit erhalten.
+    t_s_ecg, ecg_window_sec = window_nav_controls(edf, "ep_ecg")
+    _ecg_sens_bar("top")
     sensitivity_mv = _SENS_OPTIONS[st.session_state.ecg_sens_idx]
-    ep_ecg = min(st.session_state.get("ep_ecg", 0), _n_eps_ecg - 1)
-    t_s_ecg  = ep_ecg * EPOCH_SEC
-    i_s_ecg  = int(t_s_ecg * sfreq)
-    i_e_ecg  = int((t_s_ecg + EPOCH_SEC) * sfreq)
-    t_ecg    = np.arange(i_s_ecg, i_e_ecg) / sfreq
+    t_ecg    = np.arange(edf["n_samples"]) / sfreq
 
-    sig      = edf["ecg_filtered"][ecg_ch][i_s_ecg:i_e_ecg]
+    sig      = edf["ecg_filtered"][ecg_ch]
     sig_mv   = sig * 1000
 
-    # Auto-Flip: R-Zacke soll positiv oben sein
+    # Auto-Flip: R-Zacke soll positiv oben sein (über die gesamte Aufnahme entschieden)
     sig_centered_check = sig_mv - np.median(sig_mv)
     if abs(sig_centered_check.min()) > abs(sig_centered_check.max()):
         sig_mv = -sig_mv
 
-    fig_ecg  = ecg_figure(t_ecg, sig_mv, sensitivity_mv, lp_hz)
+    _ecg_view = [t_s_ecg, t_s_ecg + ecg_window_sec]
+    fig_ecg  = ecg_figure(t_ecg, sig_mv, sensitivity_mv, lp_hz, view_range=_ecg_view)
     st.plotly_chart(fig_ecg, use_container_width=True)
+    st.caption(
+        f"Fensterbreite/Position oben einstellen, oder direkt im Regler unter dem Plot "
+        f"scrollen ({t_s_ecg:.0f}s–{t_s_ecg + ecg_window_sec:.0f}s)."
+    )
 
     sig_centered = sig_mv - np.median(sig_mv)
     pp  = sig_centered.max() - sig_centered.min()
@@ -1406,26 +1362,20 @@ def render():
         legend=dict(orientation="h", y=1.18, x=0, font=dict(size=9)),
     )
 
-    # R-Peak-Overlay
+    # R-Peak-Overlay — über die GESAMTE Aufnahme (kein Fenster-Ausschnitt mehr nötig,
+    # da `fig_ecg` jetzt selbst die ganze Aufzeichnung mit Rangeslider zeigt).
     all_peaks  = rr_data["peaks"]
     all_pols   = rr_data["polarities"]
-    mask_ep    = (all_peaks >= i_s_ecg) & (all_peaks < i_e_ecg)
-    r_in_epoch = all_peaks[mask_ep]
-    r_pols     = all_pols[mask_ep]
     fig_ecg_rr = None
-    if len(r_in_epoch) > 0:
-        r_t  = r_in_epoch / sfreq
-        r_v  = edf["ecg_filtered"][ecg_ch][r_in_epoch] * 1000
-        r_v_centered = r_v - np.median(sig_mv)
-        symbols = ["triangle-up" if p > 0 else "triangle-down" for p in r_pols]
-        colors  = ["#27ae60" if p > 0 else "#e67e22" for p in r_pols]
-        fig_ecg_rr = go.Figure(fig_ecg)
-        fig_ecg_rr.add_trace(go.Scatter(
-            x=r_t, y=r_v_centered, mode="markers", name="R-Peaks",
-            marker=dict(symbol=symbols, size=11, color=colors,
-                        line=dict(width=1, color="#333")),
-            hovertemplate="R-Peak t=%{x:.3f}s  %{y:.3f} mV<extra></extra>",
-        ))
+    if len(all_peaks) > 0:
+        r_t  = all_peaks / sfreq
+        r_v  = sig_mv[all_peaks]  # bereits ggf. auto-geflippt, gleiche Skala wie fig_ecg
+        symbols = ["triangle-up" if p > 0 else "triangle-down" for p in all_pols]
+        colors  = ["#27ae60" if p > 0 else "#e67e22" for p in all_pols]
+        fig_ecg_rr = ecg_figure(
+            t_ecg, sig_mv, sensitivity_mv, lp_hz, view_range=_ecg_view,
+            r_peaks=(r_t, r_v, symbols, colors),
+        )
 
     # PSD-Figures
     fig_psd_welch_obj = render_psd_chart(fd_welch, "Welch (FFT)", "#2c3e50")
@@ -1517,8 +1467,8 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                 f"mittlere R-Amplitude {ref_mv:.2f} mV"
             )
         else:
-            st.info("Keine R-Peaks in dieser Epoche erkannt — andere Epoche wählen oder Kanal prüfen.")
-        _ecg_nav_bar("bottom", include_slider=False)
+            st.info("Keine R-Peaks erkannt — anderen Kanal prüfen.")
+        _ecg_sens_bar("bottom")
 
         st.divider()
 
