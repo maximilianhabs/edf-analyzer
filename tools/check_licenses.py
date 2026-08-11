@@ -73,6 +73,28 @@ def read_requirements(path):
     return out
 
 
+def stdlib_names():
+    """Namen der Standardbibliothek — auch auf Python 3.9.
+
+    `sys.stdlib_module_names` gibt es erst ab 3.10. Das Projekt läuft aber auf 3.9 (Dockerfile,
+    wegen MNE), und genau dort brach dieses Skript in der ersten CI ab. Fallback leitet die
+    Namen aus dem stdlib-Verzeichnis ab — ohne die Module zu importieren, also ohne
+    Seiteneffekte."""
+    names = set(getattr(sys, "stdlib_module_names", ()))
+    if names:
+        return names
+    import sysconfig
+    names = set(sys.builtin_module_names)
+    stdlib_dir = Path(sysconfig.get_paths()["stdlib"])
+    if stdlib_dir.is_dir():
+        for entry in stdlib_dir.iterdir():
+            if entry.suffix == ".py":
+                names.add(entry.stem)
+            elif entry.is_dir() and (entry / "__init__.py").exists():
+                names.add(entry.name)
+    return names
+
+
 def imported_modules():
     """Top-Level-Module aus dem AST — robuster als grep (erfasst auch Imports in Funktionen,
     davon gibt es hier viele wegen Streamlits Lazy-Loading-Muster)."""
@@ -92,8 +114,9 @@ def imported_modules():
                 mods.add(node.module.split(".")[0])
     local = {p.name for p in ROOT.iterdir() if p.is_dir() and (p / "__init__.py").exists()}
     local |= {"tests", "app", "analysis", "core", "views"}
+    std = stdlib_names()
     return {IMPORT_TO_PYPI.get(m, m) for m in mods
-            if m not in sys.stdlib_module_names and m not in local}
+            if m not in std and m not in local}
 
 
 def license_of(pkg):
