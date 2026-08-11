@@ -79,14 +79,16 @@ def _render_login():
     [data-testid="stToolbar"],
     footer { display: none !important; }
 
-    /* Vollbild-Zentrierung */
     .block-container { padding-top: 0 !important; }
 
+    /* Karte NICHT über die volle Höhe zentrieren: das Passwortfeld steht im DOM hinter der
+    Karte, bei `min-height: 88vh` begann es deshalb erst am unteren Bildschirmrand und war
+    besonders auf dem Handy kaum sichtbar (User-Fund 2026-08-11). Jetzt nur ein moderater
+    Abstand nach oben — Karte und Eingabe stehen zusammen im oberen Bereich. */
     .login-outer {
         display: flex;
-        align-items: center;
         justify-content: center;
-        min-height: 88vh;
+        padding-top: 5vh;
     }
     .login-card {
         background: #ffffff;
@@ -106,10 +108,13 @@ def _render_login():
         line-height: 1;
     }
     .login-title { font-size: 1.3rem; font-weight: 700; color: #1c2833; margin-bottom: 4px; }
-    .login-sub   { font-size: 0.82rem; color: #7f8c8d; margin-bottom: 28px; }
+    /* Kein grosser Abstand nach unten: in der Karte folgt nichts mehr, der Rand erzeugte nur
+    eine leere Fläche und schob die Eingabe zusätzlich nach unten. */
+    .login-sub   { font-size: 0.82rem; color: #7f8c8d; margin-bottom: 0; }
 
     @media (max-width: 480px) {
-        .login-card  { padding: 32px 20px 28px; border-radius: 14px; }
+        .login-outer { padding-top: 2vh; }
+        .login-card  { padding: 28px 20px 24px; border-radius: 14px; }
         .login-title { font-size: 1.15rem; }
     }
     </style>
