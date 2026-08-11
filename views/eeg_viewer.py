@@ -3,6 +3,7 @@
 import numpy as np
 import streamlit as st
 
+from core.i18n import tr
 from core.shared import (
     MONTAGES, get_edf_or_stop, get_filtered_eeg, get_bipolar_epoch,
     eeg_figure, render_head_diagram, epoch_nav,
@@ -83,7 +84,8 @@ def render():
             "Für echtes EEG eine **spätere Epoche** wählen."
         )
 
-    filtered_data = get_filtered_eeg(edf["data"], edf["eeg_map"], sfreq, low_hz, high_hz)
+    with st.spinner(tr("shared.filtering_eeg")):
+        filtered_data = get_filtered_eeg(edf["data"], edf["eeg_map"], sfreq, low_hz, high_hz)
     derivs = get_bipolar_epoch(filtered_data, edf["eeg_map"], pairs, i_s, i_e)
 
     if show_ecg_lane and ecg_channels_avail:

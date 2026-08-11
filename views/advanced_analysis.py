@@ -348,10 +348,11 @@ def _render_asymmetry(edf, edf_path):
         if lch not in bps or rch not in bps:
             continue
         bl, br = bps[lch], bps[rch]
-        tl, tr = (sum(bl.values()) or 1), (sum(br.values()) or 1)
+        # tot_l/tot_r statt tl/tr: `tr` ist appweit die Übersetzungsfunktion (core/i18n.py)
+        tot_l, tot_r = (sum(bl.values()) or 1), (sum(br.values()) or 1)
         for bk, bn in zip(BK, BN):
             a_abs = _ai(bl.get(bk, 0), br.get(bk, 0))
-            a_rel = _ai(bl.get(bk, 0) / tl, br.get(bk, 0) / tr)
+            a_rel = _ai(bl.get(bk, 0) / tot_l, br.get(bk, 0) / tot_r)
             flag = " ⚠" if (a_rel == a_rel and abs(a_rel) > 20) else ""
             rows.append({"Region": lbl, "Band": bn,
                          "AI absolut (%)": (round(a_abs) if a_abs == a_abs else "—"),

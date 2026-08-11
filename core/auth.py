@@ -10,7 +10,7 @@ import os
 import time
 import streamlit as st
 
-from core.i18n import t
+from core.i18n import tr
 
 # ── Konfiguration ──────────────────────────────────────────────────────────────
 # Kein Default-Fallback (Sicherheits-Fix, siehe CHANGELOG/SECURITY.md): ein öffentlich
@@ -41,7 +41,7 @@ def require_login() -> bool:
     """Prüft Auth. Gibt True zurück wenn eingeloggt, sonst Login-Formular."""
 
     if not _PASSWORD:
-        st.error(t("auth.config_error"))
+        st.error(tr("auth.config_error"))
         st.stop()
 
     # 1. Session bereits authentifiziert
@@ -117,7 +117,7 @@ def _render_login():
         <div class="login-sub">{sub}</div>
       </div>
     </div>
-    """.replace("{sub}", t("auth.subtitle")), unsafe_allow_html=True)
+    """.replace("{sub}", tr("auth.subtitle")), unsafe_allow_html=True)
 
     # Sprachumschalter VOR dem Login sichtbar (kein Sidebar zu diesem Zeitpunkt, siehe
     # CSS oben) — mittig unter der Karte, dezent.
@@ -138,13 +138,13 @@ def _render_login():
             pw = st.text_input(
                 "Password",
                 type="password",
-                placeholder=t("auth.password_placeholder"),
+                placeholder=tr("auth.password_placeholder"),
                 label_visibility="collapsed",
                 key="_login_pw",
                 autocomplete="current-password",
             )
             login_clicked = st.form_submit_button(
-                t("auth.login_button"), use_container_width=True, type="primary"
+                tr("auth.login_button"), use_container_width=True, type="primary"
             )
 
     if login_clicked and pw:
@@ -159,14 +159,14 @@ def _render_login():
                 pass
             st.rerun()
         else:
-            st.error(t("auth.wrong_password"))
+            st.error(tr("auth.wrong_password"))
     elif login_clicked:
-        st.warning(t("auth.empty_password"))
+        st.warning(tr("auth.empty_password"))
 
 
 def logout_button():
     """Logout-Button für Sidebar."""
-    if st.sidebar.button(t("sidebar.logout"), icon=":material/logout:", use_container_width=True, key="_logout_btn"):
+    if st.sidebar.button(tr("sidebar.logout"), icon=":material/logout:", use_container_width=True, key="_logout_btn"):
         st.session_state.pop("_edf_auth", None)
         try:
             from core.i18n import get_cookie_manager

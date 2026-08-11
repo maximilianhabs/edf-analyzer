@@ -145,10 +145,11 @@ def _eeg_metrics(edf, edf_path, segments=None, window_hint_segments=None):
         br = _compute_bandpower(sr, sf, t0, t1)[0]
         if not bl or not br:
             continue
-        tl, tr = (sum(bl.values()) or 1), (sum(br.values()) or 1)
+        # tot_l/tot_r statt tl/tr: `tr` ist appweit die Übersetzungsfunktion (core/i18n.py)
+        tot_l, tot_r = (sum(bl.values()) or 1), (sum(br.values()) or 1)
         for bk, bn in zip(_BK, _BN):
             m["ai"][(lbl, bn, "abs")] = _ai(bl.get(bk, 0), br.get(bk, 0))
-            m["ai"][(lbl, bn, "rel")] = _ai(bl.get(bk, 0) / tl, br.get(bk, 0) / tr)
+            m["ai"][(lbl, bn, "rel")] = _ai(bl.get(bk, 0) / tot_l, br.get(bk, 0) / tot_r)
     return m
 
 

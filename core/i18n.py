@@ -10,9 +10,9 @@ Kein gettext/Babel (Konsistenz mit dem Muster in edf-anonymizer/webui/i18n.py) �
 deutlich größeren Umfang (~600–900 Strings app-weit) aber PRO MODUL verschachtelt statt eines
 flachen Dicts, damit es navigierbar bleibt.
 
-Persistenz per Cookie (User-Vorgabe): dieselbe extra_streamlit_components-Bibliothek wie
-core/auth.py, aus demselben Grund mit einem je Aufrufstelle EIGENEN `key` instanziiert
-(CookieManager kollidiert sonst im Widget-State, siehe core/auth.py-Kommentare).
+Persistenz per Cookie (User-Vorgabe) über eine gemeinsam genutzte CookieManager-Instanz, siehe
+get_cookie_manager() — dort stehen die beiden nicht offensichtlichen Fallstricke dokumentiert.
+
 """
 
 import streamlit as st
@@ -72,6 +72,9 @@ STRINGS = {
                                    "gültige EDF-Datei wählen.",
             "phi_not_validated": "Datei wurde nicht durch den Datenschutz-Check validiert. "
                                   "Bitte erneut hochladen.",
+            "loading_edf": "Lade und verarbeite EDF…",
+            "filtering_eeg": "Filtere EEG…",
+            "channel_override_reason": "Manuell geändert von {old} auf {new}",
         },
     },
     "en": {
@@ -125,6 +128,9 @@ STRINGS = {
                                    "page first.",
             "phi_not_validated": "File has not been validated by the privacy check. Please "
                                   "upload it again.",
+            "loading_edf": "Loading and processing EDF…",
+            "filtering_eeg": "Filtering EEG…",
+            "channel_override_reason": "Manually changed from {old} to {new}",
         },
     },
 }
@@ -209,8 +215,12 @@ def current_lang() -> str:
     return st.session_state.get("lang", "de")
 
 
-def t(key: str, **kwargs) -> str:
-    """z. B. t('sidebar.age_label') oder t('shared.epoch_select_label', label='EEG')."""
+def tr(key: str, **kwargs) -> str:
+    """z. B. tr('sidebar.age_label') oder tr('shared.epoch_select_label', label='EEG').
+
+    Heisst bewusst `tr`, nicht `t`: `t` ist in diesem Projekt vielerorts eine lokale Variable
+    fuer die Zeitachse (z. B. views/eeg_viewer.py, analysis/ecg.py) — ein Import namens `t`
+    wuerde davon still ueberschrieben und erst zur Laufzeit als TypeError auffallen."""
     ns, _, k = key.partition(".")
     text = STRINGS[current_lang()][ns][k]
     return text.format(**kwargs) if kwargs else text
