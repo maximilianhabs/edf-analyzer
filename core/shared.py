@@ -6,6 +6,8 @@ import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 
+from core.i18n import t
+
 # ── Farben: Rechts = Rot, Links = Blau, Mittellinie = Grün (klinische Bedeutung) ─
 C_RE   = "#c0392b"
 C_LI   = "#1a5276"
@@ -98,8 +100,8 @@ def render_sidebar_status():
                 "font-size:12px;"
                 "line-height:1.5;"
                 "'>"
-                "<span class='material-symbols-outlined' style='font-size:0.95em;vertical-align:-2px'>folder_open</span> <b>Keine Datei geladen</b><br>"
-                "<span style='font-size:11px'>Bitte auf <i>Datei &amp; Patient</i> starten.</span>"
+                f"<span class='material-symbols-outlined' style='font-size:0.95em;vertical-align:-2px'>folder_open</span> <b>{t('sidebar.no_file_title')}</b><br>"
+                f"<span style='font-size:11px'>{t('sidebar.no_file_hint')}<i>{t('sidebar.no_file_hint_page')}</i>{t('sidebar.no_file_hint_suffix')}</span>"
                 "</div>",
                 unsafe_allow_html=True,
             )
@@ -135,13 +137,13 @@ def render_sidebar_status():
         _has_phi = st.session_state.get("phi_has_patient_data", False)
         if not validated:
             phi_badge = (f"{status_dot('warning')}<span style='color:#e67e22;font-size:10px;"
-                        f"font-weight:700'>nicht geprüft</span>")
+                        f"font-weight:700'>{t('sidebar.not_checked')}</span>")
         elif _has_phi:
             phi_badge = (f"{status_dot('warning')}<span style='color:#e67e22;font-size:10px;"
-                        f"font-weight:700'>PHI — DSGVO beachten</span>")
+                        f"font-weight:700'>{t('sidebar.phi_warning')}</span>")
         else:
             phi_badge = (f"{status_dot('success')}<span style='color:#27ae60;font-size:10px;"
-                        f"font-weight:700'>anonymisiert</span>")
+                        f"font-weight:700'>{t('sidebar.anonymized')}</span>")
 
         st.markdown(
             f"<div style='"
@@ -155,7 +157,7 @@ def render_sidebar_status():
             # Header
             f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'>"
             f"<span style='font-size:11px;font-weight:700;color:#555;text-transform:uppercase;"
-            f"letter-spacing:0.05em'>Aktive Aufnahme</span>"
+            f"letter-spacing:0.05em'>{t('sidebar.active_recording')}</span>"
             f"{phi_badge}"
             f"</div>"
             # Dateiname
@@ -167,19 +169,19 @@ def render_sidebar_status():
             # Metriken-Grid
             f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:6px'>"
             f"<div style='background:#f8f9fa;border-radius:8px;padding:6px 8px'>"
-            f"<div style='font-size:10px;color:#888'>Alter</div>"
-            f"<div style='font-size:13px;font-weight:700;color:#1c2833'>{age} J. {sex_icon}</div>"
+            f"<div style='font-size:10px;color:#888'>{t('sidebar.age_label')}</div>"
+            f"<div style='font-size:13px;font-weight:700;color:#1c2833'>{age} {t('sidebar.years_suffix')} {sex_icon}</div>"
             f"</div>"
             f"<div style='background:#f8f9fa;border-radius:8px;padding:6px 8px'>"
-            f"<div style='font-size:10px;color:#888'>Dauer</div>"
+            f"<div style='font-size:10px;color:#888'>{t('sidebar.duration_label')}</div>"
             f"<div style='font-size:13px;font-weight:700;color:#1c2833'>{dur_str}</div>"
             f"</div>"
             f"<div style='background:#f8f9fa;border-radius:8px;padding:6px 8px'>"
-            f"<div style='font-size:10px;color:#888'>Kanäle</div>"
+            f"<div style='font-size:10px;color:#888'>{t('sidebar.channels_label')}</div>"
             f"<div style='font-size:13px;font-weight:700;color:#1c2833'>{n_ch_str}</div>"
             f"</div>"
             f"<div style='background:#f8f9fa;border-radius:8px;padding:6px 8px'>"
-            f"<div style='font-size:10px;color:#888'>Merkmale</div>"
+            f"<div style='font-size:10px;color:#888'>{t('sidebar.features_label')}</div>"
             f"<div style='font-size:12px;font-weight:600;color:#1c2833'>"
             f"{_ecg_icon_span if has_ecg else ''}"
             f"{'HV' if has_hv else ''}"
@@ -912,38 +914,38 @@ div[data-testid="stHorizontalBlock"]:has(> div > div > button[kind="secondary"])
     c_first, c_prev, c_info, c_next, c_last = st.columns([1, 1, 8, 1, 1])
     with c_first:
         if st.button("⏮", key=f"{key}_first", disabled=(ep == 0),
-                     help="Erste Epoche", use_container_width=True):
+                     help=t("shared.first_epoch_tooltip"), use_container_width=True):
             st.session_state[key] = 0
             st.rerun()
     with c_prev:
         if st.button("◀", key=f"{key}_prev", disabled=(ep == 0),
-                     help="Vorherige Epoche (−10 s)", use_container_width=True):
+                     help=t("shared.prev_epoch_tooltip"), use_container_width=True):
             st.session_state[key] -= 1
             st.rerun()
     with c_info:
         st.markdown(
             f"<div style='text-align:center;padding:9px 0 6px;"
             f"background:#f4f6f9;border-radius:8px;border:1px solid #d0d6de'>"
-            f"<span style='font-size:13px;color:#888'>Epoche</span>&ensp;"
+            f"<span style='font-size:13px;color:#888'>{t('shared.epoch_label')}</span>&ensp;"
             f"<b style='font-size:18px;color:#2c3e50'>{ep+1}</b>"
             f"<span style='font-size:13px;color:#888'>&nbsp;/&nbsp;{n_eps}</span>"
             f"&ensp;<span style='color:#ccc'>|</span>&ensp;"
             f"<b style='font-size:14px'>{t_s:.0f}s – {t_e:.0f}s</b>"
             f"&ensp;<span style='color:#ccc'>|</span>&ensp;"
-            f"<span style='font-size:12px;color:#888'>{pct:.0f}% · {edf['duration_s']/60:.1f} min gesamt</span>"
+            f"<span style='font-size:12px;color:#888'>{pct:.0f}% · {edf['duration_s']/60:.1f} {t('shared.total_duration_suffix')}</span>"
             f"</div>", unsafe_allow_html=True)
     with c_next:
         if st.button("▶", key=f"{key}_next", disabled=(ep >= n_eps - 1),
-                     help="Nächste Epoche (+10 s)", use_container_width=True):
+                     help=t("shared.next_epoch_tooltip"), use_container_width=True):
             st.session_state[key] += 1
             st.rerun()
     with c_last:
         if st.button("⏭", key=f"{key}_last", disabled=(ep >= n_eps - 1),
-                     help="Letzte Epoche", use_container_width=True):
+                     help=t("shared.last_epoch_tooltip"), use_container_width=True):
             st.session_state[key] = n_eps - 1
             st.rerun()
 
-    new_ep = safe_slider(f"Epoche auswählen ({label})", 1, n_eps, ep + 1,
+    new_ep = safe_slider(t("shared.epoch_select_label", label=label), 1, n_eps, ep + 1,
                          key=f"{key}_slider_{e_sec}", label_visibility="collapsed")
     if new_ep - 1 != ep:
         st.session_state[key] = new_ep - 1
@@ -1032,12 +1034,10 @@ def get_edf_or_stop():
     """Lädt die EDF-Datei oder stoppt die Seite mit Hinweis, falls keine gültige Datei gewählt ist."""
     edf_path = get_edf_path()
     if not edf_path or not os.path.exists(edf_path):
-        st.info("Bitte zuerst auf der Seite **Datei & Patient** eine gültige EDF-Datei wählen.",
-               icon=":material/folder_open:")
+        st.info(t("shared.please_select_file"), icon=":material/folder_open:")
         st.stop()
     if not st.session_state.get("phi_validated"):
-        st.error("Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.",
-                 icon=":material/block:")
+        st.error(t("shared.phi_not_validated"), icon=":material/block:")
         st.stop()
     edf = load_and_prepare(edf_path)
     edf = apply_channel_overrides(edf)

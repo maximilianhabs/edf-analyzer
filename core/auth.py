@@ -10,6 +10,8 @@ import os
 import time
 import streamlit as st
 
+from core.i18n import t
+
 # ── Konfiguration ──────────────────────────────────────────────────────────────
 # Kein Default-Fallback (Sicherheits-Fix, siehe CHANGELOG/SECURITY.md): ein öffentlich
 # lesbarer Fallback wäre im Quellcode für jeden sichtbar. EDF_PASSWORD ist daher
@@ -39,21 +41,18 @@ def require_login() -> bool:
     """Prüft Auth. Gibt True zurück wenn eingeloggt, sonst Login-Formular."""
 
     if not _PASSWORD:
-        st.error(
-            "Konfigurationsfehler: Umgebungsvariable `EDF_PASSWORD` ist nicht gesetzt. "
-            "Die App startet aus Sicherheitsgründen ohne Default-Passwort nicht."
-        )
+        st.error(t("auth.config_error"))
         st.stop()
 
     # 1. Session bereits authentifiziert
     if st.session_state.get("_edf_auth"):
         return True
 
-    # 2. Cookie prüfen
+    # 2. Cookie prüfen — gemeinsame Manager-Instanz, siehe core/i18n.py::get_cookie_manager()
+    # (mehrere Instanzen pro Durchlauf: nur die erste bekommt Daten)
     try:
-        from extra_streamlit_components import CookieManager
-        cm = CookieManager(key="edf_cookie_mgr")
-        cookie_val = cm.get(_COOKIE_KEY)
+        from core.i18n import get_cookie_manager
+        cookie_val = get_cookie_manager().get(_COOKIE_KEY)
         if cookie_val and _valid_cookie(cookie_val):
             st.session_state["_edf_auth"] = True
             return True
@@ -115,10 +114,17 @@ def _render_login():
       <div class="login-card">
         <div class="login-icon">neurology</div>
         <div class="login-title">EDF Analyzer</div>
-        <div class="login-sub">Neuro-Vibe · Zugang geschützt</div>
+        <div class="login-sub">{sub}</div>
       </div>
     </div>
-    """, unsafe_allow_html=True)
+    """.replace("{sub}", t("auth.subtitle")), unsafe_allow_html=True)
+
+    # Sprachumschalter VOR dem Login sichtbar (kein Sidebar zu diesem Zeitpunkt, siehe
+    # CSS oben) — mittig unter der Karte, dezent.
+    from core.i18n import render_lang_switch
+    _, lang_col, _ = st.columns([1, 2.2, 1])
+    with lang_col:
+        render_lang_switch()
 
     # Zentriertes Formular unter der Karte. WICHTIG: st.form statt einzelner
     # text_input+button — bei zwei unabhängigen Widgets löst Enter im Passwortfeld
@@ -130,15 +136,15 @@ def _render_login():
     with col:
         with st.form("_login_form", clear_on_submit=False):
             pw = st.text_input(
-                "Passwort",
+                "Password",
                 type="password",
-                placeholder="Passwort eingeben",
+                placeholder=t("auth.password_placeholder"),
                 label_visibility="collapsed",
                 key="_login_pw",
                 autocomplete="current-password",
             )
             login_clicked = st.form_submit_button(
-                "Anmelden", use_container_width=True, type="primary"
+                t("auth.login_button"), use_container_width=True, type="primary"
             )
 
     if login_clicked and pw:
@@ -146,26 +152,25 @@ def _render_login():
             st.session_state["_edf_auth"] = True
             # Cookie setzen
             try:
-                from extra_streamlit_components import CookieManager
-                cm = CookieManager(key="edf_cookie_mgr_set")
-                cm.set(_COOKIE_KEY, _fresh_token(), max_age=_COOKIE_EXP * 86400)
+                from core.i18n import get_cookie_manager
+                get_cookie_manager().set(_COOKIE_KEY, _fresh_token(), key="auth_set",
+                                         max_age=_COOKIE_EXP * 86400)
             except Exception:
                 pass
             st.rerun()
         else:
-            st.error("Falsches Passwort. Bitte erneut versuchen.")
+            st.error(t("auth.wrong_password"))
     elif login_clicked:
-        st.warning("Bitte Passwort eingeben.")
+        st.warning(t("auth.empty_password"))
 
 
 def logout_button():
     """Logout-Button für Sidebar."""
-    if st.sidebar.button("Abmelden", icon=":material/logout:", use_container_width=True, key="_logout_btn"):
+    if st.sidebar.button(t("sidebar.logout"), icon=":material/logout:", use_container_width=True, key="_logout_btn"):
         st.session_state.pop("_edf_auth", None)
         try:
-            from extra_streamlit_components import CookieManager
-            cm = CookieManager(key="edf_cookie_mgr_del")
-            cm.delete(_COOKIE_KEY)
+            from core.i18n import get_cookie_manager
+            get_cookie_manager().delete(_COOKIE_KEY, key="auth_del")
         except Exception:
             pass
         st.rerun()
