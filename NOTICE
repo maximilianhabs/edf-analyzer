@@ -82,3 +82,6 @@ HINWEIS ZUR VOLLSTÄNDIGKEIT
   Abhängigkeiten sind nicht einzeln gelistet — für eine vollständige Aufstellung im konkreten
   Einsatzfall eignet sich ein Werkzeug wie `pip-licenses` gegen die tatsächlich installierte
   Umgebung.
+
+  Dass diese Aufstellung zu `requirements*.txt` passt und keine Copyleft-Abhängigkeit
+  unbemerkt in die Standardinstallation rutscht, prüft `python3 tools/check_licenses.py`.

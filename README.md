@@ -46,6 +46,13 @@ docker build -t edf-analyzer .
 docker run -p 8501:8501 -e EDF_PASSWORD=yourPassword edf-analyzer
 ```
 
+> **Rebuilding an existing deployment?** The default build deliberately leaves out the
+> GPL-licensed comparison detectors (see below). If your current container has them and you
+> want to keep them, build with
+> `docker build --build-arg WITH_VALIDATED_DETECTORS=1 -t edf-analyzer .` — otherwise the
+> "Advanced Analyses" comparison and the corresponding report rows will be gone after the
+> rebuild. The app itself keeps working either way and states which detector actually ran.
+
 **Locally (Python 3.9):**
 
 ```bash
@@ -168,6 +175,20 @@ approval are done manually by the author.
 
 Please report bugs and suggestions via
 [Issues](https://github.com/maximilianhabs/edf-analyzer/issues).
+
+## Checks
+
+Two dependency-free scripts guard things that break quietly rather than loudly:
+
+```bash
+python3 tools/check_i18n.py      # every UI string exists in both languages, same placeholders
+python3 tools/check_licenses.py  # declared == imported, no copyleft in the default install,
+                                 # NOTICE matches requirements
+```
+
+Both read licences and strings from the actual state of the repo and the installed packages —
+never from a hand-maintained list, which is how `matplotlib` ended up documented as BSD when
+it is not.
 
 ## Self-hosting
 
