@@ -85,11 +85,19 @@ def stdlib_names():
         return names
     import sysconfig
     names = set(sys.builtin_module_names)
+    # `lib-dynload` MUSS mit: dort liegen die C-Erweiterungsmodule (math, fcntl, select …) als
+    # .so/.pyd. Eine erste Fassung sah nur .py-Dateien und Paketordner an und meldete deshalb
+    # `math` und `fcntl` als undeklarierte Fremdpakete — aufgefallen erst in der CI, weil meine
+    # eigene Stichprobe zufällig nur reine Python-Module enthielt.
     stdlib_dir = Path(sysconfig.get_paths()["stdlib"])
-    if stdlib_dir.is_dir():
-        for entry in stdlib_dir.iterdir():
+    for d in (stdlib_dir, stdlib_dir / "lib-dynload"):
+        if not d.is_dir():
+            continue
+        for entry in d.iterdir():
             if entry.suffix == ".py":
                 names.add(entry.stem)
+            elif entry.suffix in (".so", ".pyd", ".dll"):
+                names.add(entry.name.split(".")[0])   # math.cpython-39-….so → math
             elif entry.is_dir() and (entry / "__init__.py").exists():
                 names.add(entry.name)
     return names
