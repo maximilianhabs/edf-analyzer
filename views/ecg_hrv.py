@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from scipy.signal import find_peaks as _fp
 
+from core.i18n import tr
 from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info, section_header, safe_slider, render_banner, status_dot, kpi_tile
 
 
@@ -152,7 +153,7 @@ def _hex_to_rgba(hex_color: str, alpha: float) -> str:
 
 
 def render():
-    st.title(":material/favorite: EKG & HRV")
+    st.title(":material/favorite: " + tr("ecg_hrv.title"))
 
     # ── Imports & Konstanten (für Closures) ───────────────────────────────────
     from analysis.hrv_reference import (
@@ -501,7 +502,7 @@ def render():
                           panel_id: str = "default"):
         """Rendert Balance-Gauge + alle HRV-Parameterbalken für ein RR-Segment."""
         if len(rr_seg) < 5:
-            st.warning("Zu wenige Schläge in diesem Segment für HRV-Analyse.")
+            st.warning(tr("ecg_hrv.too_few_beats_segment"))
             return [], {}
 
         _diff    = np.diff(rr_seg)
@@ -577,7 +578,7 @@ def render():
                 f"ANS-Tendenz: <b>{_ans_lbl}</b></div>",
                 unsafe_allow_html=True,
             )
-            with st.expander("Diagramm-Erklärung", icon=":material/info:"):
+            with st.expander(tr("ecg_hrv.chart_explanation"), icon=":material/info:"):
                 st.markdown(_ANS_LEGEND)
         except Exception:
             pass
@@ -907,7 +908,7 @@ def render():
             "Bitte wähle manuell einen Kanal aus der Liste — das EKG-Signal hat typisch "
             "0.5–5 mV Peak-to-Peak und zeigt eine regelmäßige Pulsfrequenz (40–160/min)."
         )
-        with st.expander("Diagnose — warum wurde kein Kanal erkannt?", icon=":material/search:", expanded=False):
+        with st.expander(tr("ecg_hrv.diagnosis_no_channel"), icon=":material/search:", expanded=False):
             st.markdown(
                 "Die automatische Erkennung prüft jeden Nicht-EEG-Kanal auf:\n"
                 "- **Amplitude** 0.1–50 mV Peak-to-Peak (nach DC-Offset-Entfernung)\n"
@@ -924,7 +925,7 @@ def render():
             for ch in all_non_eeg:
                 st.code(ch)
         manual_ch = st.selectbox(
-            "Kanal manuell auswählen",
+            tr("ecg_hrv.manual_channel"),
             all_non_eeg,
             index=0,
             key="ecg_manual_channel",
@@ -944,7 +945,7 @@ def render():
             bb, aa = _b(4, [0.5/nyq, min(40/nyq, 0.99)], btype="band")
             edf["ecg_filtered"][manual_ch] = _f(bb, aa, sig_raw)
         ecg_channels = [manual_ch]
-        st.info(f"Analysiere Kanal **{manual_ch}** — bitte EKG-Spur visuell prüfen.")
+        st.info(tr("ecg_hrv.analyzing_channel", ch=manual_ch))
 
     _SENS_OPTIONS = [0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0]
     if "ecg_sens_idx" not in st.session_state:
@@ -1126,7 +1127,7 @@ def render():
     r_times  = rr_data["times"]
 
     if len(rr_ms) < 5:
-        st.warning("Zu wenige R-Peaks erkannt. Kanal oder Filter prüfen.")
+        st.warning(tr("ecg_hrv.too_few_rpeaks"))
         return
 
     # ── Rhythmus-Screening-Verweis (Add-on, ändert die bestehende HRV-Pipeline NICHT) ──
@@ -1155,7 +1156,7 @@ def render():
             "Aufnahmesystems — kein Hinweis auf ein Problem bei dieser Ableitung. Für die "
             "Darstellung und Analyse wird die Polarität automatisch so ausgerichtet, dass die "
             "R-Zacke wie klinisch gewohnt nach oben zeigt; alle Zahlen bleiben unverändert gültig.")
-        with st.expander("Polaritäts-Check: Analyse mit vs. ohne Korrektur anzeigen", icon=":material/search:"):
+        with st.expander(tr("ecg_hrv.polarity_check"), icon=":material/search:"):
             from analysis.ecg import flip_diagnostic
             _sig0 = edf["data"][edf["ch_idx"][ecg_ch]].astype(np.float64)
             _sig0 = _sig0 - _sig0.mean()
@@ -1209,11 +1210,11 @@ def render():
     # (bei den Parametern) gerendert; hier wird nur der gespeicherte Wert gelesen,
     # damit die Metriken bereits gefenstert berechnet werden.
     _total_dur_min = float(np.sum(rr_ms) / 60000.0)
-    _window_choice = st.session_state.get("hrv_window_choice", "Gesamtaufnahme")
+    _window_choice = st.session_state.get("hrv_window_choice", "full")
     _window_active = None  # (start_s, end_s) oder None
-    if (not has_hv) and _total_dur_min >= 4.5 and _window_choice != "Gesamtaufnahme":
+    if (not has_hv) and _total_dur_min >= 4.5 and _window_choice != "full":
         _t0 = float(r_times[0])
-        if _window_choice == "Erste 3 min":
+        if _window_choice == "first3":
             _w_start = _t0
         else:  # "Stabilste 3 min" — Fenster mit geringstem RR-Trend (Stationarität)
             _w_start = _select_stablest_window(r_times, rr_ms, win_s=180.0)
@@ -1267,8 +1268,8 @@ def render():
     else:
         rr_ms_analysis   = rr_ms
         r_times_analysis = r_times
-        seg_label        = (f"Subfenster {_window_active[0]:.0f}–{_window_active[1]:.0f} s"
-                            if _window_active is not None else "Gesamtaufnahme")
+        seg_label        = (tr("ecg_hrv.window_subwindow", t0=_window_active[0], t1=_window_active[1])
+                            if _window_active is not None else tr("ecg_hrv.window_full"))
 
     # ── Frequenzdomäne (Berechnung) ───────────────────────────────────────────
     from analysis.hrv_freq import compute_frequency_domain, VLF_BAND, LF_BAND, HF_BAND
@@ -1288,10 +1289,10 @@ def render():
 
     # ── Steuerelemente (vor Tabs — beeinflussen Figure-Bau) ───────────────────
     freq_method = st.radio(
-        "Spektralmethode für HRV-Befund",
+        tr("ecg_hrv.spectral_method"),
         ["Welch (FFT)", "Burg (Maximum Entropy Method)"],
         horizontal=True,
-        help="Welch: klassisch, robust. Burg/MEM: schärfere Peaks, kürzer stabil.",
+        help=tr("ecg_hrv.spectral_method_help"),
     )
     method_key = "burg" if "Burg" in freq_method else "welch"
     fd = fd_burg if method_key == "burg" else fd_welch
@@ -1485,10 +1486,10 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
 """, unsafe_allow_html=True)
 
     tab_rr, tab_freq, tab_befund, tab_hv = st.tabs([
-        ":material/show_chart: RR & Zeitdomäne",
-        ":material/waves: Frequenzdomäne",
-        ":material/assignment: HRV-Befund",
-        ":material/air: Hyperventilation",
+        ":material/show_chart: " + tr("ecg_hrv.tab_rr"),
+        ":material/waves: " + tr("ecg_hrv.tab_freq"),
+        ":material/assignment: " + tr("ecg_hrv.tab_findings"),
+        ":material/air: " + tr("ecg_hrv.tab_hv"),
     ])
 
     # ── Tab 1: RR & Zeitdomäne ────────────────────────────────────────────────
@@ -1517,7 +1518,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                 f"mittlere R-Amplitude {ref_mv:.2f} mV"
             )
         else:
-            st.info("Keine R-Peaks in dieser Epoche erkannt — andere Epoche wählen oder Kanal prüfen.")
+            st.info(tr("ecg_hrv.no_rpeaks_epoch"))
         _ecg_nav_bar("bottom", include_slider=False)
 
         st.divider()
@@ -1527,12 +1528,14 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
             _wc1, _wc2 = st.columns([2, 3])
             with _wc1:
                 st.selectbox(
-                    "Analysefenster für Zeitbereichsparameter",
-                    options=["Gesamtaufnahme", "Erste 3 min", "Stabilste 3 min"],
+                    tr("ecg_hrv.analysis_window"),
+                    # Sprachneutrale IDs: der Wert landet im Session-State und wird weiter
+                    # unten verglichen — ein übersetztes Label würde beim Sprachwechsel nicht
+                    # mehr passen und die Fensterwahl still auf "gesamt" zurückfallen lassen.
+                    options=["full", "first3", "stablest3"],
+                    format_func=lambda v: tr(f"ecg_hrv.window_{v}"),
                     key="hrv_window_choice",
-                    help="SDNN & Spektralwerte skalieren mit der Fensterlänge. "
-                         "Für Vergleiche mit NeuroFax-Kurzzeit-HRV (3 min) auf ein "
-                         "3-min-Subfenster einschränken.",
+                    help=tr("ecg_hrv.analysis_window_help"),
                 )
             with _wc2:
                 if _window_active is not None:
@@ -1542,8 +1545,8 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                     )
 
         # ── Wesentliche Zeitdomäne-Parameter mit Farbkodierung ─────────────
-        _win_hdr = (f"Fenster {_window_active[0]:.0f}–{_window_active[1]:.0f} s"
-                    if _window_active is not None else "Gesamtaufnahme")
+        _win_hdr = (tr("ecg_hrv.window_header", t0=_window_active[0], t1=_window_active[1])
+                    if _window_active is not None else tr("ecg_hrv.window_full"))
         st.markdown(f"**Wesentliche Zeitdomäne-Parameter ({_win_hdr})**")
         # Zonen-Namen dieser Seite (normal/grenzwertig/pathologisch/info) auf die 5 Standard-
         # Zonen der gemeinsamen Kachel-Komponente gemappt (Phase 3 GUI-Redesign, siehe
@@ -1826,7 +1829,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                     "Skalen 4–16 Schläge. *Orientierend.*"
                 )
         else:
-            st.info("ℹ️ DFA α₁ nicht berechenbar — zu wenige Schläge (mind. ~32 nötig).")
+            st.info(tr("ecg_hrv.dfa_uncomputable"))
 
         # ── Atmung: EDR (ECG-Derived Respiration) ──────────────────────────────
         _section("Atmung — EDR", "Aus der R-Zacken-Amplitude rekonstruiert (Moody 1985)")
@@ -1837,7 +1840,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
         _rsa_rate = fd_welch.get("hf_resp_rate") if fd_welch else float("nan")
 
         if _edr is None:
-            st.info("ℹ️ EDR nicht berechenbar — zu wenige/instabile R-Zacken oder Segment zu kurz.")
+            st.info(tr("ecg_hrv.edr_uncomputable"))
         else:
             _edr_rate = _edr["resp_rate_bpm"]
             ec1, ec2 = st.columns([3, 2])
@@ -1946,7 +1949,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
             col_psd_w, col_psd_b = st.columns(2)
             with col_psd_w:
                 if fig_psd_welch_obj is None:
-                    st.info("Kein Welch-Spektrum berechenbar (zu wenige RR-Intervalle).")
+                    st.info(tr("ecg_hrv.no_welch"))
                 else:
                     st.plotly_chart(fig_psd_welch_obj, use_container_width=True)
                 _lf_w  = _fdget(fd_welch, "lf_peak_freq")
@@ -1960,7 +1963,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
                     )
             with col_psd_b:
                 if fig_psd_burg_obj is None:
-                    st.info("Kein Burg-Spektrum berechenbar (zu wenige RR-Intervalle).")
+                    st.info(tr("ecg_hrv.no_burg"))
                 else:
                     st.plotly_chart(fig_psd_burg_obj, use_container_width=True)
                 _lf_b  = _fdget(fd_burg, "lf_peak_freq")
@@ -2029,7 +2032,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
             rr_ms_analysis, r_times_analysis, panel_id="pre"
         )
 
-        with st.expander("Parameter-Erklärungen, Synonyme & Quellen", icon=":material/menu_book:"):
+        with st.expander(tr("ecg_hrv.parameter_explanations"), icon=":material/menu_book:"):
             st.markdown("""
 #### Zeitbereich
 
@@ -2280,7 +2283,7 @@ EEG-EKG-Ableitungen (10–20 Min, wechselnde Vigilanz, keine kontrollierte Atmun
 erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Diagnosekriterien.
             """)
 
-        with st.expander("RR-Tabelle (alle Schläge)"):
+        with st.expander(tr("ecg_hrv.rr_table")):
             df_rr = pd.DataFrame({
                 "Zeit (s)":           np.round(r_times, 2),
                 "RR-Intervall (ms)":  np.round(rr_ms, 1),
@@ -2322,15 +2325,15 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
         col_dl1, col_dl2 = st.columns(2)
         with col_dl1:
             st.download_button(
-                "HRV-Ergebnisse als Excel exportieren", icon=":material/download:",
+                tr("ecg_hrv.export_excel"), icon=":material/download:",
                 data=xlsx_buf,
                 file_name=f"hrv_export_{os.path.splitext(os.path.basename(edf_path))[0]}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
         with col_dl2:
-            if st.button("PDF-Report erzeugen", icon=":material/description:"):
+            if st.button(tr("ecg_hrv.create_pdf"), icon=":material/description:"):
                 from analysis.pdf_report import build_hrv_pdf
-                with st.spinner("Erzeuge PDF…"):
+                with st.spinner(tr("ecg_hrv.creating_pdf")):
                     pdf_bytes = build_hrv_pdf(
                         patient_age=patient_age, patient_sex=patient_sex,
                         file_label=os.path.basename(edf_path),
@@ -2344,7 +2347,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                 st.session_state["pdf_bytes"] = pdf_bytes
             if "pdf_bytes" in st.session_state:
                 st.download_button(
-                    "PDF herunterladen", icon=":material/download:",
+                    tr("ecg_hrv.download_pdf"), icon=":material/download:",
                     data=st.session_state["pdf_bytes"],
                     file_name=f"hrv_report_{os.path.splitext(os.path.basename(edf_path))[0]}.pdf",
                     mime="application/pdf",
@@ -2362,10 +2365,10 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
         if not has_hv and not _manual_active:
             col_info_nohv, col_btn_nohv = st.columns([5, 1])
             with col_info_nohv:
-                st.info("**Keine Hyperventilation** in dieser Aufnahme erkannt (keine HVT-Annotations).")
+                st.info(tr("ecg_hrv.no_hyperventilation"))
             with col_btn_nohv:
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                if st.button("HV manuell", icon=":material/add:", use_container_width=True, key="hvt_manual_add_btn",
+                if st.button(tr("ecg_hrv.hv_manual"), icon=":material/add:", use_container_width=True, key="hvt_manual_add_btn",
                              help="HV-Phasen manuell setzen (z.B. wenn Annotations fehlen)"):
                     st.session_state[_manual_key] = True
                     st.rerun()
@@ -2388,14 +2391,14 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                     )
                 with col_btn:
                     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                    if st.button("Anpassen", icon=":material/edit:", use_container_width=True, key="hvt_override_btn"):
+                    if st.button(tr("ecg_hrv.adjust"), icon=":material/edit:", use_container_width=True, key="hvt_override_btn"):
                         st.session_state[_manual_key] = True
                         st.rerun()
             else:
                 if not has_hv:
-                    st.info("Keine HVT-Annotations im EDF — Phasen manuell gesetzt.")
+                    st.info(tr("ecg_hrv.no_hvt_annotations"))
                 else:
-                    st.warning("Manuelle Phasengrenzen aktiv — Auto-Erkennung überschrieben.", icon=":material/edit:")
+                    st.warning(tr("ecg_hrv.manual_phases_active"), icon=":material/edit:")
 
                 hr_s_all = 60000 / rr_ms
                 fig_orient = go.Figure()
@@ -2418,14 +2421,14 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                 col_s, col_e, col_p = st.columns(3)
                 with col_s:
                     hvt_s_man = st.number_input(
-                        "HVT Start (s)", min_value=0, max_value=dur_s - 10,
+                        tr("ecg_hrv.hvt_start"), min_value=0, max_value=dur_s - 10,
                         value=st.session_state.get(f"{_manual_key}_start", _def_start),
                         step=1, key=f"{_manual_key}_start_widget",
                     )
                     st.session_state[f"{_manual_key}_start"] = hvt_s_man
                 with col_e:
                     hvt_e_man = st.number_input(
-                        "HVT Ende (s)", min_value=hvt_s_man + 10, max_value=dur_s,
+                        tr("ecg_hrv.hvt_end"), min_value=hvt_s_man + 10, max_value=dur_s,
                         value=st.session_state.get(f"{_manual_key}_end",
                               max(_def_end, hvt_s_man + 10)),
                         step=1, key=f"{_manual_key}_end_widget",
@@ -2433,7 +2436,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                     st.session_state[f"{_manual_key}_end"] = hvt_e_man
                 with col_p:
                     post_e_man = st.number_input(
-                        "Post-HV Ende (s)", min_value=hvt_e_man + 10, max_value=dur_s,
+                        tr("ecg_hrv.post_hv_end"), min_value=hvt_e_man + 10, max_value=dur_s,
                         value=st.session_state.get(f"{_manual_key}_post",
                               min(hvt_e_man + 120, dur_s)),
                         step=1, key=f"{_manual_key}_post_widget",
@@ -2442,7 +2445,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
 
                 col_apply, col_reset = st.columns([2, 1])
                 with col_reset:
-                    if has_hv and st.button("↩ Auto", use_container_width=True,
+                    if has_hv and st.button(tr("ecg_hrv.auto"), use_container_width=True,
                                             key="hvt_reset_btn"):
                         st.session_state[_manual_key] = False
                         st.rerun()
@@ -2580,7 +2583,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                                           sdnn_warning=True, freq_warning=True,
                                           panel_id="hvt")
                     else:
-                        st.warning("Zu wenige Schläge im HVT-Segment.")
+                        st.warning(tr("ecg_hrv.too_few_beats_hvt"))
 
                 if seg_post:
                     with tabs[tab_idx]:
@@ -2643,4 +2646,4 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                             _render_lab_panel(seg_photo["rr_ms"], seg_photo["r_times"],
                                               freq_warning=True, panel_id="photo")
                         else:
-                            st.info("Zu wenige Schläge im Fotostimulations-Segment.")
+                            st.info(tr("ecg_hrv.too_few_beats_photic"))

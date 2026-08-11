@@ -3,7 +3,8 @@
 Prüft dreierlei und meldet jeden Fund mit Datei/Zeile:
   1. Jeder im Code per tr("ns.key") benutzte Schlüssel existiert in ALLEN Sprachen.
   2. Keine Sprache hat Schlüssel, die eine andere nicht hat (Struktur-Gleichheit).
-  3. Kein definierter Schlüssel ist ungenutzt (Karteileichen nach Refactorings).
+  3. Beide Sprachen nutzen dieselben {platzhalter} je Schlüssel.
+  4. Kein definierter Schlüssel ist ungenutzt (Karteileichen nach Refactorings).
 
 Absichtlich ohne Abhängigkeiten (nur ast/re/pathlib), damit es auch in einer CI ohne
 installierte App-Umgebung läuft:  python3 tools/check_i18n.py
@@ -21,9 +22,10 @@ I18N_FILE = ROOT / "core" / "i18n.py"
 T_CALL = re.compile(r"""\btr\(\s*["']([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)["']""")
 
 # tr(f"ns.{variable}") — dynamisch zusammengesetzter Schlüssel. Der konkrete Name steht erst
-# zur Laufzeit fest, deshalb kann Prüfung 3 (ungenutzt) für diesen Namensraum nur pauschal
-# ausgesetzt werden; die Prüfungen 1 und 2 greifen unverändert.
-T_CALL_DYNAMIC = re.compile(r"""\btr\(\s*f["']([a-zA-Z0-9_]+)\.\{""")
+# zur Laufzeit fest, deshalb kann Prüfung 4 (ungenutzt) für diesen Namensraum nur pauschal
+# ausgesetzt werden; die Prüfungen 1–3 greifen unverändert.
+# Erfasst auch Schlüssel mit festem Präfix vor der Variablen, z. B. tr(f"ns.window_{v}").
+T_CALL_DYNAMIC = re.compile(r"""\btr\(\s*f["']([a-zA-Z0-9_]+)\.[a-zA-Z0-9_]*\{""")
 
 
 def load_strings():
@@ -76,7 +78,24 @@ def main():
                 where = ", ".join(used[key][:3])
                 problems.append(f"[undefiniert] tr(\"{key}\") in {where} fehlt in Sprache '{lang}'")
 
-    # 3. Definiert, aber ungenutzt (nur Hinweis, kein Fehler). Namensräume mit dynamisch
+    # 3. Platzhalter-Gleichheit zwischen den Sprachen. tr() ruft .format(**kwargs) auf — hätte
+    # eine Sprache einen Platzhalter, den die andere nicht hat, käme der Fehler erst beim
+    # Umschalten zur Laufzeit (KeyError bzw. stehengebliebenes "{name}" im Text).
+    def placeholders(text):
+        return set(re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)", text))
+
+    def value_of(lang, key):
+        ns, k = key.split(".", 1)
+        return strings[lang][ns][k]
+
+    for key in sorted(all_defined):
+        per = {lang: placeholders(value_of(lang, key))
+               for lang in langs if key in per_lang[lang]}
+        if len(set(map(frozenset, per.values()))) > 1:
+            detail = " | ".join(f"{lang}: {sorted(ph) or '—'}" for lang, ph in per.items())
+            problems.append(f"[Platzhalter ungleich] '{key}' → {detail}")
+
+    # 4. Definiert, aber ungenutzt (nur Hinweis, kein Fehler). Namensräume mit dynamisch
     # zusammengesetzten Schlüsseln sind ausgenommen — dort liesse sich "ungenutzt" statisch
     # nicht entscheiden, und eine Falschmeldung pro Lauf würde den Check wertlos machen.
     unused = sorted(k for k in all_defined - set(used)
@@ -85,7 +104,7 @@ def main():
     for p in problems:
         print("FEHLER: " + p)
     if dynamic_ns:
-        print("Namensräume mit dynamischen Schlüsseln (von Prüfung 3 ausgenommen): "
+        print("Namensräume mit dynamischen Schlüsseln (von Prüfung 4 ausgenommen): "
               + ", ".join(sorted(dynamic_ns)))
     if unused:
         print(f"\nHinweis: {len(unused)} definierte Schlüssel werden nirgends per tr() benutzt:")
