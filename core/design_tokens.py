@@ -51,3 +51,17 @@ FONT_BODY_PX = 15
 
 # ── Spacing-Skala (px) ──────────────────────────────────────────────────────────────────────
 SPACE = {1: 4, 2: 8, 3: 12, 4: 16, 5: 24, 6: 32, 7: 48, 8: 64}
+
+# ── Schriften ───────────────────────────────────────────────────────────────────────────────
+# EINZIGE Quelle für die Icon-Schrift. Vorher stand der Name an drei Stellen einzeln im Code
+# (core/shared.py, core/auth.py, views/channel_report.py). Beim Wechsel von „Outlined" auf
+# „Rounded" wurde eine davon übersehen, weil sie den Namen anders schreibt als die CSS-Klasse
+# — die Folge war kein Fehler, sondern der Ligaturname als Klartext im Kopf jeder Kanalzeile
+# („neurology" statt des Gehirn-Symbols). Solche Fehler sind unsichtbar für Tests und fallen
+# nur beim Hinsehen auf, deshalb: nur noch von hier importieren, nie neu hinschreiben.
+#
+# „Rounded" ist bewusst gewählt: diese Variante liefert STREAMLIT bereits lokal mit. Damit
+# braucht es keine eigene Schriftdatei und keinen CDN-Zugriff (siehe NOTICE). Ein Wechsel auf
+# eine andere Variante würde eine eigene Datei unter static/fonts/ erfordern.
+ICON_FONT = "Material Symbols Rounded"
+ICON_FONT_CSS = f"'{ICON_FONT}'"   # fertig gequotet für font-family in CSS

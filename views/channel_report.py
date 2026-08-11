@@ -6,6 +6,7 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 
+from core.design_tokens import ICON_FONT_CSS
 from core.i18n import tr
 from core.shared import get_edf_or_stop, section_header, apply_global_style, status_dot
 from core.channel_classifier import ECG, EEG, EOG, EMG, REF, VITAL, UNKN
@@ -235,7 +236,7 @@ def render():
         # regulär schwarz — genau die vom User gewünschte selektive Färbung.
         _ck = "chan_" + re.sub(r"[^0-9A-Za-z]", "_", ch)
         _icon_is_symbol = meta["icon"] == "⏚"
-        _icon_font = "inherit" if _icon_is_symbol else "'Material Symbols Outlined'"
+        _icon_font = "inherit" if _icon_is_symbol else ICON_FONT_CSS
         st.markdown(
             f"<style>.st-key-{_ck} details > summary{{"
             f"background:{c_conf}1f !important;"

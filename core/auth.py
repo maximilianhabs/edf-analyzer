@@ -10,6 +10,7 @@ import os
 import time
 import streamlit as st
 
+from core.design_tokens import ICON_FONT_CSS
 from core.i18n import tr
 
 # ── Konfiguration ──────────────────────────────────────────────────────────────
@@ -98,7 +99,7 @@ def _render_login():
         text-align: center;
     }
     .login-icon {
-        font-family: 'Material Symbols Rounded';
+        font-family: {iconfont};
         font-size: 2.6rem;
         color: #0071e3;
         margin-bottom: 8px;
@@ -120,7 +121,8 @@ def _render_login():
         <div class="login-sub">{sub}</div>
       </div>
     </div>
-    """.replace("{sub}", tr("auth.subtitle")), unsafe_allow_html=True)
+    """.replace("{sub}", tr("auth.subtitle"))
+         .replace("{iconfont}", ICON_FONT_CSS), unsafe_allow_html=True)
 
     # Sprachumschalter VOR dem Login sichtbar (kein Sidebar zu diesem Zeitpunkt, siehe
     # CSS oben) — mittig unter der Karte, dezent.

@@ -404,17 +404,21 @@ def _render_review_viewer(edf, res, res_auto):
 
     groups = _build_traces(edf, montage, i0, i1)
     # Uniforme EEG-Verstärkung (klinisch: gleiche µV/mm über alle Kanäle) aus 95. Perzentil.
-    all_abs = np.concatenate([np.abs(tr["sig"]) for _, trs in groups for tr in trs]) \
+    # Laufvariable heisst `trc`, NICHT `tr`: `tr` ist appweit die Übersetzungsfunktion
+    # (core/i18n.py). Python macht einen Namen, der irgendwo in der Funktion zugewiesen
+    # wird, für die GANZE Funktion lokal — die tr()-Aufrufe weiter oben in dieser Funktion
+    # stürzten dadurch mit UnboundLocalError ab (User-Fund 2026-08-11).
+    all_abs = np.concatenate([np.abs(trc["sig"]) for _, trs in groups for trc in trs]) \
         if groups else np.array([1.0])
     g95 = float(np.percentile(all_abs, 95)) or 1.0
     g_eeg = (lane_h * 0.5) / g95 * sens
 
     traces, spacers, y = [], [], float(header_h)   # Header-Platz oben für den Klick-Hinweis
     for gi, (gname, trs) in enumerate(groups):
-        for tr in trs:
+        for trc in trs:
             y += lane_h
-            mins, maxs = _minmax_decimate(tr["sig"].astype(float), n_buckets)
-            traces.append({"label": tr["label"], "color": tr["color"], "pol": 1, "yc": y - lane_h / 2,
+            mins, maxs = _minmax_decimate(trc["sig"].astype(float), n_buckets)
+            traces.append({"label": trc["label"], "color": trc["color"], "pol": 1, "yc": y - lane_h / 2,
                            "gain": round(g_eeg, 4),
                            "mins": [round(v, 1) for v in mins], "maxs": [round(v, 1) for v in maxs]})
         y += spacer_h

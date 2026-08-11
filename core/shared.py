@@ -338,7 +338,8 @@ def apply_global_style():
     from core.design_tokens import (BG_SUBTLE, SURFACE, BORDER, TEXT_PRIMARY, TEXT_SECONDARY,
                                     ACCENT, ACCENT_HOVER, DANGER, WARNING, SUCCESS, INFO,
                                     RADIUS_SM, RADIUS_MD, RADIUS_LG, RADIUS_XL,
-                                    FONT_EYEBROW_PX, FONT_HERO_PX, FONT_SUBTITLE_PX)
+                                    FONT_EYEBROW_PX, FONT_HERO_PX, FONT_SUBTITLE_PX,
+                                    ICON_FONT_CSS)
     st.markdown(f"""
     <style>
     /* Schriften werden NICHT von einem CDN geladen (gemessen 2026-08-11: der frühere
@@ -383,7 +384,7 @@ def apply_global_style():
     `:material/...:`-Icons. Die Ligaturnamen (z. B. `ecg_heart`) sind bei beiden Varianten
     identisch, der Wechsel ändert nur die Strichführung. */
     .material-symbol {{
-        font-family: 'Material Symbols Rounded';
+        font-family: {ICON_FONT_CSS};
         font-weight: normal;
         font-style: normal;
         line-height: 1;

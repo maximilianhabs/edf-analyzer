@@ -5,6 +5,9 @@ Prüft dreierlei und meldet jeden Fund mit Datei/Zeile:
   2. Keine Sprache hat Schlüssel, die eine andere nicht hat (Struktur-Gleichheit).
   3. Beide Sprachen nutzen dieselben {platzhalter} je Schlüssel.
   4. Kein definierter Schlüssel ist ungenutzt (Karteileichen nach Refactorings).
+  5. `tr` wird in keiner Funktion lokal überschrieben (Schleifenvariable, Zuweisung, Parameter)
+     — das macht den Namen für die GANZE Funktion lokal und lässt tr()-Aufrufe davor mit
+     UnboundLocalError abstürzen.
 
 Absichtlich ohne Abhängigkeiten (nur ast/re/pathlib), damit es auch in einer CI ohne
 installierte App-Umgebung läuft:  python3 tools/check_i18n.py
@@ -58,6 +61,46 @@ def collect_used_keys():
     return used, dynamic_ns
 
 
+def shadowed_tr():
+    """Funktionen, die `tr` lokal binden UND tr() aufrufen.
+
+    Realer Absturz (2026-08-11): `views/artifact_selection.py::_render_review_viewer()` nutzte
+    `for tr in trs:` als Laufvariable für „trace". Python bindet einen Namen, der irgendwo in
+    einer Funktion zugewiesen wird, für die ganze Funktion lokal — die drei tr()-Aufrufe weiter
+    OBEN in derselben Funktion warfen deshalb UnboundLocalError. Auffällig wurde das erst beim
+    Öffnen genau dieser Seite; ein reiner Import-Test hätte es nie gezeigt.
+
+    Deshalb hier statisch geprüft, nicht dem Zufall überlassen."""
+    hits = []
+    for path in sorted(ROOT.rglob("*.py")):
+        if any(part in {".git", "tools", ".venv", "venv"} for part in path.parts):
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        imports_tr = any(isinstance(n, ast.ImportFrom) and n.module == "core.i18n"
+                         and any(a.name == "tr" for a in n.names) for n in tree.body)
+        if not imports_tr:
+            continue
+        for fn in [n for n in ast.walk(tree)
+                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+            binds = []
+            for n in ast.walk(fn):
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store) and n.id == "tr":
+                    binds.append(n.lineno)
+                elif isinstance(n, ast.arg) and n.arg == "tr":
+                    binds.append(n.lineno)
+                elif isinstance(n, (ast.Import, ast.ImportFrom)):
+                    if any((a.asname or a.name) == "tr" for a in n.names):
+                        binds.append(n.lineno)
+            calls = [n.lineno for n in ast.walk(fn) if isinstance(n, ast.Call)
+                     and isinstance(n.func, ast.Name) and n.func.id == "tr"]
+            if binds and calls:
+                hits.append((path.relative_to(ROOT), fn.name, sorted(set(binds)), sorted(calls)))
+    return hits
+
+
 def main():
     strings = load_strings()
     langs = sorted(strings)
@@ -100,6 +143,12 @@ def main():
     # nicht entscheiden, und eine Falschmeldung pro Lauf würde den Check wertlos machen.
     unused = sorted(k for k in all_defined - set(used)
                     if k.split(".", 1)[0] not in dynamic_ns)
+
+    # 5. `tr` lokal überschrieben
+    for path, fname, binds, calls in shadowed_tr():
+        problems.append(f"[tr überschrieben] {path}::{fname}() bindet 'tr' lokal in Zeile(n) "
+                        f"{binds} — die tr()-Aufrufe in Zeile(n) {calls} laufen dadurch in "
+                        f"UnboundLocalError. Laufvariable umbenennen (z. B. 'trc').")
 
     for p in problems:
         print("FEHLER: " + p)
