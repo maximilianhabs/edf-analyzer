@@ -18,6 +18,7 @@ import plotly.graph_objects as go
 _ART_CANVAS = components.declare_component(
     "artifact_canvas", path=os.path.join(os.path.dirname(__file__), "artifact_canvas"))
 
+from core.i18n import tr
 from core.shared import (
     apply_global_style, section_header, get_edf_or_stop,
     load_and_prepare, apply_channel_overrides, get_patient_info, ELECTRODE_POS, status_dot,
@@ -148,21 +149,21 @@ def _spectral_metrics(sig: np.ndarray, sfreq: float, alpha_band) -> dict:
 def _render_spectral_compare(edf, res):
     """A6: Spektralanalyse Gesamt vs. artefaktkorrigiert (nebeneinander)."""
     eeg_map = edf["eeg_map"]
-    section_header("Spektralanalyse — Gesamt vs. artefaktkorrigiert",
+    section_header(tr("artifact.spectral_comparison"),
                    "Gleiche Analyse einmal über die ganze Aufnahme, einmal nur auf sauberen Segmenten")
     st.caption(f"Der Korrigiert-Wert nutzt die **aktuelle** Maske ({_mmss(res.clean_s)} min:s "
                f"sauber, {len(res.segments)} Segmente) — aktualisiert sich sofort bei jeder "
                "Bearbeitung oben.")
 
     if not res.segments:
-        st.info("Keine Artefakt-Segmente markiert → korrigiert = Gesamt (nichts zu entfernen).")
+        st.info(tr("artifact.no_artifacts_marked"))
         return
     if res.clean_s < 30:
-        st.warning(f"Nur {res.clean_s:.0f}s sauberes EEG — Korrektur-Spektrum wenig belastbar.")
+        st.warning(tr("artifact.little_clean_eeg", s=res.clean_s))
 
     posterior = [c for c in ("O2", "O1", "Pz", "P4", "P3") if c in eeg_map]
     options = posterior + [c for c in eeg_map if c not in posterior]
-    ch = st.selectbox("Kanal für den Vergleich", options, index=0,
+    ch = st.selectbox(tr("artifact.compare_channel"), options, index=0,
                       help="Posteriore Kanäle (O1/O2) zeigen den Alpha-Grundrhythmus am klarsten.")
 
     age, _ = get_patient_info()
@@ -174,7 +175,7 @@ def _render_spectral_compare(edf, res):
     full = _spectral_metrics(sig, sfreq, ab)
     corr = _spectral_metrics(sig_clean, sfreq, ab)
     if not full or not corr:
-        st.warning("Segment zu kurz für eine stabile Spektralschätzung.")
+        st.warning(tr("artifact.segment_too_short"))
         return
 
     # Vergleichstabelle
@@ -224,19 +225,19 @@ def _render_spectral_compare(edf, res):
 def _render_hrv_compare(edf, edf_path, res, overrides_key):
     """A7: HRV Gesamt vs. artefaktkorrigiert (Schläge in Artefakt-Segmenten ausgeschlossen)."""
     ecg_channels = edf.get("ecg_channels") or []
-    section_header("HRV — Gesamt vs. artefaktkorrigiert",
+    section_header(tr("artifact.hrv_comparison"),
                    "RR-basierte Herzratenvariabilität, einmal komplett, einmal ohne Bewegungsfenster")
     st.caption(f"Der Korrigiert-Wert schließt die Schläge in der **aktuellen** Maske "
                f"({len(res.segments)} Segmente) aus — aktualisiert sich sofort bei jeder Bearbeitung.")
     if not ecg_channels:
-        st.info("Kein EKG-Kanal identifiziert → HRV-Vergleich nicht möglich. Ggf. in der "
-                "Kanal-Identifikation einen EKG-Kanal festlegen.")
+        st.info(tr("artifact.no_ecg")
+                + "Kanal-Identifikation einen EKG-Kanal festlegen.")
         return
 
     ecg_name = ecg_channels[0]
     rr = _cached_rr(edf_path, ecg_name, overrides_key)
     if rr is None or len(rr["rr_ms"]) < 10:
-        st.warning(f"Zu wenige R-Zacken auf **{ecg_name}** für eine HRV-Auswertung.")
+        st.warning(tr("artifact.too_few_rpeaks", ch=ecg_name))
         return
 
     rr_ms, times, ectopic = rr["rr_ms"], rr["times"], rr["mask"]
@@ -252,7 +253,7 @@ def _render_hrv_compare(edf, edf_path, res, overrides_key):
     hrv_full = compute_hrv_time_domain(full_rr)
     hrv_corr = compute_hrv_time_domain(corr_rr)
     if not hrv_full or not hrv_corr:
-        st.warning("Zu wenige saubere RR-Intervalle für die HRV-Berechnung.")
+        st.warning(tr("artifact.too_few_clean_rr"))
         return
 
     labels = [("mean_hr_bpm", "Mittlere HF", "bpm"), ("sdnn_ms", "SDNN", "ms"),
@@ -352,7 +353,7 @@ def _minmax_decimate(sig: np.ndarray, n_buckets: int):
 def _render_review_viewer(edf, res, res_auto):
     """A8/A9b: All-Kanal-Review-Canvas (DGKN-Montage, Hemisphärenfarben, EKG, Spacer) mit
     Klick-Interaktion — Block anklicken = raus/rein, ins EEG klicken = Artefakt hinzufügen."""
-    section_header("Review-Ansicht — alle Kanäle",
+    section_header(tr("artifact.review_all_channels"),
                    "DGKN-Montage · 60–100 s/Screen · Artefakt-Segmente markiert")
 
     sfreq = edf["sfreq"]
@@ -360,9 +361,9 @@ def _render_review_viewer(edf, res, res_auto):
 
     c1, c2, c3, c4 = st.columns([2.2, 1.4, 3, 2.4])
     with c1:
-        montage = st.selectbox("Montage", _MONTAGES, index=0)
+        montage = st.selectbox(tr("artifact.montage"), _MONTAGES, index=0)
     with c2:
-        screen_s = st.selectbox("Screen", [10, 30, 60, 100], index=2,
+        screen_s = st.selectbox(tr("artifact.screen"), [10, 30, 60, 100], index=2,
                                 format_func=lambda s: f"{s} s", key="artifact_screen_len")
     with c4:
         st.markdown("<div style='font-size:13px;color:#555'>Empfindlichkeit</div>",
@@ -534,12 +535,12 @@ def _render_segment_editor(res_auto, dur):
     """A9a: Auto-Segmente entfernen (kein Artefakt) / manuell Bereiche hinzufügen (übersehen)."""
     ov = st.session_state.setdefault("artifact_overrides", {"removed": [], "added": []})
     n_add, n_rem = len(ov["added"]), len(ov["removed"])
-    section_header("Artefakt-Segmente — bearbeiten",
+    section_header(tr("artifact.edit_segments"),
                    "Auto-Vorschlag anpassen · fließt sofort in Vorher/Nachher-Auswertung")
     if n_add or n_rem:
         cc1, cc2 = st.columns([4, 1])
         cc1.info(f"Manuell: **{n_add}** hinzugefügt · **{n_rem}** als kein Artefakt entfernt.", icon=":material/edit:")
-        if cc2.button("Zurücksetzen", use_container_width=True):
+        if cc2.button(tr("artifact.reset"), use_container_width=True):
             st.session_state["artifact_overrides"] = {"removed": [], "added": []}
             st.rerun()
 
@@ -561,10 +562,10 @@ def _render_segment_editor(res_auto, dur):
                         if s["max_ratio"] else "—", unsafe_allow_html=True)
         col[3].markdown("✓" if s["ecg_disturbed"] else ("–" if s["ecg_disturbed"] is not None else ""))
         if removed:
-            if col[4].button("↩︎ doch Artefakt", key=f"reart_{k}", use_container_width=True):
+            if col[4].button(tr("artifact.mark_artifact_again"), key=f"reart_{k}", use_container_width=True):
                 ov["removed"].remove(k); st.rerun()
         else:
-            if col[4].button("kein Artefakt", icon=":material/close:", key=f"keep_{k}", use_container_width=True):
+            if col[4].button(tr("artifact.not_artifact"), icon=":material/close:", key=f"keep_{k}", use_container_width=True):
                 ov["removed"].append(k); st.rerun()
 
     # Manuell hinzugefügte
@@ -575,14 +576,14 @@ def _render_segment_editor(res_auto, dur):
                         unsafe_allow_html=True)
         col[1].markdown(f"{round(a['end_s']-a['start_s'],1)}s")
         col[2].markdown("—"); col[3].markdown("")
-        if col[4].button("löschen", icon=":material/delete:", key=f"del_{i}", use_container_width=True):
+        if col[4].button(tr("artifact.delete"), icon=":material/delete:", key=f"del_{i}", use_container_width=True):
             ov["added"].pop(i); st.rerun()
 
     if not res_auto.segments and not ov["added"]:
-        st.success("Keine Artefakt-Segmente — die Aufnahme läuft ruhig durch.")
+        st.success(tr("artifact.no_artifact_segments"))
 
     # Bereich hinzufügen
-    with st.expander("Artefakt-Bereich hinzufügen (übersehenen Bereich ausklammern)", icon=":material/add:"):
+    with st.expander(tr("artifact.add_artifact_range"), icon=":material/add:"):
         idx = st.session_state.get("artifact_screen_idx", 0)
         slen = st.session_state.get("artifact_screen_len", 60)
         def_start = float(min(idx * slen, max(0.0, dur - 10)))
@@ -590,19 +591,19 @@ def _render_segment_editor(res_auto, dur):
         s0 = ca.number_input("Start (s)", 0.0, float(dur), def_start, step=1.0, key="add_start")
         s1 = cb.number_input("Ende (s)", 0.0, float(dur), min(def_start + 10, float(dur)),
                              step=1.0, key="add_end")
-        if cd.button("Hinzufügen", type="primary", use_container_width=True):
+        if cd.button(tr("artifact.add"), type="primary", use_container_width=True):
             if s1 > s0:
                 ov["added"].append({"start_s": round(s0, 2), "end_s": round(s1, 2)})
                 st.rerun()
             else:
-                st.error("Ende muss nach Start liegen.")
+                st.error(tr("artifact.end_after_start"))
 
 
 def render():
     apply_global_style()
     edf, edf_path = get_edf_or_stop()
 
-    st.title(":material/cleaning_services: Artefaktkorrektur & EEG/EKG-Selektion")
+    st.title(":material/cleaning_services: " + tr("artifact.title"))
     st.markdown(
         "Markiert **grobe Bewegungs-/Globalartefakte** — bewusst **konservativ** (nur klar "
         "Artefaktbelastetes, kein Blinzeln/Slow-Wave-Sleep). Diese Seite ist ein **zweites Gleis**: "
@@ -622,8 +623,8 @@ def render():
     overrides_key = str(sorted(st.session_state.get("channel_overrides", {}).items()))
 
     # ── A10: Detektor-Schwellen justierbar ───────────────────────────────────
-    with st.expander("Detektor-Einstellungen — Feinjustierung der Artefakt-Erkennung", icon=":material/tune:", expanded=False):
-        if st.button("Auf Standard zurücksetzen", key="art_reset_params"):
+    with st.expander(tr("artifact.detector_settings"), icon=":material/tune:", expanded=False):
+        if st.button(tr("artifact.reset_to_default"), key="art_reset_params"):
             for k in ("art_flag_sus", "art_consensus", "art_island", "art_region"):
                 st.session_state.pop(k, None)
             st.rerun()
@@ -652,7 +653,7 @@ def render():
     ov = st.session_state.get("artifact_overrides", {"removed": [], "added": []})
     n_add, n_rem = len(ov["added"]), len(ov["removed"])
     edited = bool(n_add or n_rem)
-    section_header("Übersicht", "Effektive Maske = Auto + deine Änderungen · live berechnet")
+    section_header(tr("artifact.overview"), tr("artifact.overview_sub"))
     disc = dur - res.clean_s
     _dpp = (res.clean_frac - res_auto.clean_frac) * 100   # Prozentpunkte vs. Auto
     m1, m2, m3, m4 = st.columns(4)
@@ -672,29 +673,29 @@ def render():
             f"effektiv **{len(res.segments)} Segmente**, **{res.clean_frac*100:.0f}%** sauber "
             f"(Auto: {res_auto.clean_frac*100:.0f}%). Jede Klick-Änderung wird **sofort** neu berechnet.")
     else:
-        st.info("Noch keine manuellen Änderungen — es gilt die **Auto-Maske**. Sobald du oben im "
-                "Canvas Segmente hinzufügst/entfernst, werden **Spektrum & HRV sofort** neu berechnet.")
+        st.info(tr("artifact.no_manual_changes")
+                + "Canvas Segmente hinzufügst/entfernst, werden **Spektrum & HRV sofort** neu berechnet.")
 
     # Genügend saubere Zeit? (Literatur: ~1–2 min reichen spektral)
     if res.clean_s < 60:
-        st.warning(f"Nur **{res.clean_s:.0f}s** sauberes EEG — für stabile Spektralwerte grenzwertig "
-                   "(Richtwert ≥ 1–2 min).")
+        st.warning(tr("artifact.little_clean_warning", s=res.clean_s)
+                   + "(Richtwert ≥ 1–2 min).")
     else:
         st.caption(f"**{_mmss(res.clean_s)} min:s** sauberes EEG verfügbar "
                    "(Richtwert für stabile Spektralwerte: ≥ 1–2 min).")
 
     # ── Zeitleiste ───────────────────────────────────────────────────────────
-    section_header("Zeitleiste", "Rote Flächen = Multikanal-Ausschläge · schattiert = Artefakt-Segment")
+    section_header(tr("artifact.timeline"), tr("artifact.timeline_sub"))
     st.plotly_chart(_timeline_figure(res, dur), use_container_width=True,
                     config={"displayModeBar": False})
 
     # ── Amplituden-Verteilung je Kanal (Histogramm-Konzept Punkt 4, User-Idee 2026-08-08) ───
-    section_header("Amplituden-Verteilung je Kanal",
+    section_header(tr("artifact.amplitude_distribution"),
                    "Peak-to-Peak pro 1s-Fenster · Ausreißer/Clipping/Rauschen sichtbar machen")
     _amp_data = _cached_channel_amplitudes(edf_path, overrides_key)
     if _amp_data:
         _amp_chs = list(_amp_data.keys())
-        _sel_ch = st.selectbox("Kanal für Detail-Histogramm", _amp_chs,
+        _sel_ch = st.selectbox(tr("artifact.detail_histogram_channel"), _amp_chs,
                                index=0, key="art_amp_channel")
         _p2p = _amp_data[_sel_ch]
         _med = float(np.median(_p2p))
@@ -726,7 +727,7 @@ def render():
             "Kanal-Qualitätscheck."
         )
 
-        with st.expander("Alle Kanäle im Vergleich (Boxplot)", icon=":material/bar_chart:", expanded=False):
+        with st.expander(tr("artifact.all_channels_boxplot"), icon=":material/bar_chart:", expanded=False):
             bfig = go.Figure()
             for ch in _amp_chs:
                 bfig.add_trace(go.Box(y=_amp_data[ch], name=ch, marker_color="#2471a3",
@@ -745,7 +746,7 @@ def render():
 
     # ── Bad-Channel-Vorschläge ───────────────────────────────────────────────
     if res.bad_channels:
-        section_header("Bad-Channel-Vorschläge", "Elektrode dauerhaft auffällig")
+        section_header(tr("artifact.bad_channel_suggestions"), tr("artifact.bad_channel_sub"))
         for b in res.bad_channels:
             st.warning(
                 f"**{b['name']}** ab **{_mmss(b['since_s'])}** dauerhaft isoliert auffällig "

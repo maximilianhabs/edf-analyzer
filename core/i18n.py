@@ -411,6 +411,97 @@ STRINGS = {
             "position_s": "Position (s)",
             "overlay_detectors": "Overlay-Detektoren",
         },
+    "spectrum": {
+            "title": "EEG-Spektrum",
+            "load_file_first": "Bitte zuerst auf **Datei & Patient** eine EDF-Datei laden.",
+            "no_eeg": "Keine EEG-Kanäle (10-20) erkannt.",
+            "window_start": "Fenster-Start (s)",
+            "duration": "Dauer",
+            "duration_help": "Analysefensterlänge ab Start",
+            "analysis_options": "⚙️ Analyse-Optionen",
+            "multitaper": "Multitaper-Methode (Thomson 1982)",
+            "multitaper_help": "Verwendet DPSS-Fenster (NW=3, K=5) statt Welch. Schärfere "
+                                "Alpha-Peaks, weniger Spectral Leakage. Hilfreich wenn der "
+                                "Alpha-Gipfel in Welch verbreitert erscheint. Etwas langsamer "
+                                "bei langen Aufnahmen.",
+            "artifact_filter": "Extremartefakt-Filter (≥150 µV)",
+            "artifact_filter_help": "Epochs mit Peak-Amplitude ≥150 µV werden durch lineare "
+                                     "Interpolation ersetzt — nur für wirklich extreme "
+                                     "Artefakte (Elektrode ab, Bewegung). Standard: aus — das "
+                                     "Gesamtsignal inklusive aller physiologischen Phasen "
+                                     "(Augen auf/zu, HV) wird vollständig analysiert.",
+            "consensus_panel": "Konsensus-Panel",
+            "consensus_panel_sub": "Posterior O1+O2 vs. Anterior F3+F4 · ACNS-Empfehlung",
+            "consensus_unavailable": "ℹ️ Konsensus-Panel nicht verfügbar — fehlende Kanäle: {list}",
+            "asymmetry": "Hemisphärische Asymmetrie",
+            "ap_gradient": "Anterior-Posterior-Gradient (PAR)",
+            "ap_gradient_sub": "Ganzer Kopf · ganzes Gehirn",
+            "heavy_calc": "Rechenintensive Maße berechnen (A/P-Gradient hier + LZC-Komplexität "
+                           "weiter unten + 1/f-korrigierte dominante Frequenzband-Erkennung in "
+                           "den FFT-Kacheln oben)",
+            "heavy_calc_help": "Alle drei sind rechenintensiver (O(N²)/kopfweit bzw. "
+                                "zusätzlicher 1/f-Kurven-Fit je Ableitung). Standard aus, damit "
+                                "die Ansicht schnell bleibt — bei Bedarf hier aktivieren; gilt "
+                                "für die ganze Seite. Die 1/f-Korrektur behebt eine "
+                                "systematische Verzerrung Richtung Delta bei der "
+                                "Dominante-Frequenz-Erkennung — ohne sie wird ein moderater "
+                                "Theta-Rhythmus oft fälschlich als 'Delta-dominant' angezeigt.",
+            "heavy_calc_hint": "ℹ️ Rechenintensiv — obigen Schalter aktivieren, um den "
+                                "A/P-Gradienten (ganzer Kopf) zu berechnen.",
+            "single_channel": "Einzelkanal-Analyse",
+            "single_channel_sub": "Bandpower · FFT · Klinische Ratios pro Kanal",
+            "channels_max2": "Kanal(e) — max. 2",
+            "select_channel": "Bitte mindestens einen Kanal auswählen.",
+            "reference_epoch": "Referenz-Epoch",
+            "reference_epoch_sub": "Interne Validierung · Kanal wählbar · FFT-Overlay",
+            "ref_channel": "Kanal für Referenz-Epoch",
+            "ref_channel_help": "Standard: O2 (posteriores Alpha). Wähle jeden verfügbaren "
+                                 "EEG-Kanal.",
+            "position_in_recording": "Position im Recording (s)",
+            "no_alpha_peak": "Kein Alpha-Peak detektierbar.",
+            "segment_too_short": "Segment zu kurz für PSD.",
+            "appendix": "Appendix — Parameter, Methoden und klinische Interpretation",
+        },
+        "artifact": {
+            "title": "Artefaktkorrektur & EEG/EKG-Selektion",
+            "spectral_comparison": "Spektralanalyse — Gesamt vs. artefaktkorrigiert",
+            "no_artifacts_marked": "Keine Artefakt-Segmente markiert → korrigiert = Gesamt "
+                                    "(nichts zu entfernen).",
+            "little_clean_eeg": "Nur {s:.0f}s sauberes EEG — Korrektur-Spektrum wenig belastbar.",
+            "compare_channel": "Kanal für den Vergleich",
+            "segment_too_short": "Segment zu kurz für eine stabile Spektralschätzung.",
+            "hrv_comparison": "HRV — Gesamt vs. artefaktkorrigiert",
+            "no_ecg": "Kein EKG-Kanal identifiziert → HRV-Vergleich nicht möglich. Ggf. in der ",
+            "too_few_rpeaks": "Zu wenige R-Zacken auf **{ch}** für eine HRV-Auswertung.",
+            "too_few_clean_rr": "Zu wenige saubere RR-Intervalle für die HRV-Berechnung.",
+            "review_all_channels": "Review-Ansicht — alle Kanäle",
+            "montage": "Montage",
+            "screen": "Screen",
+            "edit_segments": "Artefakt-Segmente — bearbeiten",
+            "reset": "Zurücksetzen",
+            "mark_artifact_again": "↩︎ doch Artefakt",
+            "not_artifact": "kein Artefakt",
+            "delete": "löschen",
+            "no_artifact_segments": "Keine Artefakt-Segmente — die Aufnahme läuft ruhig durch.",
+            "add_artifact_range": "Artefakt-Bereich hinzufügen (übersehenen Bereich ausklammern)",
+            "add": "Hinzufügen",
+            "end_after_start": "Ende muss nach Start liegen.",
+            "detector_settings": "Detektor-Einstellungen — Feinjustierung der Artefakt-Erkennung",
+            "reset_to_default": "Auf Standard zurücksetzen",
+            "overview": "Übersicht",
+            "overview_sub": "Effektive Maske = Auto + deine Änderungen · live berechnet",
+            "no_manual_changes": "Noch keine manuellen Änderungen — es gilt die **Auto-Maske**. "
+                                  "Sobald du oben im ",
+            "little_clean_warning": "Nur **{s:.0f}s** sauberes EEG — für stabile Spektralwerte "
+                                     "grenzwertig ",
+            "timeline": "Zeitleiste",
+            "timeline_sub": "Rote Flächen = Multikanal-Ausschläge · schattiert = Artefakt-Segment",
+            "amplitude_distribution": "Amplituden-Verteilung je Kanal",
+            "detail_histogram_channel": "Kanal für Detail-Histogramm",
+            "all_channels_boxplot": "Alle Kanäle im Vergleich (Boxplot)",
+            "bad_channel_suggestions": "Bad-Channel-Vorschläge",
+            "bad_channel_sub": "Elektrode dauerhaft auffällig",
+        },
     },
     "en": {
         "nav": {
@@ -800,6 +891,95 @@ STRINGS = {
             "window_width": "Window width",
             "position_s": "Position (s)",
             "overlay_detectors": "Overlay detectors",
+        },
+        "spectrum": {
+            "title": "EEG Spectrum",
+            "load_file_first": "Please load an EDF file on **File & Patient** first.",
+            "no_eeg": "No EEG channels (10-20) detected.",
+            "window_start": "Window start (s)",
+            "duration": "Duration",
+            "duration_help": "Analysis window length from the start",
+            "analysis_options": "⚙️ Analysis options",
+            "multitaper": "Multitaper method (Thomson 1982)",
+            "multitaper_help": "Uses DPSS tapers (NW=3, K=5) instead of Welch. Sharper alpha "
+                                "peaks, less spectral leakage. Useful when the alpha peak "
+                                "looks broadened in Welch. Somewhat slower on long recordings.",
+            "artifact_filter": "Extreme-artifact filter (≥150 µV)",
+            "artifact_filter_help": "Epochs with a peak amplitude ≥150 µV are replaced by "
+                                     "linear interpolation — only for genuinely extreme "
+                                     "artifacts (electrode off, movement). Default: off — the "
+                                     "full signal including all physiological phases (eyes "
+                                     "open/closed, HV) is analyzed completely.",
+            "consensus_panel": "Consensus panel",
+            "consensus_panel_sub": "Posterior O1+O2 vs. anterior F3+F4 · ACNS recommendation",
+            "consensus_unavailable": "ℹ️ Consensus panel unavailable — missing channels: {list}",
+            "asymmetry": "Hemispheric asymmetry",
+            "ap_gradient": "Anterior-posterior gradient (PAR)",
+            "ap_gradient_sub": "Whole head · whole brain",
+            "heavy_calc": "Compute heavy measures (A/P gradient here + LZC complexity further "
+                           "down + 1/f-corrected dominant frequency band detection in the FFT "
+                           "tiles above)",
+            "heavy_calc_help": "All three are computationally heavier (O(N²)/whole-head, or an "
+                                "extra 1/f curve fit per derivation). Off by default to keep "
+                                "the view fast — enable here when needed; applies to the whole "
+                                "page. The 1/f correction fixes a systematic bias toward delta "
+                                "in dominant-frequency detection — without it a moderate theta "
+                                "rhythm is often wrongly shown as 'delta-dominant'.",
+            "heavy_calc_hint": "ℹ️ Computationally heavy — enable the switch above to compute "
+                                "the A/P gradient (whole head).",
+            "single_channel": "Single-channel analysis",
+            "single_channel_sub": "Band power · FFT · clinical ratios per channel",
+            "channels_max2": "Channel(s) — max. 2",
+            "select_channel": "Please select at least one channel.",
+            "reference_epoch": "Reference epoch",
+            "reference_epoch_sub": "Internal validation · channel selectable · FFT overlay",
+            "ref_channel": "Channel for the reference epoch",
+            "ref_channel_help": "Default: O2 (posterior alpha). Pick any available EEG channel.",
+            "position_in_recording": "Position in the recording (s)",
+            "no_alpha_peak": "No alpha peak detectable.",
+            "segment_too_short": "Segment too short for PSD.",
+            "appendix": "Appendix — parameters, methods and clinical interpretation",
+        },
+        "artifact": {
+            "title": "Artifact Correction & EEG/ECG Selection",
+            "spectral_comparison": "Spectral analysis — total vs. artifact-corrected",
+            "no_artifacts_marked": "No artifact segments marked → corrected = total (nothing "
+                                    "to remove).",
+            "little_clean_eeg": "Only {s:.0f}s of clean EEG — the corrected spectrum is weakly "
+                                 "supported.",
+            "compare_channel": "Channel for the comparison",
+            "segment_too_short": "Segment too short for a stable spectral estimate.",
+            "hrv_comparison": "HRV — total vs. artifact-corrected",
+            "no_ecg": "No ECG channel identified → HRV comparison not possible. If needed, in the ",
+            "too_few_rpeaks": "Too few R peaks on **{ch}** for an HRV analysis.",
+            "too_few_clean_rr": "Too few clean RR intervals for the HRV computation.",
+            "review_all_channels": "Review view — all channels",
+            "montage": "Montage",
+            "screen": "Screen",
+            "edit_segments": "Artifact segments — edit",
+            "reset": "Reset",
+            "mark_artifact_again": "↩︎ artifact after all",
+            "not_artifact": "not an artifact",
+            "delete": "delete",
+            "no_artifact_segments": "No artifact segments — the recording runs cleanly through.",
+            "add_artifact_range": "Add artifact range (exclude a missed range)",
+            "add": "Add",
+            "end_after_start": "End must be after start.",
+            "detector_settings": "Detector settings — fine-tuning the artifact detection",
+            "reset_to_default": "Reset to defaults",
+            "overview": "Overview",
+            "overview_sub": "Effective mask = auto + your changes · computed live",
+            "no_manual_changes": "No manual changes yet — the **auto mask** applies. As soon as "
+                                  "you, above in the ",
+            "little_clean_warning": "Only **{s:.0f}s** of clean EEG — borderline for stable "
+                                     "spectral values ",
+            "timeline": "Timeline",
+            "timeline_sub": "Red areas = multichannel excursions · shaded = artifact segment",
+            "amplitude_distribution": "Amplitude distribution per channel",
+            "detail_histogram_channel": "Channel for the detail histogram",
+            "all_channels_boxplot": "All channels compared (box plot)",
+            "bad_channel_suggestions": "Bad-channel suggestions",
+            "bad_channel_sub": "Electrode persistently abnormal",
         },
     },
 }

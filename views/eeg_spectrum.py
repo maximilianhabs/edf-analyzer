@@ -8,6 +8,7 @@ from scipy.signal import spectrogram
 from scipy.signal import butter, filtfilt
 from scipy.signal.windows import dpss
 
+from core.i18n import tr
 from core.shared import load_and_prepare, apply_channel_overrides, section_header, get_patient_info, safe_slider, status_dot, kpi_tile
 
 # ── Frequenzbänder ────────────────────────────────────────────────────────────
@@ -856,15 +857,15 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
 
 
 def render():
-    st.title(":material/bar_chart: EEG-Spektrum")
+    st.title(":material/bar_chart: " + tr("spectrum.title"))
     st.caption("Spektrogramm, FFT und Bandpower — Konsensus-Panel (O1/O2 + F3/F4) + Einzelkanal.")
 
     edf_path = st.session_state.get("edf_path", "")
     if not edf_path:
-        st.info("Bitte zuerst auf **Datei & Patient** eine EDF-Datei laden.", icon=":material/folder_open:")
+        st.info(tr("spectrum.load_file_first"), icon=":material/folder_open:")
         return
     if not st.session_state.get("phi_validated"):
-        st.error("Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.", icon=":material/block:")
+        st.error(tr("shared.phi_not_validated"), icon=":material/block:")
         return
 
     edf = apply_channel_overrides(load_and_prepare(edf_path))
@@ -872,7 +873,7 @@ def render():
     eeg_map = edf["eeg_map"]
 
     if not eeg_map:
-        st.warning("Keine EEG-Kanäle (10-20) erkannt.")
+        st.warning(tr("spectrum.no_eeg"))
         return
 
     # Altersadaptives Alpha-Suchfenster (für Erwachsene = Standard 8–13 Hz)
@@ -904,16 +905,16 @@ def render():
     wc1, wc2, wc3 = st.columns([5, 2, 3])
     with wc1:
         t_start = safe_slider(
-            "Fenster-Start (s)", 0, max(0, dur_s - 10), 0, step=5,
+            tr("spectrum.window_start"), 0, max(0, dur_s - 10), 0, step=5,
             key="spec_t_start",
             format="%d s",
         )
     with wc2:
         dur_label = st.selectbox(
-            "Dauer", _dur_keys,
+            tr("spectrum.duration"), _dur_keys,
             index=_dur_keys.index(_default_dur),
             key="spec_dur_widget",
-            help="Analysefensterlänge ab Start",
+            help=tr("spectrum.duration_help"),
         )
     _chosen_sec = _DUR_OPTIONS[dur_label]
     t_end = dur_s if _chosen_sec is None else min(dur_s, t_start + _chosen_sec)
@@ -929,29 +930,19 @@ def render():
             unsafe_allow_html=True,
         )
 
-    with st.expander("⚙️ Analyse-Optionen", expanded=True):
+    with st.expander(tr("spectrum.analysis_options"), expanded=True):
         opt_col1, opt_col2 = st.columns(2)
         with opt_col1:
             use_multitaper = st.toggle(
-                "Multitaper-Methode (Thomson 1982)",
+                tr("spectrum.multitaper"),
                 value=False, key="spec_multitaper",
-                help=(
-                    "Verwendet DPSS-Fenster (NW=3, K=5) statt Welch. "
-                    "Schärfere Alpha-Peaks, weniger Spectral Leakage. "
-                    "Hilfreich wenn der Alpha-Gipfel in Welch verbreitert erscheint. "
-                    "Etwas langsamer bei langen Aufnahmen."
-                ),
+                help=tr("spectrum.multitaper_help"),
             )
         with opt_col2:
             use_art_filter = st.toggle(
-                "Extremartefakt-Filter (≥150 µV)",
+                tr("spectrum.artifact_filter"),
                 value=False, key="spec_art_filter",
-                help=(
-                    "Epochs mit Peak-Amplitude ≥150 µV werden durch lineare Interpolation "
-                    "ersetzt — nur für wirklich extreme Artefakte (Elektrode ab, Bewegung). "
-                    "Standard: aus — das Gesamtsignal inklusive aller physiologischen Phasen "
-                    "(Augen auf/zu, HV) wird vollständig analysiert."
-                ),
+                help=tr("spectrum.artifact_filter_help"),
             )
         amp_thresh = 150.0 if use_art_filter else 9999.0
 
@@ -966,7 +957,7 @@ def render():
     has_consensus = consensus_channels.issubset(set(all_eeg))
 
     if has_consensus:
-        section_header("Konsensus-Panel", "Posterior O1+O2 vs. Anterior F3+F4 · ACNS-Empfehlung")
+        section_header(tr("spectrum.consensus_panel"), tr("spectrum.consensus_panel_sub"))
         _active_settings_note(use_multitaper, use_art_filter)
         st.caption(
             "ACNS-Empfehlung für Vigilanz- und Verlangsamungsmonitoring. "
@@ -1152,7 +1143,7 @@ def render():
 
     else:
         missing = consensus_channels - set(all_eeg)
-        st.info(f"ℹ️ Konsensus-Panel nicht verfügbar — fehlende Kanäle: {', '.join(sorted(missing))}")
+        st.info(tr("spectrum.consensus_unavailable", list=", ".join(sorted(missing))))
 
     # ══════════════════════════════════════════════════════════════════════════
     # HEMISPHÄRISCHE ASYMMETRIE
@@ -1162,7 +1153,7 @@ def render():
     asym_chs = [c for c in ["O1", "O2", "F3", "F4"] if c in all_eeg]
     if len(asym_chs) >= 2 and ("O1" in asym_chs and "O2" in asym_chs
                                 or "F3" in asym_chs and "F4" in asym_chs):
-        section_header("Hemisphärische Asymmetrie", "AI = (L−R)/(L+R) × 100% · nach Frequenzband · Nuwer 1997", color="#2980b9")
+        section_header(tr("spectrum.asymmetry"), "AI = (L−R)/(L+R) × 100% · nach Frequenzband · Nuwer 1997", color="#2980b9")
         _active_settings_note(use_multitaper, use_art_filter)
         st.markdown(
             "<div style='background:#f0f4ff;border-left:4px solid #2980b9;"
@@ -1249,7 +1240,7 @@ def render():
     # ══════════════════════════════════════════════════════════════════════════
     # ANTERIOR-POSTERIOR-GRADIENT (PAR) — ganzer Kopf
     # ══════════════════════════════════════════════════════════════════════════
-    section_header("Anterior-Posterior-Gradient (PAR)", "Ganzer Kopf · ganzes Gehirn")
+    section_header(tr("spectrum.ap_gradient"), tr("spectrum.ap_gradient_sub"))
     _active_settings_note(use_multitaper, use_art_filter)
     st.markdown(
         "<div style='background:#eef3fb;border-left:4px solid #2471a3;border-radius:8px;"
@@ -1264,18 +1255,11 @@ def render():
         unsafe_allow_html=True,
     )
     heavy_calc = st.toggle(
-        "Rechenintensive Maße berechnen (A/P-Gradient hier + LZC-Komplexität weiter unten "
-        "+ 1/f-korrigierte dominante Frequenzband-Erkennung in den FFT-Kacheln oben)",
+        tr("spectrum.heavy_calc"),
         value=False, key="spec_heavy",
-        help="Alle drei sind rechenintensiver (O(N²)/kopfweit bzw. zusätzlicher 1/f-Kurven-"
-             "Fit je Ableitung). Standard aus, damit die Ansicht schnell bleibt — bei Bedarf "
-             "hier aktivieren; gilt für die ganze Seite. Die 1/f-Korrektur behebt eine "
-             "systematische Verzerrung Richtung Delta bei der Dominante-Frequenz-Erkennung — "
-             "ohne sie wird ein moderater Theta-Rhythmus oft fälschlich als 'Delta-dominant' "
-             "angezeigt.")
+        help=tr("spectrum.heavy_calc_help"))
     if not heavy_calc:
-        st.info("ℹ️ Rechenintensiv — obigen Schalter aktivieren, um den A/P-Gradienten "
-                "(ganzer Kopf) zu berechnen.")
+        st.info(tr("spectrum.heavy_calc_hint"))
         _par = {"n_post": 0, "n_ant": 0, "par": float("nan")}
     else:
         _par = _compute_par(edf_path, t_start, t_end, alpha_band[0], alpha_band[1],
@@ -1407,18 +1391,18 @@ def render():
     # ══════════════════════════════════════════════════════════════════════════
     # EINZELKANAL-ANALYSE
     # ══════════════════════════════════════════════════════════════════════════
-    section_header("Einzelkanal-Analyse", "Bandpower · FFT · Klinische Ratios pro Kanal")
+    section_header(tr("spectrum.single_channel"), tr("spectrum.single_channel_sub"))
     _active_settings_note(use_multitaper, use_art_filter)
 
     defaults = [c for c in ["O1", "O2"] if c in all_eeg] or all_eeg[:min(2, len(all_eeg))]
     with st.container(border=True):
         selected = st.multiselect(
-            "Kanal(e) — max. 2", all_eeg, default=defaults,
+            tr("spectrum.channels_max2"), all_eeg, default=defaults,
             max_selections=2, key="spec_channels",
         )
 
     if not selected:
-        st.info("Bitte mindestens einen Kanal auswählen.")
+        st.info(tr("spectrum.select_channel"))
         return
 
     for ch_label in selected:
@@ -1433,7 +1417,7 @@ def render():
     # ══════════════════════════════════════════════════════════════════════════
     # REFERENZ-EPOCH (einmalig, mit Kanal-Auswahl)
     # ══════════════════════════════════════════════════════════════════════════
-    section_header("Referenz-Epoch", "Interne Validierung · Kanal wählbar · FFT-Overlay")
+    section_header(tr("spectrum.reference_epoch"), tr("spectrum.reference_epoch_sub"))
     _active_settings_note(use_multitaper, use_art_filter)
     st.caption(
         "Wähle einen Kanal und navigiere mit dem Slider (← → Pfeiltasten) zu einem "
@@ -1447,11 +1431,11 @@ def render():
     rv_col1, rv_col2 = st.columns([3, 5])
     with rv_col1:
         val_ch_global = st.selectbox(
-            "Kanal für Referenz-Epoch",
+            tr("spectrum.ref_channel"),
             val_ch_opts,
             index=0,
             key="val_ch_global",
-            help="Standard: O2 (posteriores Alpha). Wähle jeden verfügbaren EEG-Kanal.",
+            help=tr("spectrum.ref_channel_help"),
         )
     rv_col2.caption("Slider anklicken → ← → Pfeiltasten")
     val_sig_global = _get(val_ch_global)
@@ -1469,7 +1453,7 @@ def render():
     )
     _def_g = max(0, min(dur_s - 10, (t_start + t_end) // 2 - 5))
     ref_start_g = safe_slider(
-        "Position im Recording (s)", 0, max(0, dur_s - 10),
+        tr("spectrum.position_in_recording"), 0, max(0, dur_s - 10),
         _def_g, step=1, key="val_start_global",
     )
     ref_end_g = ref_start_g + 10
@@ -1554,15 +1538,15 @@ def render():
             else:
                 st.error(f"Inkonsistent: {ap_fg:.1f} Hz vs. {ap_rg:.1f} Hz (Δ {d:.1f} Hz) — Alpha zustandsabhängig.")
         else:
-            st.info("Kein Alpha-Peak detektierbar.")
+            st.info(tr("spectrum.no_alpha_peak"))
     else:
-        st.warning("Segment zu kurz für PSD.")
+        st.warning(tr("spectrum.segment_too_short"))
 
     # ══════════════════════════════════════════════════════════════════════════
     # APPENDIX — Methodenerklärungen
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("---")
-    with st.expander("Appendix — Parameter, Methoden und klinische Interpretation", icon=":material/menu_book:", expanded=False):
+    with st.expander(tr("spectrum.appendix"), icon=":material/menu_book:", expanded=False):
         st.markdown("""
 ### Quantitative EEG-Analyse (qEEG) — Methodengrundlagen
 
