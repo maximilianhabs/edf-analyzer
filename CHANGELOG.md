@@ -38,6 +38,11 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
   App läuft vollständig, der eigene Detektor war ohnehin der Default; es entfallen nur die
   Vergleichsdetektoren — und die Oberfläche bietet sie dann gar nicht erst an bzw. erklärt,
   wie man sie nachrüstet, statt sie anzubieten und still etwas anderes zu rechnen.
+- **`neurokit2` aus den Abhängigkeiten entfernt** — stand in `requirements.txt`, wurde aber
+  in der gesamten Projekt-Historie nie importiert. Weniger Installationsgewicht, eine
+  Lizenz weniger zu führen, kleinere Angriffsfläche. Gegengeprüft: alle im Code
+  vorkommenden externen Imports sind weiterhin deklariert (Abgleich des Import-Baums gegen
+  `requirements*.txt`).
 - `NOTICE` ergänzt (Schriftlizenz SIL OFL, Drittbibliotheken). Lizenzangaben gegen die
   installierten Paket-Metadaten geprüft, nicht aus dem Gedächtnis übernommen.
 - README: internes Betriebskapitel zu einem konkreten Server durch eine allgemeine
