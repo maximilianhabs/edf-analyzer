@@ -56,6 +56,21 @@ EDF_PASSWORD=yourPassword streamlit run app.py
 `EDF_PASSWORD` is a required environment variable — without it the app refuses to start for
 security reasons (no default password in the source code).
 
+**Optional — validated comparison detectors.** The published R-peak detectors (Hamilton 2002,
+Pan-Tompkins 1985, …) come from `py-ecg-detectors`, which is **GPL-3.0** while this project is
+Apache-2.0. It is therefore not a default dependency, so a standard install stays free of
+copyleft. Add it deliberately if you want those comparisons:
+
+```bash
+pip install -r requirements-validated.txt
+# or for the Docker image:
+docker build --build-arg WITH_VALIDATED_DETECTORS=1 -t edf-analyzer .
+```
+
+Without it the app runs **in full** — only the comparison detectors are unavailable, and the
+UI says so instead of quietly computing something else. The built-in detector is the default
+either way.
+
 Then open [http://localhost:8501](http://localhost:8501). The upload expects an EDF file
 (max. 200 MB).
 
@@ -139,8 +154,10 @@ rather than a public issue).
 
 ## Tech stack
 
-Python 3.9 · Streamlit · MNE · SciPy/NumPy/pandas · pyedflib · FOOOF · py-ecg-detectors ·
-reportlab/openpyxl. Full list in [`requirements.txt`](requirements.txt).
+Python 3.9 · Streamlit · MNE · SciPy/NumPy/pandas · pyedflib · FOOOF · reportlab/openpyxl.
+Full list in [`requirements.txt`](requirements.txt); the optional, GPL-licensed comparison
+detectors live in [`requirements-validated.txt`](requirements-validated.txt). Third-party
+licences are listed in [NOTICE](NOTICE).
 
 ## Project status & responsibility
 

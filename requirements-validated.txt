@@ -1,0 +1,16 @@
+# Optionale Zusatz-Abhängigkeit — ABSICHTLICH NICHT in requirements.txt.
+#
+# py-ecg-detectors steht unter der GPL-3.0, dieses Projekt unter der Apache-2.0. Beide
+# Lizenzen sind für sich in Ordnung, aber eine Standard-Installation soll nicht ungefragt
+# eine Copyleft-Abhängigkeit mitbringen — wer sie will, installiert sie bewusst dazu:
+#
+#     pip install -r requirements-validated.txt
+#
+# Ohne dieses Paket läuft die App VOLLSTÄNDIG. Es entfallen nur die vergleichenden,
+# publizierten R-Zacken-Detektoren (Hamilton 2002, Pan-Tompkins 1985, Christov 2004,
+# Engelse-Zeelenberg, Elgendi 2013); der eigene Detektor bleibt in jedem Fall der Standard.
+#
+# Wichtig: Die App rechnet dann NICHT still etwas anderes — Oberfläche und Report weisen
+# ausdrücklich aus, wenn ein validierter Detektor nicht verfügbar war
+# (analysis/ecg.py::detect_r_peaks_validated_ex).
+py-ecg-detectors>=1.3.0

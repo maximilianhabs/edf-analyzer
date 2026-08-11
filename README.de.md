@@ -41,6 +41,22 @@ EDF_PASSWORD=deinPasswort streamlit run app.py
 `EDF_PASSWORD` ist eine Pflicht-Umgebungsvariable — ohne sie startet die App aus
 Sicherheitsgründen nicht (kein Default-Passwort im Quellcode).
 
+**Optional — validierte Vergleichsdetektoren.** Die publizierten R-Zacken-Detektoren
+(Hamilton 2002, Pan-Tompkins 1985, …) stammen aus `py-ecg-detectors`, das unter **GPL-3.0**
+steht, während dieses Projekt Apache-2.0 ist. Es gehört deshalb nicht zu den
+Standard-Abhängigkeiten, damit eine normale Installation frei von Copyleft bleibt. Bewusst
+dazuholen:
+
+```bash
+pip install -r requirements-validated.txt
+# oder für das Docker-Image:
+docker build --build-arg WITH_VALIDATED_DETECTORS=1 -t edf-analyzer .
+```
+
+Ohne das Paket läuft die App **vollständig** — es fehlen nur die Vergleichsdetektoren, und
+die Oberfläche sagt das ausdrücklich, statt still etwas anderes zu rechnen. Der eigene
+Detektor ist ohnehin in beiden Fällen der Standard.
+
 Danach [http://localhost:8501](http://localhost:8501) öffnen. Der Upload erwartet eine EDF-Datei (max. 200 MB).
 
 ## Funktionen
@@ -103,7 +119,10 @@ statt über ein öffentliches Issue melden.
 
 ## Tech-Stack
 
-Python 3.9 · Streamlit · MNE · SciPy/NumPy/pandas · pyedflib · FOOOF · py-ecg-detectors · reportlab/openpyxl. Vollständige Liste in [`requirements.txt`](requirements.txt).
+Python 3.9 · Streamlit · MNE · SciPy/NumPy/pandas · pyedflib · FOOOF · reportlab/openpyxl.
+Vollständige Liste in [`requirements.txt`](requirements.txt); die optionalen, GPL-lizenzierten
+Vergleichsdetektoren stehen in [`requirements-validated.txt`](requirements-validated.txt).
+Lizenzen der Drittkomponenten in [NOTICE](NOTICE).
 
 ## Projektstatus & Verantwortung
 

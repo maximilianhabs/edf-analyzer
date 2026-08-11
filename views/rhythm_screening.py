@@ -116,10 +116,20 @@ def render():
         tr("rhythm.ecg_channel"), ecg_channels + [c for c in all_non_eeg if c not in ecg_channels],
         index=0, key="rhythm_ch",
     )
+    # Validierte Detektoren nur anbieten, wenn sie auch laufen KÖNNEN (py-ecg-detectors ist
+    # eine optionale Zusatz-Abhängigkeit, siehe requirements-validated.txt). Sie anzubieten
+    # und dann stillschweigend den eigenen zu rechnen, wäre genau die Falschbeschriftung, die
+    # detect_r_peaks_validated_ex() beseitigt hat.
+    from analysis.ecg import validated_detectors_available
+    _have_validated = validated_detectors_available()
+    _det_options = (list(DETECTOR_METHODS.keys()) if _have_validated
+                    else [k for k, v in DETECTOR_METHODS.items() if v is None])
     det_label = cch2.selectbox(
-        tr("rhythm.detector"), list(DETECTOR_METHODS.keys()), index=0, key="rhythm_detector",
+        tr("rhythm.detector"), _det_options, index=0, key="rhythm_detector",
         help=tr("rhythm.detector_help"),
     )
+    if not _have_validated:
+        cch2.caption(tr("rhythm.validated_unavailable"))
     det_method = DETECTOR_METHODS[det_label]
 
     sig_uv, peaks_all, fs, was_flipped, det_fallback = _detect(edf_path, ch, det_method)

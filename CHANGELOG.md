@@ -16,9 +16,11 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ### Geändert
 - **Keine externen Verbindungen mehr zur Laufzeit** (gemessen, nicht angenommen):
-  - Streamlits Nutzungs-Telemetrie abgeschaltet (`gatherUsageStats = false`). Vorher gingen
-    pro Sitzung **fünf** Aufrufe an `webhooks.fivetran.com` — der gravierendere der beiden
-    Funde, weil er unabhängig von der Oberfläche bei jeder Nutzung auslöste.
+  - Streamlits Nutzungs-Telemetrie jetzt auch in `.streamlit/config.toml` abgeschaltet
+    (`gatherUsageStats = false`). Im **lokalen** Lauf gingen vorher pro Sitzung fünf Aufrufe
+    an `webhooks.fivetran.com`; das Docker-Image setzte den entsprechenden Schalter bereits
+    als CLI-Flag, dort war die Telemetrie also schon aus. Die Einstellung liegt nun an beiden
+    Stellen, damit lokale Entwicklung und Container sich gleich verhalten.
   - Schrift **Inter** wird lokal aus `static/fonts/` ausgeliefert statt vom Google-Fonts-CDN
     (drei Teilzeichensätze latin/latin-ext/greek, zusammen 152 KB, variable Achse
     `wght 100–900` vor dem Einchecken mit `fontTools` verifiziert). Erfordert
@@ -29,10 +31,15 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
     Streamlits native `:material/...:`-Icons. Klasse dabei von `.material-symbols-outlined`
     zu `.material-symbol` umbenannt, damit der Name nicht die falsche Variante suggeriert.
   - Ergebnis über sechs Seiten + Login-Bildschirm nachgemessen: **null externe Requests**.
-- `NOTICE` ergänzt (Schriftlizenz SIL OFL, Drittbibliotheken). Dabei aufgefallen:
-  `py-ecg-detectors` steht unter **GPL-3.0**, dieses Projekt unter Apache-2.0 — die
-  Bibliothek wird nur optional in einem `try/except` importiert (Rückfall auf den eigenen
-  Detektor), der Hinweis steht jetzt ausdrücklich in `NOTICE`.
+- **`py-ecg-detectors` (GPL-3.0) ist keine Standard-Abhängigkeit mehr.** Das Projekt steht
+  unter Apache-2.0; eine normale Installation soll keine Copyleft-Bibliothek mitbringen. Das
+  Paket liegt jetzt allein in `requirements-validated.txt`, das Docker-Image nimmt es nur mit
+  `--build-arg WITH_VALIDATED_DETECTORS=1` auf. **Kein Funktionsverlust im Standardfall:** die
+  App läuft vollständig, der eigene Detektor war ohnehin der Default; es entfallen nur die
+  Vergleichsdetektoren — und die Oberfläche bietet sie dann gar nicht erst an bzw. erklärt,
+  wie man sie nachrüstet, statt sie anzubieten und still etwas anderes zu rechnen.
+- `NOTICE` ergänzt (Schriftlizenz SIL OFL, Drittbibliotheken). Lizenzangaben gegen die
+  installierten Paket-Metadaten geprüft, nicht aus dem Gedächtnis übernommen.
 - README: internes Betriebskapitel zu einem konkreten Server durch eine allgemeine
   Selbst-Hosting-Anleitung ersetzt.
 

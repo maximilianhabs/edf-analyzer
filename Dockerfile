@@ -19,8 +19,19 @@ ENV OPENBLAS_NUM_THREADS=1
 ENV MKL_NUM_THREADS=1
 
 # Dependencies zuerst (besseres Layer-Caching)
-COPY requirements.txt .
+COPY requirements.txt requirements-validated.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Optionale, GPL-3.0-lizenzierte Zusatz-Detektoren (py-ecg-detectors). Standardmäßig NICHT
+# im Image: ein weitergegebenes Image ist eine Weiterverbreitung, und die soll nicht
+# ungefragt Copyleft-Code enthalten. Bewusst dazuholen mit:
+#     docker build --build-arg WITH_VALIDATED_DETECTORS=1 -t edf-analyzer .
+# Ohne sie läuft die App vollständig; es entfallen nur die Vergleichsdetektoren, und die
+# Oberfläche weist das ausdrücklich aus (siehe requirements-validated.txt).
+ARG WITH_VALIDATED_DETECTORS=0
+RUN if [ "$WITH_VALIDATED_DETECTORS" = "1" ]; then \
+        pip install --no-cache-dir -r requirements-validated.txt; \
+    fi
 
 # App-Code
 COPY . .

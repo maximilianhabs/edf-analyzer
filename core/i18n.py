@@ -365,6 +365,9 @@ STRINGS = {
             "stage1_rules": "Stufe①-Regeln im Detail — wonach wird ein 10s-Segment als Artefakt ",
             "ecg_channel": "EKG-Kanal",
             "detector": "R-Zacken-Detektor",
+            "validated_unavailable": "Nur der eigene Detektor verfügbar — die validierten "
+                                      "Vergleichsverfahren brauchen das optionale Paket "
+                                      "`py-ecg-detectors` (siehe requirements-validated.txt).",
             "detector_help": "Der eigene Detektor bleibt Default (bewährt). Bei Zweifeln/"
                               "unklaren Fällen auf einen validierten Detektor umschalten und "
                               "vergleichen — beeinflusst das gesamte Rhythmus-Screening dieser "
@@ -410,6 +413,11 @@ STRINGS = {
             "window_width": "Fensterbreite",
             "position_s": "Position (s)",
             "overlay_detectors": "Overlay-Detektoren",
+            "validated_unavailable": "Dieser Vergleich braucht das optionale Paket "
+                                      "`py-ecg-detectors` (GPL-3.0, bewusst nicht in den "
+                                      "Standard-Abhängigkeiten). Installieren mit "
+                                      "`pip install -r requirements-validated.txt` — die "
+                                      "übrige App funktioniert unabhängig davon vollständig.",
         },
     "spectrum": {
             "title": "EEG-Spektrum",
@@ -897,6 +905,9 @@ STRINGS = {
             "stage1_rules": "Stage ① rules in detail — what makes a 10 s segment an artifact ",
             "ecg_channel": "ECG channel",
             "detector": "R-peak detector",
+            "validated_unavailable": "Only the built-in detector is available — the validated "
+                                      "comparison methods need the optional package "
+                                      "`py-ecg-detectors` (see requirements-validated.txt).",
             "detector_help": "The built-in detector stays the default (proven). In doubtful or "
                               "unclear cases, switch to a validated detector and compare — this "
                               "affects the entire rhythm screening on this page (artifacts/"
@@ -942,6 +953,11 @@ STRINGS = {
             "window_width": "Window width",
             "position_s": "Position (s)",
             "overlay_detectors": "Overlay detectors",
+            "validated_unavailable": "This comparison needs the optional package "
+                                      "`py-ecg-detectors` (GPL-3.0, deliberately not among the "
+                                      "default dependencies). Install it with "
+                                      "`pip install -r requirements-validated.txt` — the rest "
+                                      "of the app works fully without it.",
         },
         "spectrum": {
             "title": "EEG Spectrum",

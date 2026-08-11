@@ -92,6 +92,14 @@ def _render_rpeak_visual(edf, edf_path):
         st.info(tr("advanced.no_ecg"))
         return
 
+    # Der Sinn dieses Abschnitts ist der VERGLEICH mit validierten Detektoren — fehlt das
+    # optionale Paket, gäbe es nichts zu vergleichen. Das gehört gesagt, bevor die Tabelle
+    # dreimal denselben Algorithmus zeigt.
+    from analysis.ecg import validated_detectors_available
+    if not validated_detectors_available():
+        st.info(tr("advanced.validated_unavailable"), icon=":material/info:")
+        return
+
     sf = edf["sfreq"]
     dur = edf["duration_s"]
     c1, c2 = st.columns([2, 3])
