@@ -160,6 +160,72 @@ STRINGS = {
             "bandpass": "Bandpass: {low:.2f}–{high} Hz",
             "annotations_prefix": "Annotations: ",
         },
+        "channel_report": {
+            "title": "Kanal-Identifikation",
+            "intro": "Automatische, signalbasierte Kanalerkennung — herstellerunabhängig. "
+                      "Typ-Korrekturen werden für alle anderen Ansichten übernommen.",
+            "not_validated": "Datei nicht validiert.",
+            "no_classification": "Keine Klassifikationsdaten verfügbar. Bitte Datei neu laden.",
+            "overrides_active_one": "**{n} manuelle Korrektur aktiv** — werden in EEG-Viewer, "
+                                     "EKG & HRV und Report verwendet.",
+            "overrides_active_many": "**{n} manuelle Korrekturen aktiv** — werden in "
+                                      "EEG-Viewer, EKG & HRV und Report verwendet.",
+            "reset_all": "Alle zurücksetzen",
+            "summary": "Zusammenfassung",
+            "summary_sub": "{n} Kanäle analysiert",
+            "missing_electrodes_warning": "**Nur {n} / 19 Standard-10-20-Elektroden als EEG "
+                                           "erkannt** — fehlen: {list}. Für eine vollständige "
+                                           "Montage (z. B. Doppelte Banane) reicht das evtl. "
+                                           "nicht. Häufige Ursache: Artefakte / "
+                                           "Muskelaktivität → betroffene Kanäle unten manuell "
+                                           "auf **EEG** korrigieren.",
+            "missing_electrodes_info": "{n} / 19 Standard-Elektroden als EEG erkannt · nicht "
+                                        "dabei: {list}",
+            "multiple_ecg": "**{n} EKG-Kandidaten erkannt** ({list}) — physiologisch gibt es "
+                             "meist nur **einen**. Im EKG-Viewer den korrekten Kanal wählen; "
+                             "die übrigen unten ggf. auf einen anderen Typ korrigieren.",
+            "channels_detail": "Kanäle im Detail",
+            "confidence_legend": "Die <b>Kopfleiste</b> jedes Kanals ist nach "
+                                  "Erkennungs-Konfidenz eingefärbt: {dot_ok} hoch "
+                                  "(&gt;70&nbsp;%) · {dot_warn} mittel (40–70&nbsp;%) · "
+                                  "{dot_bad} niedrig (&lt;40&nbsp;%) — bei orange/rot lohnt "
+                                  "ein Blick + ggf. manuelle Korrektur.",
+            "type_filter": "Typ-Filter",
+            "sort": "Sortieren",
+            "sort_channel_order": "Kanalreihenfolge",
+            "sort_confidence": "Konfidenz ↓",
+            "sort_type": "Typ",
+            "confidence_suffix": "Konfidenz",
+            "corrected_badge": "korrigiert",
+            "manual_was": "Manuell (war: {orig})",
+            "confidence_label": "Konfidenz",
+            "reasons": "**Begründung:**",
+            "correct_type": "**Typ korrigieren:**",
+            "type": "Typ",
+            "apply": "Übernehmen",
+            "reset": "Zurücksetzen",
+            "signal_features": "**Signal-Features:**",
+            "feat_std": "Std",
+            "feat_p2p": "Peak-Peak",
+            "feat_kurtosis": "Kurtosis",
+            "feat_dom_freq": "Dom. Freq.",
+            "feat_qrs_rate": "QRS-Rate",
+            "feat_rhythmicity": "Rhythmizität",
+            "spectral_distribution": "**Spektrale Verteilung:**",
+            "signal_preview": "**Signal-Vorschau (10 s):**",
+            "time_s": "Zeit (s)",
+            "flat_channel": "Flacher/toter Kanal — kein Signal.",
+            "detected_eeg": "Erkannte EEG-Kanäle",
+            "detected_eeg_sub": "{n} Elektroden für EEG-Analyse",
+            "aux_channels": "Hilfskanäle",
+            "type_ecg": "EKG",
+            "type_eeg": "EEG",
+            "type_eog": "EOG",
+            "type_emg": "EMG",
+            "type_ref": "Referenz",
+            "type_vital": "Vital",
+            "type_unknown": "Unbekannt",
+        },
     },
     "en": {
         "nav": {
@@ -299,6 +365,71 @@ STRINGS = {
                                   "real EEG.",
             "bandpass": "Bandpass: {low:.2f}–{high} Hz",
             "annotations_prefix": "Annotations: ",
+        },
+        "channel_report": {
+            "title": "Channel Identification",
+            "intro": "Automatic, signal-based channel detection — manufacturer-independent. "
+                      "Type corrections carry over to all other views.",
+            "not_validated": "File not validated.",
+            "no_classification": "No classification data available. Please reload the file.",
+            "overrides_active_one": "**{n} manual correction active** — used in EEG Viewer, "
+                                     "ECG & HRV and Report.",
+            "overrides_active_many": "**{n} manual corrections active** — used in EEG Viewer, "
+                                      "ECG & HRV and Report.",
+            "reset_all": "Reset all",
+            "summary": "Summary",
+            "summary_sub": "{n} channels analyzed",
+            "missing_electrodes_warning": "**Only {n} / 19 standard 10-20 electrodes detected "
+                                           "as EEG** — missing: {list}. That may not be enough "
+                                           "for a complete montage (e.g. double banana). "
+                                           "Common cause: artifacts / muscle activity → "
+                                           "correct the affected channels to **EEG** below.",
+            "missing_electrodes_info": "{n} / 19 standard electrodes detected as EEG · not "
+                                        "included: {list}",
+            "multiple_ecg": "**{n} ECG candidates detected** ({list}) — physiologically there "
+                             "is usually only **one**. Pick the correct channel in the ECG "
+                             "viewer; correct the others to a different type below if needed.",
+            "channels_detail": "Channels in detail",
+            "confidence_legend": "Each channel's <b>header bar</b> is colored by detection "
+                                  "confidence: {dot_ok} high (&gt;70&nbsp;%) · {dot_warn} "
+                                  "medium (40–70&nbsp;%) · {dot_bad} low (&lt;40&nbsp;%) — "
+                                  "orange/red is worth a look and possibly a manual "
+                                  "correction.",
+            "type_filter": "Type filter",
+            "sort": "Sort",
+            "sort_channel_order": "Channel order",
+            "sort_confidence": "Confidence ↓",
+            "sort_type": "Type",
+            "confidence_suffix": "confidence",
+            "corrected_badge": "corrected",
+            "manual_was": "Manual (was: {orig})",
+            "confidence_label": "Confidence",
+            "reasons": "**Rationale:**",
+            "correct_type": "**Correct type:**",
+            "type": "Type",
+            "apply": "Apply",
+            "reset": "Reset",
+            "signal_features": "**Signal features:**",
+            "feat_std": "Std",
+            "feat_p2p": "Peak-to-peak",
+            "feat_kurtosis": "Kurtosis",
+            "feat_dom_freq": "Dom. freq.",
+            "feat_qrs_rate": "QRS rate",
+            "feat_rhythmicity": "Rhythmicity",
+            "spectral_distribution": "**Spectral distribution:**",
+            "signal_preview": "**Signal preview (10 s):**",
+            "time_s": "Time (s)",
+            "flat_channel": "Flat/dead channel — no signal.",
+            "detected_eeg": "Detected EEG channels",
+            "detected_eeg_sub": "{n} electrodes for EEG analysis",
+            "aux_channels": "Auxiliary channels",
+            "type_ecg": "ECG",
+            "type_eeg": "EEG",
+            "type_eog": "EOG",
+            "type_emg": "EMG",
+            "type_ref": "Reference",
+            "type_vital": "Vital",
+            "type_unknown": "Unknown",
         },
     },
 }

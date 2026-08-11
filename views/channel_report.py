@@ -6,19 +6,28 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 
+from core.i18n import tr
 from core.shared import get_edf_or_stop, section_header, apply_global_style, status_dot
 from core.channel_classifier import ECG, EEG, EOG, EMG, REF, VITAL, UNKN
 
 
+# Nur Icon/Farbe hier — die Beschriftung kommt über _type_label() aus core/i18n.py. Ein
+# fertiger Text in diesem Modul-Dict würde beim Import ausgewertet und damit die Sprache
+# auf den beim Prozessstart geltenden Wert einfrieren.
 _TYPE_META = {
-    ECG:   {"icon": "ecg_heart",   "color": "#c0392b", "label": "EKG"},
-    EEG:   {"icon": "neurology",   "color": "#2471a3", "label": "EEG"},
-    EOG:   {"icon": "visibility",  "color": "#8e44ad", "label": "EOG"},
-    EMG:   {"icon": "fitness_center", "color": "#e67e22", "label": "EMG"},
-    REF:   {"icon": "⏚",           "color": "#7f8c8d", "label": "Referenz"},
-    VITAL: {"icon": "vital_signs", "color": "#27ae60", "label": "Vital"},
-    UNKN:  {"icon": "help",        "color": "#95a5a6", "label": "Unbekannt"},
+    ECG:   {"icon": "ecg_heart",      "color": "#c0392b", "key": "type_ecg"},
+    EEG:   {"icon": "neurology",      "color": "#2471a3", "key": "type_eeg"},
+    EOG:   {"icon": "visibility",     "color": "#8e44ad", "key": "type_eog"},
+    EMG:   {"icon": "fitness_center", "color": "#e67e22", "key": "type_emg"},
+    REF:   {"icon": "⏚",              "color": "#7f8c8d", "key": "type_ref"},
+    VITAL: {"icon": "vital_signs",    "color": "#27ae60", "key": "type_vital"},
+    UNKN:  {"icon": "help",           "color": "#95a5a6", "key": "type_unknown"},
 }
+
+
+def _type_label(ch_type) -> str:
+    meta = _TYPE_META.get(ch_type, _TYPE_META[UNKN])
+    return tr(f"channel_report.{meta['key']}")
 
 
 def _type_icon_html(meta: dict, size: str = "1.6rem") -> str:
@@ -67,26 +76,22 @@ def render():
     from core.shared import load_and_prepare, get_edf_path, apply_channel_overrides
     edf_path = get_edf_path()
     if not edf_path or not __import__("os").path.exists(edf_path):
-        st.info("Bitte zuerst auf der Seite **Datei & Patient** eine gültige EDF-Datei wählen.",
-               icon=":material/folder_open:")
+        st.info(tr("shared.please_select_file"), icon=":material/folder_open:")
         st.stop()
     if not st.session_state.get("phi_validated"):
-        st.error("Datei nicht validiert.", icon=":material/block:")
+        st.error(tr("channel_report.not_validated"), icon=":material/block:")
         st.stop()
     edf_raw = load_and_prepare(edf_path)
 
-    st.title(":material/search: Kanal-Identifikation")
-    st.markdown(
-        "Automatische, signalbasierte Kanalerkennung — "
-        "herstellerunabhängig. Typ-Korrekturen werden für alle anderen Ansichten übernommen."
-    )
+    st.title(":material/search: " + tr("channel_report.title"))
+    st.markdown(tr("channel_report.intro"))
 
     classifications = edf_raw.get("channel_classifications", {})
     ch_names  = edf_raw["ch_names"]
     overrides = _get_overrides()
 
     if not classifications:
-        st.warning("Keine Klassifikationsdaten verfügbar. Bitte Datei neu laden.")
+        st.warning(tr("channel_report.no_classification"))
         return
 
     # ── Globale Korrektur-Steuerung ───────────────────────────────────────────
@@ -94,18 +99,18 @@ def render():
     if n_overrides:
         oc1, oc2 = st.columns([4, 1])
         with oc1:
-            st.info(
-                f"**{n_overrides} manuelle {'Korrektur' if n_overrides==1 else 'Korrekturen'} aktiv** — "
-                "werden in EEG-Viewer, EKG & HRV und Report verwendet.",
-                icon=":material/edit:",
-            )
+            _ov_key = ("channel_report.overrides_active_one" if n_overrides == 1
+                       else "channel_report.overrides_active_many")
+            st.info(tr(_ov_key, n=n_overrides), icon=":material/edit:")
         with oc2:
-            if st.button("Alle zurücksetzen", type="secondary", use_container_width=True):
+            if st.button(tr("channel_report.reset_all"), type="secondary",
+                         use_container_width=True):
                 st.session_state[_override_key()] = {}
                 st.rerun()
 
     # ── Zusammenfassung ──────────────────────────────────────────────────────
-    section_header("Zusammenfassung", f"{len(ch_names)} Kanäle analysiert")
+    section_header(tr("channel_report.summary"),
+                   tr("channel_report.summary_sub", n=len(ch_names)))
 
     # Count using current effective types (including overrides)
     counts: dict = {}
@@ -123,7 +128,7 @@ def render():
                 f"background:{meta['color']}08'>"
                 f"<div style='font-size:1.6rem'>{_type_icon_html(meta)}</div>"
                 f"<div style='font-size:1.4rem;font-weight:700;color:{meta['color']}'>{n}</div>"
-                f"<div style='font-size:0.75rem;color:#555'>{meta['label']}</div>"
+                f"<div style='font-size:0.75rem;color:#555'>{_type_label(t)}</div>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -143,37 +148,27 @@ def render():
                  if overrides.get(ch, r.channel_type) == ECG)
 
     if len(_present) < 16:
-        st.warning(
-            f"**Nur {len(_present)} / 19 Standard-10-20-Elektroden als EEG erkannt** — "
-            f"fehlen: {', '.join(sorted(_missing))}. Für eine vollständige Montage (z. B. "
-            f"Doppelte Banane) reicht das evtl. nicht. Häufige Ursache: Artefakte / "
-            f"Muskelaktivität → betroffene Kanäle unten manuell auf **EEG** korrigieren.",
-            icon=":material/warning:",
-        )
+        st.warning(tr("channel_report.missing_electrodes_warning",
+                      n=len(_present), list=", ".join(sorted(_missing))),
+                   icon=":material/warning:")
     elif _missing:
-        st.info(
-            f"{len(_present)} / 19 Standard-Elektroden als EEG erkannt · "
-            f"nicht dabei: {', '.join(sorted(_missing))}"
-        )
+        st.info(tr("channel_report.missing_electrodes_info",
+                   n=len(_present), list=", ".join(sorted(_missing))))
 
     if _n_ecg >= 2:
         _ecg_names = [ch for ch, r in classifications.items()
                       if overrides.get(ch, r.channel_type) == ECG]
-        st.info(
-            f"**{_n_ecg} EKG-Kandidaten erkannt** ({', '.join(_ecg_names)}) — "
-            f"physiologisch gibt es meist nur **einen**. Im EKG-Viewer den korrekten Kanal "
-            f"wählen; die übrigen unten ggf. auf einen anderen Typ korrigieren.",
-            icon=":material/ecg_heart:",
-        )
+        st.info(tr("channel_report.multiple_ecg", n=_n_ecg,
+                   list=", ".join(_ecg_names)), icon=":material/ecg_heart:")
 
     # ── Filter & Sort ────────────────────────────────────────────────────────
-    section_header("Kanäle im Detail")
+    section_header(tr("channel_report.channels_detail"))
     st.markdown(
         "<span style='font-size:0.9rem;color:var(--text-secondary,#6b7684)'>"
-        "Die <b>Kopfleiste</b> jedes Kanals ist nach Erkennungs-Konfidenz eingefärbt: "
-        f"{status_dot('success')} hoch (&gt;70&nbsp;%) · {status_dot('warning')} mittel "
-        f"(40–70&nbsp;%) · {status_dot('danger')} niedrig (&lt;40&nbsp;%) — bei "
-        "orange/rot lohnt ein Blick + ggf. manuelle Korrektur.</span>",
+        + tr("channel_report.confidence_legend",
+             dot_ok=status_dot("success"), dot_warn=status_dot("warning"),
+             dot_bad=status_dot("danger"))
+        + "</span>",
         unsafe_allow_html=True,
     )
 
@@ -184,15 +179,19 @@ def render():
     filter_col, sort_col = st.columns([3, 1])
     with filter_col:
         sel_types = st.multiselect(
-            "Typ-Filter",
+            tr("channel_report.type_filter"),
             options=all_eff_types,
             default=all_eff_types,
-            format_func=lambda t: _TYPE_META.get(t, {}).get("label", t),
+            format_func=_type_label,
             label_visibility="collapsed",
         )
     with sort_col:
-        sort_by = st.selectbox("Sortieren", ["Kanalreihenfolge", "Confidence ↓", "Typ"],
-                                label_visibility="collapsed")
+        # Sprachneutrale IDs, Anzeige über format_func — ein übersetztes Label als
+        # Vergleichswert würde die Sortierung beim Sprachwechsel still deaktivieren.
+        sort_by = st.selectbox(
+            tr("channel_report.sort"), ["channel_order", "confidence", "type"],
+            format_func=lambda v: tr(f"channel_report.sort_{v}"),
+            label_visibility="collapsed")
 
     items = [
         (ch, classifications[ch], overrides.get(ch))
@@ -201,9 +200,9 @@ def render():
         and overrides.get(ch, classifications[ch].channel_type) in sel_types
     ]
 
-    if sort_by == "Confidence ↓":
+    if sort_by == "confidence":
         items.sort(key=lambda x: -x[1].confidence)
-    elif sort_by == "Typ":
+    elif sort_by == "type":
         items.sort(key=lambda x: overrides.get(x[0], x[1].channel_type))
 
     # ── Kanaldetails ─────────────────────────────────────────────────────────
@@ -218,7 +217,8 @@ def render():
         # Badge: show override indicator
         override_badge = (
             f" <span style='font-size:10px;background:#e67e22;color:white;"
-            f"padding:1px 6px;border-radius:10px;vertical-align:middle'>korrigiert</span>"
+            f"padding:1px 6px;border-radius:10px;vertical-align:middle'>"
+            + tr("channel_report.corrected_badge") + "</span>"
             if override_type else ""
         )
 
@@ -256,7 +256,8 @@ def render():
         _chan_box = st.container(key=_ck)
         with _chan_box, st.expander(
             f"**{ch}** — "
-            f"{meta['label']} · {result.confidence:.0f}% Konfidenz"
+            f"{_type_label(eff_type)} · {result.confidence:.0f}% "
+            + tr("channel_report.confidence_suffix")
             + (" :material/edit:" if override_type else ""),
             expanded=False,
         ):
@@ -270,9 +271,10 @@ def render():
                         f"border:2px solid {meta['color']};background:{meta['color']}0d'>"
                         f"<div style='font-size:1.8rem;text-align:center'>{_type_icon_html(meta, '1.8rem')}</div>"
                         f"<div style='text-align:center;font-weight:700;font-size:1.0rem;"
-                        f"color:{meta['color']}'>{meta['label']}</div>"
+                        f"color:{meta['color']}'>{_type_label(eff_type)}</div>"
                         f"<div style='text-align:center;font-size:10px;color:#e67e22;margin-top:4px'>"
-                        f"Manuell (war: {orig_meta['label']})</div>"
+                        + tr("channel_report.manual_was", orig=_type_label(result.channel_type))
+                        + "</div>"
                         f"</div>",
                         unsafe_allow_html=True,
                     )
@@ -282,35 +284,36 @@ def render():
                         f"border:2px solid {meta['color']};background:{meta['color']}0d'>"
                         f"<div style='font-size:2rem;text-align:center'>{_type_icon_html(meta, '2rem')}</div>"
                         f"<div style='text-align:center;font-weight:700;font-size:1.1rem;"
-                        f"color:{meta['color']}'>{meta['label']}</div>"
+                        f"color:{meta['color']}'>{_type_label(eff_type)}</div>"
                         f"<div style='text-align:center;margin-top:6px'>"
                         f"<span style='font-size:1.3rem;font-weight:700;color:{c_conf}'>"
                         f"{result.confidence:.0f}%</span>"
-                        f"<span style='font-size:0.75rem;color:#888;margin-left:4px'>Confidence</span>"
+                        f"<span style='font-size:0.75rem;color:#888;margin-left:4px'>"
+                        + tr("channel_report.confidence_label") + "</span>"
                         f"</div>"
                         f"</div>",
                         unsafe_allow_html=True,
                     )
 
-                st.markdown("**Begründung:**")
+                st.markdown(tr("channel_report.reasons"))
                 for reason in result.reasons:
                     st.markdown(f"- {reason}")
 
                 # ── Override control ────────────────────────────────────────
                 st.markdown("---")
-                st.markdown("**Typ korrigieren:**")
+                st.markdown(tr("channel_report.correct_type"))
                 current_idx = _ALL_TYPES.index(eff_type) if eff_type in _ALL_TYPES else 0
                 new_type = st.selectbox(
-                    "Typ",
+                    tr("channel_report.type"),
                     options=_ALL_TYPES,
                     index=current_idx,
-                    format_func=lambda t: _TYPE_META[t]["label"],
+                    format_func=_type_label,
                     key=f"override_sel_{ch}",
                     label_visibility="collapsed",
                 )
                 btn_col, reset_col = st.columns(2)
                 with btn_col:
-                    if st.button("Übernehmen", key=f"override_apply_{ch}",
+                    if st.button(tr("channel_report.apply"), key=f"override_apply_{ch}",
                                  type="primary", use_container_width=True):
                         if new_type == result.channel_type:
                             # Remove override if reset to original
@@ -321,7 +324,7 @@ def render():
                         st.rerun()
                 with reset_col:
                     if override_type and st.button(
-                        "Zurücksetzen", key=f"override_reset_{ch}",
+                        tr("channel_report.reset"), key=f"override_reset_{ch}",
                         use_container_width=True
                     ):
                         overrides.pop(ch, None)
@@ -330,16 +333,17 @@ def render():
 
             with r2:
                 if f and not f.get("is_flat"):
-                    st.markdown("**Signal-Features:**")
+                    st.markdown(tr("channel_report.signal_features"))
                     fa, fb, fc = st.columns(3)
-                    fa.metric("Std",        f"{f.get('std_mv', 0)*1000:.1f} µV")
-                    fb.metric("Peak-Peak",  f"{f.get('p2p_mv', 0):.3f} mV")
-                    fc.metric("Kurtosis",   f"{f.get('kurtosis', 0):.1f}")
+                    fa.metric(tr("channel_report.feat_std"), f"{f.get('std_mv', 0)*1000:.1f} µV")
+                    fb.metric(tr("channel_report.feat_p2p"), f"{f.get('p2p_mv', 0):.3f} mV")
+                    fc.metric(tr("channel_report.feat_kurtosis"), f"{f.get('kurtosis', 0):.1f}")
 
                     fd, fe, ff = st.columns(3)
-                    fd.metric("Dom. Freq.", f"{f.get('dom_freq', 0):.1f} Hz")
-                    fe.metric("QRS-Rate",   f"{f.get('qrs_rate', 0):.0f} bpm" if f.get('qrs_rate', 0) > 0 else "—")
-                    ff.metric("Rhythmizität", f"{f.get('rhythmicity', 0):.2f}")
+                    fd.metric(tr("channel_report.feat_dom_freq"), f"{f.get('dom_freq', 0):.1f} Hz")
+                    fe.metric(tr("channel_report.feat_qrs_rate"),
+                              f"{f.get('qrs_rate', 0):.0f} bpm" if f.get('qrs_rate', 0) > 0 else "—")
+                    ff.metric(tr("channel_report.feat_rhythmicity"), f"{f.get('rhythmicity', 0):.2f}")
 
                     # Mini spectrum bar
                     bands = [
@@ -349,7 +353,7 @@ def render():
                         ("β",     f.get("beta_rel",  0)),
                         ("γ",     f.get("gamma_rel", 0)),
                     ]
-                    st.markdown("**Spektrale Verteilung:**")
+                    st.markdown(tr("channel_report.spectral_distribution"))
                     bar_html = "<div style='display:flex;gap:4px;align-items:flex-end;height:50px'>"
                     colors = ["#3498db","#9b59b6","#e74c3c","#2ecc71","#e67e22"]
                     for (lbl, val), col in zip(bands, colors):
@@ -402,7 +406,7 @@ def render():
                         if negate:
                             y_vals = -y_vals
 
-                        st.markdown("**Signal-Vorschau (10 s):**")
+                        st.markdown(tr("channel_report.signal_preview"))
                         fig_prev = go.Figure()
                         fig_prev.add_trace(go.Scatter(
                             x=t_vec, y=y_vals, mode="lines",
@@ -412,7 +416,7 @@ def render():
                         fig_prev.update_layout(
                             height=160,
                             margin=dict(t=4, b=32, l=55, r=6),
-                            xaxis=dict(title="Zeit (s)", showgrid=True, dtick=1),
+                            xaxis=dict(title=tr("channel_report.time_s"), showgrid=True, dtick=1),
                             yaxis=dict(title=y_label, showgrid=False,
                                        zeroline=True, zerolinewidth=0.8),
                             showlegend=False,
@@ -422,13 +426,14 @@ def render():
                                         key=f"chreport_prev_{ch}")
 
                 elif f.get("is_flat"):
-                    st.warning("Flacher/toter Kanal — kein Signal.")
+                    st.warning(tr("channel_report.flat_channel"))
 
     # ── EEG Map Übersicht ────────────────────────────────────────────────────
     edf_eff = apply_channel_overrides(edf_raw)
     eeg_map = edf_eff.get("eeg_map", {})
     if eeg_map:
-        section_header("Erkannte EEG-Kanäle", f"{len(eeg_map)} Elektroden für EEG-Analyse")
+        section_header(tr("channel_report.detected_eeg"),
+                       tr("channel_report.detected_eeg_sub", n=len(eeg_map)))
         cols = st.columns(min(6, len(eeg_map)))
         for i, (short, idx) in enumerate(eeg_map.items()):
             with cols[i % len(cols)]:
@@ -446,7 +451,7 @@ def render():
     emg = edf_eff.get("emg_channels", [])
 
     if ecg or eog or emg:
-        section_header("Hilfskanäle")
+        section_header(tr("channel_report.aux_channels"))
         hc = st.columns(3)
         for col, label, icon, channels, color in (
             (hc[0], "EKG", "<span class='material-symbols-outlined' "
