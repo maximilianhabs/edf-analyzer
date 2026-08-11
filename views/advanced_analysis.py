@@ -39,7 +39,7 @@ _DET_STYLE = {
 
 @st.cache_data(show_spinner="Erkenne R-Zacken (mehrere Detektoren) …")
 def _detect_all(edf_path: str, ch: str):
-    from analysis.ecg import (detect_r_peaks_polarity_safe, detect_r_peaks_validated,
+    from analysis.ecg import (detect_r_peaks_polarity_safe, detect_r_peaks_validated_ex,
                               build_rr_series, compute_hrv_time_domain)
     e = apply_channel_overrides(load_and_prepare(edf_path))
     sf = e["sfreq"]
@@ -48,17 +48,24 @@ def _detect_all(edf_path: str, ch: str):
     # Detektoren + die spätere Roh-EKG-Anzeige, damit Overlay und Kurve konsistent bleiben.
     # Siehe [[project_edf_rhythm_screening]].
     sig_corr, eigen_peaks, was_flipped = detect_r_peaks_polarity_safe(sig, sf)
+    # Diese Seite STELLT die Detektoren GEGENÜBER — hier ist ein stiller Rückfall besonders
+    # irreführend: die Tabelle zeigte sonst dreimal dieselben Zahlen unter drei Namen. Daher
+    # wird pro Eintrag mitgeführt, ob der validierte Detektor wirklich lief.
+    _ham = detect_r_peaks_validated_ex(sig_corr, sf, "hamilton")
+    _pt  = detect_r_peaks_validated_ex(sig_corr, sf, "pan_tompkins")
     methods = {
-        "eigen (aktueller Default)": eigen_peaks,
-        "Hamilton 2002 (validiert)": detect_r_peaks_validated(sig_corr, sf, "hamilton"),
-        "Pan-Tompkins (validiert)":  detect_r_peaks_validated(sig_corr, sf, "pan_tompkins"),
+        "eigen (aktueller Default)": (eigen_peaks, None),
+        "Hamilton 2002 (validiert)": (_ham.peaks, _ham),
+        "Pan-Tompkins (validiert)":  (_pt.peaks,  _pt),
     }
     out = {}
-    for label, pk in methods.items():
+    for label, (pk, res) in methods.items():
         pk = np.asarray(pk, int)
         rr = build_rr_series(pk, sf)
         td = compute_hrv_time_domain(rr.rr_ms[~rr.artifact_mask]) if rr is not None else {}
-        out[label] = {"peaks": pk, "hrv": td}
+        out[label] = {"peaks": pk, "hrv": td,
+                      "fell_back": bool(res.fell_back) if res is not None else False,
+                      "reason": res.reason if res is not None else ""}
     return out, sf, sig_corr, was_flipped
 
 
@@ -101,14 +108,23 @@ def _render_rpeak_visual(edf, edf_path):
 
     # ── Kennzahlen-Vergleich ─────────────────────────────────────────────────
     rows = []
+    _fallbacks = []
     for label, d in det.items():
         td = d["hrv"]
-        rows.append({"Detektor": label, "#R-Zacken": len(d["peaks"]),
+        # Name spiegelt, was WIRKLICH gerechnet wurde — nicht, was angefordert war.
+        shown = label if not d.get("fell_back") else f"{label} → nicht gelaufen"
+        if d.get("fell_back"):
+            _fallbacks.append(f"**{label}**: {d.get('reason', 'Grund unbekannt')}")
+        rows.append({"Detektor": shown, "#R-Zacken": len(d["peaks"]),
                      "HR (bpm)": td.get("mean_hr_bpm", float("nan")),
                      "SDNN (ms)": td.get("sdnn_ms", float("nan")),
                      "RMSSD (ms)": td.get("rmssd_ms", float("nan")),
                      "pNN50 (%)": td.get("pnn50_pct", float("nan"))})
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+    if _fallbacks:
+        st.warning("Diese Zeilen zeigen **Werte des eigenen Detektors**, nicht des benannten "
+                   "Verfahrens — der Vergleich ist insoweit keiner:\n\n- "
+                   + "\n- ".join(_fallbacks), icon=":material/warning:")
     st.caption("Der Detektor beeinflusst v. a. **RMSSD/pNN50** (Timing-Präzision). Der eigene "
                "Detektor **bleibt Default** (bewährt, visuell sauber); die validierten laufen hier "
                "nur **parallel zur Prüfung** — kein Ersatz ohne sorgfältige Validierung.")

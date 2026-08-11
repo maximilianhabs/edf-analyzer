@@ -21,7 +21,6 @@ import streamlit as st
 
 from core.i18n import tr
 from core.shared import get_edf_or_stop, section_header, safe_slider, render_banner, status_dot
-from analysis.ecg import detect_r_peaks_validated
 from analysis.ecg_quality import sqi_segments
 from analysis.rhythm_screening import classify_afib_risk, combine_with_pwave
 from analysis.ectopy_detection import ectopy_summary
@@ -31,8 +30,8 @@ WIN_S = 60.0  # 1-Minuten-Fenster (User-Feedback 2026-08-08: 2 Minuten zu dicht 
 
 # Detektor-Umschaltung (Backlog-Punkt, Anstoß Ruhid — siehe [[project_edf_rhythm_screening]]):
 # "eigen" bleibt Default (bewährt, siehe [[feedback_edf_qrs_vorsicht]]); die anderen laufen über
-# py-ecg-detectors (analysis/ecg.py:detect_r_peaks_validated). Method-Codes = Parameter für
-# detect_r_peaks_validated(), None = eigener Detektor.
+# py-ecg-detectors (analysis/ecg.py:detect_r_peaks_validated_ex). Method-Codes = Parameter für
+# detect_r_peaks_validated_ex(), None = eigener Detektor.
 DETECTOR_METHODS = {
     "eigen (Standard, vereinfachtes Pan-Tompkins)": None,
     "Hamilton 2002 (validiert)": "hamilton",
@@ -58,12 +57,21 @@ def _detect(edf_path: str, ch: str, method: str | None):
     # Polaritäts-Flip + Nachverfeinerung über den gemeinsamen, getesteten Helfer (analysis/ecg.py
     # — genutzt von dieser Seite UND von ecg_hrv.py::compute_rr(), damit beide Pfade konsistent
     # bleiben). Details/Herleitung siehe [[project_edf_rhythm_screening]].
-    from analysis.ecg import detect_r_peaks_polarity_safe
+    from analysis.ecg import detect_r_peaks_polarity_safe, detect_r_peaks_validated_ex
     sig_v, eigen_peaks, was_flipped = detect_r_peaks_polarity_safe(sig_v, fs)
     # Bei gewähltem validiertem Detektor (nicht "eigen"): läuft NACH dem Flip auf dem bereits
-    # korrekt orientierten Signal (detect_r_peaks_validated ruft intern refine_peaks() auf,
+    # korrekt orientierten Signal (detect_r_peaks_validated_ex ruft intern refine_peaks() auf,
     # ist also konsistent mit dem eigenen Pfad).
-    peaks = eigen_peaks if method is None else detect_r_peaks_validated(sig_v, fs, method)
+    # `fallback_reason` wird bis in die Oberfläche durchgereicht: greift der gewählte Detektor
+    # nicht, rechnet die GANZE Seite (Artefakte/AFib/Ektopie/P-Welle) mit dem eigenen — das
+    # muss dort stehen, wo der Nutzer den Detektor ausgewählt hat.
+    fallback_reason = ""
+    if method is None:
+        peaks = eigen_peaks
+    else:
+        _res = detect_r_peaks_validated_ex(sig_v, fs, method)
+        peaks = _res.peaks
+        fallback_reason = _res.reason if _res.fell_back else ""
     # was_flipped=True heißt: die QRS-Auslenkung war im ROHEN Signal negativ dominant — bei
     # Standard-EKG-Elektrodenanlage sollte R positiv sein (User-Bestätigung 2026-08-08: verifiziert
     # an GA2410DH mit komplett unverarbeitetem Rohsignal, echte QRS-Komplexe, kein Artefakt).
@@ -73,7 +81,7 @@ def _detect(edf_path: str, ch: str, method: str | None):
     # weil sie die klinische EEG-Konvention "Negativität nach oben" (DGKN/IFCN) auf ALLE Kanäle
     # anwenden, auch EKG — ein negativer QRS erscheint dort durch Zufall zweier sich aufhebender
     # Konventionen aufrecht, ist aber nach EKG-Standard-Konvention trotzdem invertiert.
-    return sig_v * 1e6, peaks, fs, was_flipped  # µV, Sample-Indizes, Hz, Polaritäts-Flag
+    return sig_v * 1e6, peaks, fs, was_flipped, fallback_reason
 
 
 @st.cache_data(show_spinner="Vergleiche mit/ohne Polaritäts-Korrektur…")
@@ -113,11 +121,17 @@ def render():
         help=tr("rhythm.detector_help"),
     )
     det_method = DETECTOR_METHODS[det_label]
-    if det_method is not None:
+
+    sig_uv, peaks_all, fs, was_flipped, det_fallback = _detect(edf_path, ch, det_method)
+    if det_fallback:
+        # Nicht die Auswahl bestätigen, die gar nicht wirksam wurde.
+        st.warning(f"**{det_label}** konnte nicht verwendet werden ({det_fallback}). Diese "
+                   "Seite rechnet mit dem **eigenen Detektor** — die Ergebnisse entsprechen "
+                   "der Standard-Einstellung, nicht dem ausgewählten Verfahren.",
+                   icon=":material/warning:")
+    elif det_method is not None:
         st.caption(f"Aktiver Detektor: **{det_label}** (nicht Default) — Ergebnisse dieser "
                    "Seite basieren auf diesem Detektor, bis zurückgeschaltet wird.")
-
-    sig_uv, peaks_all, fs, was_flipped = _detect(edf_path, ch, det_method)
     dur_s = len(sig_uv) / fs
 
     # Polaritäts-Hinweis (User-Vorgabe 2026-08-08, PRÄZISIERT 2026-08-08 nach Gegenprüfung mit

@@ -181,31 +181,79 @@ def refine_peaks(signal: np.ndarray, peaks, sfreq: float, win_ms: float = 50.0) 
     return np.array(sorted(set(out)), dtype=int)
 
 
-def detect_r_peaks_validated(signal: np.ndarray, sfreq: float,
-                             method: str = "hamilton") -> np.ndarray:
-    """R-Zacken über einen **validierten, publizierten** Detektor (py-ecg-detectors) +
-    konsistente Maximum-Verfeinerung. Fällt bei fehlender Lib/Fehler auf detect_r_peaks zurück.
+#: Rückgabe von :func:`detect_r_peaks_validated_ex` — trägt neben den Peaks IMMER mit, welcher
+#: Detektor tatsächlich gelaufen ist. Ohne diese Information beschriften die Aufrufer das
+#: Ergebnis falsch: `detect_r_peaks_validated()` fällt in DREI Fällen still auf den eigenen
+#: Detektor zurück (Bibliothek fehlt, Detektor wirft, zu wenige Peaks). Vorher stand dann z. B.
+#: „Hamilton 2002 (py-ecg-detectors)" über Zahlen des eigenen Detektors, und die
+#: Vergleichsspalten „Standard (eigen)" / „Validiert" im Report zeigten identische Werte,
+#: obwohl sie einen Methodenvergleich behaupteten.
+@dataclass
+class DetectorResult:
+    peaks: np.ndarray
+    method: str        # tatsächlich gelaufen: "hamilton"/"pan_tompkins"/… oder "eigen"
+    fell_back: bool    # True = der angeforderte validierte Detektor lief NICHT
+    reason: str = ""   # nur bei fell_back gesetzt, für Anzeige/Diagnose
+
+    @property
+    def is_validated(self) -> bool:
+        return not self.fell_back
+
+
+_VALIDATED_METHODS = ("hamilton", "pan_tompkins", "christov", "engzee", "two_average")
+
+
+def validated_detectors_available() -> bool:
+    """True, wenn py-ecg-detectors installiert ist. Für die Oberfläche gedacht, damit sie
+    validierte Detektoren gar nicht erst als wählbar anbietet, statt sie anzubieten und dann
+    stillschweigend etwas anderes zu rechnen."""
+    try:
+        import ecgdetectors  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def detect_r_peaks_validated_ex(signal: np.ndarray, sfreq: float,
+                                method: str = "hamilton") -> DetectorResult:
+    """Wie :func:`detect_r_peaks_validated`, gibt aber zusätzlich zurück, welcher Detektor
+    wirklich gelaufen ist. Für alles verwenden, was das Ergebnis benennt oder es dem eigenen
+    Detektor gegenüberstellt.
 
     Methoden: 'hamilton' (Hamilton 2002, robust — Default), 'pan_tompkins' (Pan-Tompkins 1985),
     'christov' (Christov 2004), 'engzee' (Engelse-Zeelenberg), 'two_average' (Elgendi 2013).
     """
+    def _fallback(reason: str) -> DetectorResult:
+        return DetectorResult(detect_r_peaks(signal, sfreq), "eigen", True, reason)
+
     try:
         from ecgdetectors import Detectors
     except Exception:
-        return detect_r_peaks(signal, sfreq)
+        return _fallback("py-ecg-detectors ist nicht installiert")
+
+    if method not in _VALIDATED_METHODS:
+        return _fallback(f"unbekannte Methode {method!r}")
+
     det = Detectors(float(sfreq))
     fn = {
         "hamilton": det.hamilton_detector, "pan_tompkins": det.pan_tompkins_detector,
         "christov": det.christov_detector, "engzee": det.engzee_detector,
         "two_average": det.two_average_detector,
-    }.get(method, det.hamilton_detector)
+    }[method]
     try:
         raw = fn(np.asarray(signal, dtype=float))
-    except Exception:
-        return detect_r_peaks(signal, sfreq)
+    except Exception as exc:
+        return _fallback(f"Detektor brach ab ({exc.__class__.__name__})")
     if len(raw) < 3:
-        return detect_r_peaks(signal, sfreq)
-    return refine_peaks(signal, raw, sfreq)
+        return _fallback(f"nur {len(raw)} R-Zacken erkannt (mind. 3 nötig)")
+    return DetectorResult(refine_peaks(signal, raw, sfreq), method, False)
+
+
+def detect_r_peaks_validated(signal: np.ndarray, sfreq: float,
+                             method: str = "hamilton") -> np.ndarray:
+    """Nur die Peaks — für Aufrufer, die das Ergebnis NICHT nach Methode benennen.
+    Wer beschriftet oder vergleicht, nimmt :func:`detect_r_peaks_validated_ex`."""
+    return detect_r_peaks_validated_ex(signal, sfreq, method).peaks
 
 
 def compute_rr_intervals(r_peaks: np.ndarray, sfreq: float) -> np.ndarray:

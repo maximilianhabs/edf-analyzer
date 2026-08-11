@@ -193,8 +193,14 @@ def _compute_hrv_corrected(edf_path, edf, segments):
 
 
 def _hrv_hamilton(edf):
-    """HRV-Zeitbereich mit validiertem R-Zacken-Detektor (Hamilton 2002)."""
-    from analysis.ecg import detect_r_peaks_validated, detect_polarity_flip, build_rr_series, compute_hrv_time_domain
+    """HRV-Zeitbereich mit validiertem R-Zacken-Detektor (Hamilton 2002).
+
+    Gibt `None` zurück, wenn Hamilton NICHT lief (Bibliothek fehlt o. Ä.). Bewusst kein
+    stiller Rückfall auf den eigenen Detektor: die Werte stehen im Report der Spalte
+    „Standard (eigen)" als *Vergleich* gegenüber — käme derselbe Detektor zweimal, zeigte die
+    Tabelle zwei identische Spalten und behauptete trotzdem einen Methodenvergleich."""
+    from analysis.ecg import (detect_r_peaks_validated_ex, detect_polarity_flip,
+                              build_rr_series, compute_hrv_time_domain)
     ch = edf["ecg_channels"][0]
     if ch not in edf.get("ch_idx", {}):
         return None
@@ -205,7 +211,10 @@ def _hrv_hamilton(edf):
     # invertiertem Kanal, siehe [[project_edf_rhythm_screening]].
     if detect_polarity_flip(sig - sig.mean(), fs):
         sig = -sig
-    rr = build_rr_series(detect_r_peaks_validated(sig, fs, "hamilton"), fs)
+    res = detect_r_peaks_validated_ex(sig, fs, "hamilton")
+    if res.fell_back:
+        return None
+    rr = build_rr_series(res.peaks, fs)
     if rr is None:
         return None
     return compute_hrv_time_domain(rr.rr_ms[~rr.artifact_mask])
@@ -459,6 +468,15 @@ def _add_validated(sections, edf, edf_path, has_ecg, em):
                 ["RMSSD (R-Zacken-Detektor)", _f(hf.get("rmssd")), _f(ham.get("rmssd_ms")), "ms", "sensibel für Timing-Präzision"],
                 ["pNN50 (R-Zacken-Detektor)", _f(hf.get("pnn50")), _f(ham.get("pnn50_pct")), "%", "Hamilton"],
             ]
+        elif hf:
+            # Grund nennen statt die Zeilen kommentarlos wegzulassen — sonst wirkt ein
+            # unvollständiger Report wie ein vollständiger.
+            from analysis.ecg import validated_detectors_available
+            _why = ("py-ecg-detectors nicht installiert"
+                    if not validated_detectors_available()
+                    else "validierter Detektor lieferte kein verwertbares Ergebnis")
+            rows.append(["R-Zacken-Detektor (Vergleich)", _f(hf.get("sdnn")), "—", "ms",
+                         f"kein Vergleich möglich: {_why}"])
         # DFA: eigen (nicht überlappend, nur α1) vs Standard-DFA (überlappend, α1+α2)
         try:
             from views.ecg_hrv import compute_rr as _crr
