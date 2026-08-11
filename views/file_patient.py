@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from analysis.hrv_reference import PEDIATRIC_AGE_GROUPS
+from core.i18n import tr
 from core.loader import check_privacy
 from core.shared import load_and_prepare
 
@@ -47,8 +48,8 @@ def _cleanup_old_uploads() -> None:
 
 
 def render():
-    st.title(":material/folder_open: Datei & Patient")
-    st.caption("Lade die EDF-Datei hoch und trage Alter/Geschlecht ein — gilt für die gesamte Analyse.")
+    st.title(":material/folder_open: " + tr("file_patient.title"))
+    st.caption(tr("file_patient.subtitle"))
 
     UPLOAD_DIR = _session_upload_dir()
 
@@ -66,17 +67,17 @@ def render():
     file_active = bool(st.session_state.edf_path) and os.path.exists(st.session_state.edf_path)
 
     with st.container(border=True):
-        st.subheader("EDF-Datei")
+        st.subheader(tr("file_patient.section_file"))
 
         if file_active:
             col_info, col_remove = st.columns([4, 1])
             with col_info:
-                st.success(f"**{st.session_state.edf_display_name}** ist geladen und aktiv verankert.")
-                st.caption("Diese Datei bleibt für die gesamte Sitzung aktiv. Zum Wechseln zuerst entfernen.")
+                st.success(tr("file_patient.file_active", name=st.session_state.edf_display_name))
+                st.caption(tr("file_patient.file_active_hint"))
             with col_remove:
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                if st.button("Entfernen", icon=":material/delete:", use_container_width=True,
-                             help="Datei aus der Anwendung entfernen, um eine neue hochzuladen"):
+                if st.button(tr("file_patient.remove"), icon=":material/delete:", use_container_width=True,
+                             help=tr("file_patient.remove_help")):
                     try:
                         os.remove(st.session_state.edf_path)
                     except OSError:
@@ -88,24 +89,15 @@ def render():
             # ── Ausstehender PHI-Disclaimer (aus vorherigem Upload) ───────────
             if st.session_state.get("phi_pending_path"):
                 _pending_name = st.session_state.get("phi_pending_name", "")
-                st.warning(
-                    f"**Datei enthält Patientendaten — Bestätigung erforderlich**\n\n"
-                    f"Die Datei **{_pending_name}** enthält identifizierende Informationen "
-                    f"im EDF-Header (Name, Fallnummer oder Aufnahmedatum).\n\n"
-                    f"**Empfehlung:** Verwende `anonymize.py` zur lokalen De-Identifikation "
-                    f"vor dem Upload — besonders für gemeinsam genutzte oder Server-basierte Umgebungen.\n\n"
-                    f"Für lokale Einzelnutzung (Alpha-/Beta-Test) kann die Datei mit Bestätigung "
-                    f"direkt geladen werden. Die Daten werden nicht gespeichert oder übertragen — "
-                    f"Verarbeitung erfolgt ausschließlich im lokalen Arbeitsspeicher dieser Sitzung."
-                )
+                st.warning(tr("file_patient.phi_warning", name=_pending_name))
                 _phi_accepted = st.checkbox(
-                    "Ich bestätige, dass ich zur Verarbeitung dieser Patientendaten berechtigt bin "
-                    "und die geltenden Datenschutzbestimmungen (DSGVO) einhalte.",
+                    tr("file_patient.phi_confirm"),
                     key="phi_disclaimer_checkbox",
                 )
                 col_load, col_cancel = st.columns([2, 1])
                 with col_load:
-                    if st.button("Datei trotzdem laden", icon=":material/check:", disabled=not _phi_accepted,
+                    if st.button(tr("file_patient.load_anyway"), icon=":material/check:",
+                                 disabled=not _phi_accepted,
                                  use_container_width=True, type="primary"):
                         st.session_state.edf_path = st.session_state.pop("phi_pending_path")
                         st.session_state.edf_display_name = st.session_state.pop("phi_pending_name", "")
@@ -113,7 +105,7 @@ def render():
                         st.session_state.phi_has_patient_data = True
                         st.rerun()
                 with col_cancel:
-                    if st.button("Abbrechen", icon=":material/close:", use_container_width=True):
+                    if st.button(tr("file_patient.cancel"), icon=":material/close:", use_container_width=True):
                         try:
                             os.remove(st.session_state.pop("phi_pending_path", ""))
                         except OSError:
@@ -122,7 +114,7 @@ def render():
                         st.rerun()
             else:
                 uploaded = st.file_uploader(
-                    ":material/folder_open: EDF-Datei hinzufügen — öffnet den Datei-Dialog (Finder)",
+                    ":material/folder_open: " + tr("file_patient.uploader_label"),
                     type=["edf"], accept_multiple_files=False,
                 )
                 if uploaded is not None:
@@ -151,37 +143,31 @@ def render():
         _edf_preview = None
 
     # ── Patient ───────────────────────────────────────────────────────────
-    # Altersgruppen → repräsentativer Mittelpunkt für Normwert-Formeln
+    # Altersgruppen: (sprachneutrale ID, Mittelpunkt für Normwert-Formeln, ist_pädiatrisch,
+    # Altersspanne). Die ID — NICHT das angezeigte Label — landet im Session-State und wird
+    # verglichen: ein übersetztes Label würde beim Sprachwechsel mitten in der Sitzung nicht
+    # mehr auf den gespeicherten Wert passen und die Auswahl still zurücksetzen.
     AGE_GROUPS = [
-        ("Kind (6–14 J.)",   10, True),
-        ("15–29 J.",         22, False),
-        ("30–44 J.",         37, False),
-        ("45–59 J.",         52, False),
-        ("60–74 J.",         67, False),
-        ("≥ 75 J.",          80, False),
+        ("age_child",   10, True,  (0, 14)),
+        ("age_15_29",   22, False, (15, 29)),
+        ("age_30_44",   37, False, (30, 44)),
+        ("age_45_59",   52, False, (45, 59)),
+        ("age_60_74",   67, False, (60, 74)),
+        ("age_75_plus", 80, False, (75, 200)),
     ]
-    AGE_LABELS = [g[0] for g in AGE_GROUPS]
+    AGE_IDS = [g[0] for g in AGE_GROUPS]
+    _DEFAULT_AGE_ID = "age_45_59"
 
-    def _age_label_for(age: int) -> str:
-        for label, mid, _ in AGE_GROUPS:
-            if label == "Kind (6–14 J.)" and age <= 14:
-                return label
-            if label == "15–29 J." and 15 <= age <= 29:
-                return label
-            if label == "30–44 J." and 30 <= age <= 44:
-                return label
-            if label == "45–59 J." and 45 <= age <= 59:
-                return label
-            if label == "60–74 J." and 60 <= age <= 74:
-                return label
-            if label == "≥ 75 J." and age >= 75:
-                return label
-        return "45–59 J."
+    def _age_id_for(age: int) -> str:
+        for gid, _mid, _ped, (lo, hi) in AGE_GROUPS:
+            if lo <= age <= hi:
+                return gid
+        return _DEFAULT_AGE_ID
 
     if "patient_age" not in st.session_state:
         st.session_state.patient_age = 52
     if "patient_age_label" not in st.session_state:
-        st.session_state.patient_age_label = _age_label_for(st.session_state.patient_age)
+        st.session_state.patient_age_label = _age_id_for(st.session_state.patient_age)
     if "patient_sex" not in st.session_state:
         st.session_state.patient_sex = "X"
     if "is_pediatric" not in st.session_state:
@@ -198,42 +184,43 @@ def render():
                 st.session_state.patient_sex = h_sex
 
     with st.container(border=True):
-        st.subheader("Patient")
+        st.subheader(tr("file_patient.section_patient"))
 
         col_age, col_sex = st.columns([3, 2])
 
         with col_age:
-            st.markdown("**Altersgruppe**")
-            cur_label = st.session_state.patient_age_label
-            if cur_label not in AGE_LABELS:
-                cur_label = AGE_LABELS[3]
-            age_label = st.selectbox(
-                "Altersgruppe", AGE_LABELS,
-                index=AGE_LABELS.index(cur_label),
+            st.markdown("**" + tr("file_patient.age_group") + "**")
+            cur_id = st.session_state.patient_age_label
+            if cur_id not in AGE_IDS:
+                cur_id = _DEFAULT_AGE_ID
+            age_id = st.selectbox(
+                tr("file_patient.age_group"), AGE_IDS,
+                index=AGE_IDS.index(cur_id),
+                format_func=lambda gid: tr(f"file_patient.{gid}"),
                 label_visibility="collapsed",
                 key="patient_age_group_widget",
             )
-            for lbl, mid, is_ped_grp in AGE_GROUPS:
-                if lbl == age_label:
+            for gid, mid, is_ped_grp, _span in AGE_GROUPS:
+                if gid == age_id:
                     st.session_state.patient_age = mid
-                    st.session_state.patient_age_label = lbl
+                    st.session_state.patient_age_label = gid
                     if is_ped_grp != st.session_state.is_pediatric:
                         st.session_state.is_pediatric = is_ped_grp
                     break
 
         with col_sex:
-            st.markdown("**Geschlecht**")
+            st.markdown("**" + tr("file_patient.sex") + "**")
             sx = st.session_state.patient_sex
             b1, b2, b3 = st.columns(3)
-            if b1.button("♂ M", type="primary" if sx == "M" else "secondary",
+            if b1.button(tr("file_patient.sex_male"), type="primary" if sx == "M" else "secondary",
                          use_container_width=True, key="sex_m"):
                 st.session_state.patient_sex = "M"
                 st.rerun()
-            if b2.button("♀ W", type="primary" if sx == "F" else "secondary",
+            if b2.button(tr("file_patient.sex_female"), type="primary" if sx == "F" else "secondary",
                          use_container_width=True, key="sex_f"):
                 st.session_state.patient_sex = "F"
                 st.rerun()
-            if b3.button("—", type="primary" if sx == "X" else "secondary",
+            if b3.button(tr("file_patient.sex_unknown"), type="primary" if sx == "X" else "secondary",
                          use_container_width=True, key="sex_x"):
                 st.session_state.patient_sex = "X"
                 st.rerun()
@@ -244,52 +231,53 @@ def render():
             if cur_grp not in grp_options:
                 cur_grp = grp_options[0]
             grp_val = st.selectbox(
-                "Pädiatrische Altersgruppe (Gąsior 2018)", grp_options,
+                tr("file_patient.pediatric_group"), grp_options,
                 index=grp_options.index(cur_grp),
                 key="pediatric_age_group_widget",
             )
             st.session_state.pediatric_age_group = grp_val
 
     if not edf_path or not os.path.exists(edf_path):
-        st.info("Bitte oben eine EDF-Datei hochladen, um die Vorschau zu sehen.", icon=":material/upload_file:")
+        st.info(tr("file_patient.upload_prompt"), icon=":material/upload_file:")
         return
 
     edf = _edf_preview if _edf_preview else load_and_prepare(edf_path)
 
     # ── Deskriptive Vorschau ──────────────────────────────────────────────
     st.divider()
-    st.subheader("Vorschau der Aufnahme")
+    st.subheader(tr("file_patient.section_preview"))
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Dauer", f"{edf['duration_s']/60:.1f} min")
-    c2.metric("Sampling", f"{edf['sfreq']:.0f} Hz")
-    c3.metric("Kanäle", len(edf["ch_names"]))
-    c4.metric("EKG-Kanäle erkannt", len(edf["ecg_channels"]))
+    c1.metric(tr("file_patient.metric_duration"), f"{edf['duration_s']/60:.1f} min")
+    c2.metric(tr("file_patient.metric_sampling"), f"{edf['sfreq']:.0f} Hz")
+    c3.metric(tr("file_patient.metric_channels"), len(edf["ch_names"]))
+    c4.metric(tr("file_patient.metric_ecg_detected"), len(edf["ecg_channels"]))
 
     col_l, col_r = st.columns(2)
     with col_l:
-        st.markdown("**Kanalzuordnung**")
+        st.markdown(tr("file_patient.channel_mapping"))
+        _c_type, _c_count, _c_ch = (tr("file_patient.col_type"), tr("file_patient.col_count"),
+                                    tr("file_patient.col_channels"))
         st.dataframe(pd.DataFrame([
-            {"Typ": "EEG (10-20)", "Anzahl": len(edf["eeg_map"]),
-             "Kanäle": ", ".join(sorted(edf["eeg_map"].keys()))},
-            {"Typ": "EKG (erkannt)", "Anzahl": len(edf["ecg_channels"]),
-             "Kanäle": ", ".join(edf["ecg_channels"]) or "—"},
+            {_c_type: tr("file_patient.type_eeg"), _c_count: len(edf["eeg_map"]),
+             _c_ch: ", ".join(sorted(edf["eeg_map"].keys()))},
+            {_c_type: tr("file_patient.type_ecg"), _c_count: len(edf["ecg_channels"]),
+             _c_ch: ", ".join(edf["ecg_channels"]) or "—"},
         ]), hide_index=True, use_container_width=True)
         sfreq = edf["sfreq"]
-        sfreq_note = ""
-        if sfreq < 500:
-            sfreq_note = " · <500 Hz — RMSSD-Präzision eingeschränkt"
-        st.caption(f"Format: EDF+D · Encoding: latin1 (NeuroFax) · **Abtastrate EKG: {sfreq:.0f} Hz**{sfreq_note}")
+        sfreq_note = tr("file_patient.sfreq_low_note") if sfreq < 500 else ""
+        st.caption(tr("file_patient.format_note", sfreq=sfreq, note=sfreq_note))
 
     with col_r:
-        st.markdown("**Klinische Annotations**")
+        st.markdown(tr("file_patient.annotations"))
         if edf["annotations"]:
+            _c_time, _c_event = tr("file_patient.col_time_s"), tr("file_patient.col_event")
             st.dataframe(
-                pd.DataFrame([{"Zeit (s)": a["onset_s"], "Ereignis": a["description"]}
+                pd.DataFrame([{_c_time: a["onset_s"], _c_event: a["description"]}
                               for a in edf["annotations"]]),
                 hide_index=True, use_container_width=True, height=220,
             )
         else:
-            st.caption("Keine Annotations in dieser Datei.")
+            st.caption(tr("file_patient.no_annotations"))
 
-    st.success("Datei geladen — wechsle links zu **EEG-Viewer** oder **EKG & HRV**, um die Analyse zu starten.")
+    st.success(tr("file_patient.loaded_success"))

@@ -76,6 +76,90 @@ STRINGS = {
             "filtering_eeg": "Filtere EEG…",
             "channel_override_reason": "Manuell geändert von {old} auf {new}",
         },
+        "file_patient": {
+            "title": "Datei & Patient",
+            "subtitle": "Lade die EDF-Datei hoch und trage Alter/Geschlecht ein — gilt für "
+                         "die gesamte Analyse.",
+            "section_file": "EDF-Datei",
+            "file_active": "**{name}** ist geladen und aktiv verankert.",
+            "file_active_hint": "Diese Datei bleibt für die gesamte Sitzung aktiv. Zum "
+                                 "Wechseln zuerst entfernen.",
+            "remove": "Entfernen",
+            "remove_help": "Datei aus der Anwendung entfernen, um eine neue hochzuladen",
+            "phi_warning": "**Datei enthält Patientendaten — Bestätigung erforderlich**\n\n"
+                            "Die Datei **{name}** enthält identifizierende Informationen im "
+                            "EDF-Header (Name, Fallnummer oder Aufnahmedatum).\n\n"
+                            "**Empfehlung:** Nutze den [edf-anonymizer]"
+                            "(https://github.com/maximilianhabs/edf-anonymizer) zur lokalen "
+                            "De-Identifikation vor dem Upload — besonders für gemeinsam "
+                            "genutzte oder Server-basierte Umgebungen.\n\n"
+                            "Für lokale Einzelnutzung (Alpha-/Beta-Test) kann die Datei mit "
+                            "Bestätigung direkt geladen werden. Die Daten werden nicht "
+                            "gespeichert oder übertragen — Verarbeitung erfolgt "
+                            "ausschließlich im lokalen Arbeitsspeicher dieser Sitzung.",
+            "phi_confirm": "Ich bestätige, dass ich zur Verarbeitung dieser Patientendaten "
+                            "berechtigt bin und die geltenden Datenschutzbestimmungen (DSGVO) "
+                            "einhalte.",
+            "load_anyway": "Datei trotzdem laden",
+            "cancel": "Abbrechen",
+            "uploader_label": "EDF-Datei hinzufügen — öffnet den Datei-Dialog",
+            "section_patient": "Patient",
+            "age_group": "Altersgruppe",
+            "sex": "Geschlecht",
+            "sex_male": "♂ M",
+            "sex_female": "♀ W",
+            "sex_unknown": "—",
+            "pediatric_group": "Pädiatrische Altersgruppe (Gąsior 2018)",
+            "upload_prompt": "Bitte oben eine EDF-Datei hochladen, um die Vorschau zu sehen.",
+            "section_preview": "Vorschau der Aufnahme",
+            "metric_duration": "Dauer",
+            "metric_sampling": "Sampling",
+            "metric_channels": "Kanäle",
+            "metric_ecg_detected": "EKG-Kanäle erkannt",
+            "channel_mapping": "**Kanalzuordnung**",
+            "col_type": "Typ",
+            "col_count": "Anzahl",
+            "col_channels": "Kanäle",
+            "type_eeg": "EEG (10-20)",
+            "type_ecg": "EKG (erkannt)",
+            "format_note": "Format: EDF+D · Encoding: latin1 (NeuroFax) · "
+                            "**Abtastrate EKG: {sfreq:.0f} Hz**{note}",
+            "sfreq_low_note": " · <500 Hz — RMSSD-Präzision eingeschränkt",
+            "annotations": "**Klinische Annotations**",
+            "col_time_s": "Zeit (s)",
+            "col_event": "Ereignis",
+            "no_annotations": "Keine Annotations in dieser Datei.",
+            "loaded_success": "Datei geladen — wechsle links zu **EEG-Viewer** oder "
+                               "**EKG & HRV**, um die Analyse zu starten.",
+            "age_child": "Kind (6–14 J.)",
+            "age_15_29": "15–29 J.",
+            "age_30_44": "30–44 J.",
+            "age_45_59": "45–59 J.",
+            "age_60_74": "60–74 J.",
+            "age_75_plus": "≥ 75 J.",
+        },
+        "eeg_viewer": {
+            "title": "EEG-Viewer",
+            "montage": "Montage (DGKN)",
+            "epoch_length": "Epochenlänge",
+            "uv_per_trace": "µV / Spur",
+            "freq_filter": "Frequenzfilter",
+            "time_constant": "Zeitkonstante / untere Grenzfreq.",
+            "upper_cutoff": "Obere Grenzfreq. (Hz)",
+            "ecg_lane_note": "EKG-Spur fix unten: **{ch}** (eigene mV-Skala)",
+            "missing_electrodes": "Für die Montage **{montage}** fehlen {n} Elektrode(n): "
+                                   "**{list}** — die betroffenen Ableitungen bleiben leer. "
+                                   "Häufig Fehlklassifikation (Artefakt/Muskel) → in "
+                                   "**Kanal-Identifikation** auf EEG korrigieren.",
+            "active_montage": "Aktive Montage",
+            "calibration_phase": "**Kalibrier-/Impedanzphase in dieser Epoche** (z. B. REC "
+                                  "START · IMP CHECK · A1+A2 OFF) — hier ist das EEG technisch "
+                                  "bedingt flach bzw. ungültig (gemeinsames Kalibriersignal "
+                                  "hebt sich in bipolarer Montage auf). Für echtes EEG eine "
+                                  "**spätere Epoche** wählen.",
+            "bandpass": "Bandpass: {low:.2f}–{high} Hz",
+            "annotations_prefix": "Annotations: ",
+        },
     },
     "en": {
         "nav": {
@@ -131,6 +215,90 @@ STRINGS = {
             "loading_edf": "Loading and processing EDF…",
             "filtering_eeg": "Filtering EEG…",
             "channel_override_reason": "Manually changed from {old} to {new}",
+        },
+        "file_patient": {
+            "title": "File & Patient",
+            "subtitle": "Upload the EDF file and enter age/sex — applies to the whole "
+                         "analysis.",
+            "section_file": "EDF file",
+            "file_active": "**{name}** is loaded and anchored.",
+            "file_active_hint": "This file stays active for the whole session. Remove it "
+                                 "first to switch to another one.",
+            "remove": "Remove",
+            "remove_help": "Remove the file from the app so a new one can be uploaded",
+            "phi_warning": "**File contains patient data — confirmation required**\n\n"
+                            "The file **{name}** contains identifying information in the EDF "
+                            "header (name, case number, or recording date).\n\n"
+                            "**Recommendation:** use [edf-anonymizer]"
+                            "(https://github.com/maximilianhabs/edf-anonymizer) for local "
+                            "de-identification before uploading — especially in shared or "
+                            "server-based environments.\n\n"
+                            "For local single-user use (alpha/beta testing) the file can be "
+                            "loaded directly after confirmation. The data is neither stored "
+                            "nor transmitted — processing happens exclusively in this "
+                            "session's local memory.",
+            "phi_confirm": "I confirm that I am authorized to process this patient data and "
+                            "that I comply with the applicable data protection regulations "
+                            "(GDPR).",
+            "load_anyway": "Load file anyway",
+            "cancel": "Cancel",
+            "uploader_label": "Add EDF file — opens the file dialog",
+            "section_patient": "Patient",
+            "age_group": "Age group",
+            "sex": "Sex",
+            "sex_male": "♂ M",
+            "sex_female": "♀ F",
+            "sex_unknown": "—",
+            "pediatric_group": "Pediatric age group (Gąsior 2018)",
+            "upload_prompt": "Please upload an EDF file above to see the preview.",
+            "section_preview": "Recording preview",
+            "metric_duration": "Duration",
+            "metric_sampling": "Sampling",
+            "metric_channels": "Channels",
+            "metric_ecg_detected": "ECG channels detected",
+            "channel_mapping": "**Channel mapping**",
+            "col_type": "Type",
+            "col_count": "Count",
+            "col_channels": "Channels",
+            "type_eeg": "EEG (10-20)",
+            "type_ecg": "ECG (detected)",
+            "format_note": "Format: EDF+D · encoding: latin1 (NeuroFax) · "
+                            "**ECG sample rate: {sfreq:.0f} Hz**{note}",
+            "sfreq_low_note": " · <500 Hz — limited RMSSD precision",
+            "annotations": "**Clinical annotations**",
+            "col_time_s": "Time (s)",
+            "col_event": "Event",
+            "no_annotations": "No annotations in this file.",
+            "loaded_success": "File loaded — switch to **EEG Viewer** or **ECG & HRV** on the "
+                               "left to start the analysis.",
+            "age_child": "Child (6–14 y.)",
+            "age_15_29": "15–29 y.",
+            "age_30_44": "30–44 y.",
+            "age_45_59": "45–59 y.",
+            "age_60_74": "60–74 y.",
+            "age_75_plus": "≥ 75 y.",
+        },
+        "eeg_viewer": {
+            "title": "EEG Viewer",
+            "montage": "Montage (DGKN)",
+            "epoch_length": "Epoch length",
+            "uv_per_trace": "µV / trace",
+            "freq_filter": "Frequency filter",
+            "time_constant": "Time constant / low cutoff",
+            "upper_cutoff": "High cutoff (Hz)",
+            "ecg_lane_note": "ECG lane fixed at the bottom: **{ch}** (own mV scale)",
+            "missing_electrodes": "Montage **{montage}** is missing {n} electrode(s): "
+                                   "**{list}** — the affected derivations stay empty. Often a "
+                                   "misclassification (artifact/muscle) → correct it to EEG "
+                                   "under **Channel Identification**.",
+            "active_montage": "Active montage",
+            "calibration_phase": "**Calibration/impedance phase in this epoch** (e.g. REC "
+                                  "START · IMP CHECK · A1+A2 OFF) — the EEG is technically "
+                                  "flat or invalid here (the common calibration signal cancels "
+                                  "out in a bipolar montage). Choose a **later epoch** for "
+                                  "real EEG.",
+            "bandpass": "Bandpass: {low:.2f}–{high} Hz",
+            "annotations_prefix": "Annotations: ",
         },
     },
 }

@@ -20,6 +20,11 @@ I18N_FILE = ROOT / "core" / "i18n.py"
 # tr("ns.key") / tr('ns.key') — auch mit führendem Modulpräfix (i18n.tr(...)) und Argumenten.
 T_CALL = re.compile(r"""\btr\(\s*["']([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)["']""")
 
+# tr(f"ns.{variable}") — dynamisch zusammengesetzter Schlüssel. Der konkrete Name steht erst
+# zur Laufzeit fest, deshalb kann Prüfung 3 (ungenutzt) für diesen Namensraum nur pauschal
+# ausgesetzt werden; die Prüfungen 1 und 2 greifen unverändert.
+T_CALL_DYNAMIC = re.compile(r"""\btr\(\s*f["']([a-zA-Z0-9_]+)\.\{""")
+
 
 def load_strings():
     """Liest STRINGS aus core/i18n.py per AST — kein Import, damit kein Streamlit nötig ist."""
@@ -38,6 +43,7 @@ def flat_keys(lang_dict):
 
 def collect_used_keys():
     used = {}
+    dynamic_ns = set()
     for path in sorted(ROOT.rglob("*.py")):
         if any(part in {".git", "tools", "tests", ".venv", "venv"} for part in path.parts):
             continue
@@ -46,14 +52,15 @@ def collect_used_keys():
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             for key in T_CALL.findall(line):
                 used.setdefault(key, []).append(f"{path.relative_to(ROOT)}:{lineno}")
-    return used
+            dynamic_ns.update(T_CALL_DYNAMIC.findall(line))
+    return used, dynamic_ns
 
 
 def main():
     strings = load_strings()
     langs = sorted(strings)
     per_lang = {lang: flat_keys(strings[lang]) for lang in langs}
-    used = collect_used_keys()
+    used, dynamic_ns = collect_used_keys()
     problems = []
 
     # 1. Struktur-Gleichheit zwischen den Sprachen
@@ -69,11 +76,17 @@ def main():
                 where = ", ".join(used[key][:3])
                 problems.append(f"[undefiniert] tr(\"{key}\") in {where} fehlt in Sprache '{lang}'")
 
-    # 3. Definiert, aber ungenutzt (nur Hinweis, kein Fehler)
-    unused = sorted(all_defined - set(used))
+    # 3. Definiert, aber ungenutzt (nur Hinweis, kein Fehler). Namensräume mit dynamisch
+    # zusammengesetzten Schlüsseln sind ausgenommen — dort liesse sich "ungenutzt" statisch
+    # nicht entscheiden, und eine Falschmeldung pro Lauf würde den Check wertlos machen.
+    unused = sorted(k for k in all_defined - set(used)
+                    if k.split(".", 1)[0] not in dynamic_ns)
 
     for p in problems:
         print("FEHLER: " + p)
+    if dynamic_ns:
+        print("Namensräume mit dynamischen Schlüsseln (von Prüfung 3 ausgenommen): "
+              + ", ".join(sorted(dynamic_ns)))
     if unused:
         print(f"\nHinweis: {len(unused)} definierte Schlüssel werden nirgends per tr() benutzt:")
         for key in unused:
