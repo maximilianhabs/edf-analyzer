@@ -43,8 +43,13 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
   Lizenz weniger zu führen, kleinere Angriffsfläche. Gegengeprüft: alle im Code
   vorkommenden externen Imports sind weiterhin deklariert (Abgleich des Import-Baums gegen
   `requirements*.txt`).
-- `NOTICE` ergänzt (Schriftlizenz SIL OFL, Drittbibliotheken). Lizenzangaben gegen die
-  installierten Paket-Metadaten geprüft, nicht aus dem Gedächtnis übernommen.
+- `NOTICE` ergänzt und faktenbasiert überarbeitet: Schriftlizenz (SIL OFL), alle direkten
+  Abhängigkeiten mit Lizenz, optionale Copyleft-Abhängigkeit getrennt ausgewiesen. Alle
+  Angaben aus den Paket-Metadaten der installierten Version ausgelesen
+  (`importlib.metadata`), nicht aus dem Gedächtnis. Dabei zwei eigene Fehler korrigiert:
+  **matplotlib** steht unter einer PSF-artigen Eigenlizenz, nicht unter BSD, und **MNE** lässt
+  sich aus den Metadaten gar nicht belegen (dort nur „OSI Approved") — beides steht jetzt so
+  da, statt eine plausible Lizenz zu behaupten. `matplotlib` fehlte zuvor ganz.
 - README: internes Betriebskapitel zu einem konkreten Server durch eine allgemeine
   Selbst-Hosting-Anleitung ersetzt.
 
