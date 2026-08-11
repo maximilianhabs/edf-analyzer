@@ -1,127 +1,166 @@
 # EDF-Analyzer
 
-**Ein browserbasiertes Forschungs- und Lehrwerkzeug zur quantitativen Auswertung von EEG- und EKG-Aufzeichnungen im European Data Format (EDF).** Es leitet aus Routine-Aufnahmen quantitative neurophysiologische und autonome (HRV-)Kennwerte ab — mit strikter Trennung zwischen bewährten Standard-Methoden und literatur-validierten Zusatzverfahren.
+**English · [Deutsch](README.de.md)**
+
+**A browser-based research and teaching tool for the quantitative analysis of EEG and ECG
+recordings in the European Data Format (EDF).** It derives quantitative neurophysiological and
+autonomic (HRV) measures from routine recordings — with a strict separation between
+established standard methods and literature-validated add-on procedures.
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.9-blue)
-![Status](https://img.shields.io/badge/status-aktiv%20·%20research%20prototype-orange)
+![Status](https://img.shields.io/badge/status-active%20·%20research%20prototype-orange)
 
-> ⚠️ **Kein Medizinprodukt, keine Diagnosesoftware.** Der EDF-Analyzer ist ein Werkzeug für Forschung, methodische Exploration und Lehre. Alle ausgegebenen Werte sind **Orientierung**, keine Diagnosekriterien, und ersetzen keine ärztliche Befundung.
+> ⚠️ **Not a medical device, not diagnostic software.** The EDF-Analyzer is a tool for
+> research, methodological exploration and teaching. All reported values are **orientation**,
+> not diagnostic criteria, and do not replace clinical assessment by a physician.
 
 ---
 
-## Was es macht
+## What it does
 
-Man lädt eine EDF-Datei hoch; die App erkennt automatisch die Kanaltypen (EEG/EKG/EOG/…), berechnet quantitative Marker (EEG-Spektralanalyse, HRV-Zeit- und Frequenzdomäne, Aperiodik, Komplexität) und erlaubt eine artefaktbereinigte Gegenauswertung sowie tabellarische und visuelle Reports.
+You upload an EDF file; the app automatically detects the channel types (EEG/ECG/EOG/…),
+computes quantitative markers (EEG spectral analysis, HRV time and frequency domain, aperiodic
+component, complexity), and allows an artifact-corrected parallel analysis as well as tabular
+and visual reports.
 
-## Warum es existiert
+The interface is available in **German and English** (switch in the sidebar). Clinical
+parameter names, units and reference values in tables remain in their established form.
 
-Kommerzielle EEG/EKG-Systeme geben quantitative Kennwerte oft als Blackbox aus — die zugrundeliegende Methodik ist selten transparent, herstellerabhängig und schwer nachzuvollziehen. Der EDF-Analyzer macht die Rechenwege **explizit und nachvollziehbar**: für jedes Verfahren ist dokumentiert, ob es einem publizierten Goldstandard folgt oder eine bewusste Vereinfachung ist (siehe [Wissenschaftliche Transparenz](#wissenschaftliche-transparenz)).
+## Why it exists
 
-## Schnellstart
+Commercial EEG/ECG systems often report quantitative measures as a black box — the underlying
+methodology is rarely transparent, differs between vendors, and is hard to retrace. The
+EDF-Analyzer makes the computations **explicit and traceable**: for every procedure it is
+documented whether it follows a published gold standard or is a deliberate simplification (see
+[Scientific transparency](#scientific-transparency)).
 
-**Mit Docker (empfohlen):**
+## Quick start
+
+**With Docker (recommended):**
 
 ```bash
 git clone https://github.com/maximilianhabs/edf-analyzer.git
 cd edf-analyzer
 docker build -t edf-analyzer .
-docker run -p 8501:8501 -e EDF_PASSWORD=deinPasswort edf-analyzer
+docker run -p 8501:8501 -e EDF_PASSWORD=yourPassword edf-analyzer
 ```
 
-**Lokal (Python 3.9):**
+**Locally (Python 3.9):**
 
 ```bash
 pip install -r requirements.txt
-EDF_PASSWORD=deinPasswort streamlit run app.py
+EDF_PASSWORD=yourPassword streamlit run app.py
 ```
 
-`EDF_PASSWORD` ist eine Pflicht-Umgebungsvariable — ohne sie startet die App aus
-Sicherheitsgründen nicht (kein Default-Passwort im Quellcode).
+`EDF_PASSWORD` is a required environment variable — without it the app refuses to start for
+security reasons (no default password in the source code).
 
-Danach [http://localhost:8501](http://localhost:8501) öffnen. Der Upload erwartet eine EDF-Datei (max. 200 MB).
+Then open [http://localhost:8501](http://localhost:8501). The upload expects an EDF file
+(max. 200 MB).
 
-## Funktionen
+## Features
 
-- **Kanal-Identifikation** — signalbasierter Classifier (EEG/EKG/EOG/EMG/Referenz/Vital) mit Konfidenz und manueller Korrektur.
-- **EEG-Spektralanalyse** — Welch/Multitaper-PSD, absolute/relative Bandpower, Alpha-Grundrhythmus, A/P-Gradient, hemisphärische Asymmetrie.
-- **Aperiodik (1/f)** — eigener Log-Log-Fit plus validierter FOOOF/specparam-Fit.
-- **Rhythmus-Screening** — vorgeschaltetes AFib-/Ektopie-Screening vor der HRV-Analyse: Artefakt-Filterung (Orphanidou 2015), Vorhofflimmern-Erkennung via CosEn (Lake & Moorman 2011) mit gestufter Sicherheit, P-Wellen-Nachweis via Schlag-Summation, Ektopie-Erkennung (Kompensationspause/QRS-Breite), Detektor-Umschaltung (eigen/Hamilton/Christov/Pan-Tompkins/…), automatische Polaritätskorrektur mit In-App-Diagnose.
-- **EKG & HRV** — QRS-Detektion, RR-Bereinigung, Zeitdomäne (SDNN/RMSSD/pNN50/CV/Poincaré), Frequenzdomäne (Welch + Burg, Lomb-Scargle), DFA α₁/α₂, autonome Gesamtaktivitäts-Warnung bei "starrer Herzfrequenz".
-- **Komplexität** — Sample Entropy, Lempel-Ziv, Permutationsentropie.
-- **Artefaktkorrektur** — regelbasierte Auto-Maske plus klickbares Editing; Gesamt- und bereinigte Auswertung laufen parallel.
-- **Reports** — tabellarischer PDF/Excel-Export (Gesamt vs. korrigiert) und ein visueller PDF-Abstract.
+- **Channel identification** — signal-based classifier (EEG/ECG/EOG/EMG/reference/vital) with
+  confidence scores and manual correction.
+- **EEG spectral analysis** — Welch/multitaper PSD, absolute/relative band power, alpha
+  background rhythm, A/P gradient, hemispheric asymmetry.
+- **Aperiodic component (1/f)** — own log-log fit plus a validated FOOOF/specparam fit.
+- **Rhythm screening** — AFib/ectopy screening upstream of the HRV analysis: artifact
+  filtering (Orphanidou 2015), atrial fibrillation detection via CosEn (Lake & Moorman 2011)
+  with graded certainty, P-wave detection via beat summation, ectopy detection (compensatory
+  pause/QRS width), switchable detectors (own/Hamilton/Christov/Pan-Tompkins/…), automatic
+  polarity correction with in-app diagnostics.
+- **ECG & HRV** — QRS detection, RR cleaning, time domain (SDNN/RMSSD/pNN50/CV/Poincaré),
+  frequency domain (Welch + Burg, Lomb-Scargle), DFA α₁/α₂, autonomic overall-activity warning
+  for a "rigid heart rate".
+- **Complexity** — sample entropy, Lempel-Ziv, permutation entropy.
+- **Artifact correction** — rule-based auto mask plus click-based editing; the total and the
+  corrected analysis run in parallel.
+- **Reports** — tabular PDF/Excel export (total vs. corrected) and a visual PDF abstract.
 
-## Wissenschaftliche Transparenz
+## Scientific transparency
 
-Der Anspruch ist methodische Ehrlichkeit statt Feature-Marketing. Eine zentrale Registry (`analysis/methods.py`) klassifiziert **alle 22 eingesetzten Verfahren**:
+The aim is methodological honesty rather than feature marketing. A central registry
+(`analysis/methods.py`) classifies **all 22 procedures in use**:
 
-| Status | Anzahl | Bedeutung |
+| Status | Count | Meaning |
 |---|---|---|
-| ✅ validiert | 15 | folgt einem publizierten Standard (z. B. Task Force 1996 für HRV, Pan & Tompkins 1985, FOOOF/Donoghue 2020, Nuwer für Asymmetrie) |
-| 🟡 vereinfacht | 6 | funktionsfähige, bewusst vereinfachte Variante — als solche gekennzeichnet |
-| 🔬 Proxy | 1 | explorativer Ersatzmarker, nicht klinisch etabliert |
+| ✅ validated | 15 | follows a published standard (e.g. Task Force 1996 for HRV, Pan & Tompkins 1985, FOOOF/Donoghue 2020, Nuwer for asymmetry) |
+| 🟡 simplified | 6 | working but deliberately simplified variant — labeled as such |
+| 🔬 proxy | 1 | exploratory surrogate marker, not clinically established |
 
-Nach dem **Add-on-Prinzip** bleiben die bewährten Standard-Methoden unverändert; für jede vereinfachte Default-Methode existiert ein validiertes Pendant zum direkten Vergleich in der Rubrik „Erweiterte Analysen". Es wird nichts stillschweigend umgestellt.
+Following the **add-on principle**, the established standard methods stay unchanged; for every
+simplified default method a validated counterpart exists for direct comparison under "Advanced
+Analyses". Nothing is switched over silently.
 
-## Limitationen
+## Limitations
 
-- **Nicht klinisch validiert.** Es existiert (noch) keine prospektive Validierung gegen etablierte Referenzsysteme oder annotierte Datensätze (z. B. MIT-BIH). Ergebnisse sind explorativ.
-- **Artefakterkennung** ist regelbasiert und konservativ, bislang an wenigen Aufnahmen erprobt — keine ICA/autoreject-basierte Korrektur.
-- **HRV-Frequenzdomäne** benötigt ausreichend lange, stationäre Abschnitte (Task Force: ≥ 5 min); kurze Aufnahmen liefern hier bewusst keine Werte.
-- **Keine Normdatenbank** — angezeigte Normbereiche sind Literatur-Orientierungswerte, keine alters-/geschlechtsadjustierten Referenzkohorten.
+- **Not clinically validated.** There is (as yet) no prospective validation against
+  established reference systems or annotated datasets (e.g. MIT-BIH). Results are exploratory.
+- **Artifact detection** is rule-based and conservative, so far tried on few recordings — no
+  ICA/autoreject-based correction.
+- **HRV frequency domain** requires sufficiently long, stationary segments (Task Force:
+  ≥ 5 min); for short recordings it deliberately reports no values.
+- **No normative database** — the reference ranges shown are orientation values from the
+  literature, not age-/sex-adjusted reference cohorts.
 
-## Datenschutz
+## Privacy
 
-- EDF-Dateien sind **im Repository nicht enthalten** und werden per `.gitignore` ausgeschlossen — es sind keinerlei Patientendaten Teil des Projekts.
-- Beim Upload prüft die App den EDF-Header auf identifizierende Angaben; ein Standalone-Skript (`anonymize.py`) kann Header anonymisieren.
-- Hochgeladene Dateien liegen in einem sitzungseigenen Temp-Ordner und werden durch einen Cleanup-Daemon nach spätestens ~4 h automatisch gelöscht.
-- Wer EDF-Dateien schon *vor* dem Upload lokal anonymisieren möchte, kann dafür das eigenständige Begleit-Tool [edf-anonymizer](https://github.com/maximilianhabs/edf-anonymizer) nutzen — dependency-freies CLI plus optionale Web-Oberfläche, läuft komplett offline auf dem eigenen Rechner.
+- EDF files are **not part of this repository** and are excluded via `.gitignore` — no patient
+  data whatsoever is part of the project.
+- On upload the app checks the EDF header for identifying entries; a standalone script
+  (`anonymize.py`) can anonymize headers.
+- Uploaded files live in a session-specific temp folder and are deleted automatically by a
+  cleanup daemon after at most ~4 h.
+- To anonymize EDF files locally *before* uploading, use the standalone companion tool
+  [edf-anonymizer](https://github.com/maximilianhabs/edf-anonymizer) — a dependency-free CLI
+  plus optional web UI that runs entirely offline on your own machine.
 
-## Sicherheit
+## Security
 
-Der App-Zugang ist per Passwort geschützt (`EDF_PASSWORD`, Pflicht-Umgebungsvariable, siehe
-Schnellstart). Bis 2026-08-10 hatte der Quellcode ein Default-Passwort als Fallback hinterlegt,
-falls die Variable fehlte — das war insofern ein Fehler, als das Repo damals (noch privat) für
-eine öffentliche Veröffentlichung vorbereitet wurde und dieser Fallback dann für jeden
-einsehbar gewesen wäre. Behoben, bevor das Repo öffentlich ging: kein Fallback mehr, die App
-startet ohne gesetzte Variable nicht. Details siehe [CHANGELOG.md](CHANGELOG.md). Sollte dir
-ein sicherheitsrelevantes Problem auffallen, bitte über ein
-[GitHub Security Advisory](https://github.com/maximilianhabs/edf-analyzer/security/advisories/new)
-statt über ein öffentliches Issue melden.
+Access to the app is password-protected (`EDF_PASSWORD`, required environment variable, see
+[Quick start](#quick-start)). Until 2026-08-10 the source code carried a default password as a
+fallback in case the variable was missing — a mistake insofar as the repository was being
+prepared for public release at the time, which would have made that fallback readable by
+anyone. Fixed before the repository went public: no fallback anymore, the app does not start
+without the variable set. See [CHANGELOG.md](CHANGELOG.md) for details, and
+[SECURITY.md](SECURITY.md) for how to report a security issue (please use a private advisory
+rather than a public issue).
 
-## Tech-Stack
+## Tech stack
 
-Python 3.9 · Streamlit · MNE · SciPy/NumPy/pandas · pyedflib · FOOOF · py-ecg-detectors · reportlab/openpyxl. Vollständige Liste in [`requirements.txt`](requirements.txt).
+Python 3.9 · Streamlit · MNE · SciPy/NumPy/pandas · pyedflib · FOOOF · py-ecg-detectors ·
+reportlab/openpyxl. Full list in [`requirements.txt`](requirements.txt).
 
-## Projektstatus & Verantwortung
+## Project status & responsibility
 
-Aktiv entwickeltes Forschungsprojekt eines einzelnen Autors und Maintainers. Die **inhaltliche und wissenschaftliche Verantwortung** — Methodenauswahl, Bewertung, Testung — liegt bei **Maximilian Habs** (Facharzt für Neurologie). Teile des Codes wurden mit KI-Unterstützung erstellt; die fachliche Prüfung und Freigabe erfolgt manuell durch den Autor.
+An actively developed research project with a single author and maintainer. **Scientific and
+content responsibility** — choice of methods, assessment, testing — lies with **Maximilian
+Habs** (consultant neurologist). Parts of the code were written with AI assistance; review and
+approval are done manually by the author.
 
-Fehler und Vorschläge bitte über die [Issues](https://github.com/maximilianhabs/edf-analyzer/issues).
+Please report bugs and suggestions via
+[Issues](https://github.com/maximilianhabs/edf-analyzer/issues).
 
-## Lizenz
+## Self-hosting
+
+The app is an ordinary Streamlit application and runs anywhere Docker is available. Behind a
+reverse proxy (nginx, Caddy, Traefik) two things matter:
+
+- **Pass through the WebSocket upgrade** — Streamlit needs it, otherwise the page hangs while
+  loading.
+- **Set `EDF_PASSWORD` as an environment variable** (see [Quick start](#quick-start)); without
+  it the app will not start.
+
+If you expose the app publicly, put TLS in front of it and — depending on your use case —
+restrict access at the network level. Anyone processing personal recordings is themselves
+responsible for compliance; see [Privacy](#privacy).
+
+## License
 
 [Apache License 2.0](LICENSE) © 2026 Maximilian Habs.
 
-## Betrieb auf neuro-vibe.de
+## More
 
-Der Reverse Proxy dieses Servers gehört zum Dienstwerk-Stack und liest
-ausschliesslich `~/nz-dienstplan/Caddyfile`. Änderungen an einem Caddyfile in
-diesem Projekt wirken auf dem Server **nicht**.
-
-Vor jeder Änderung am Routing — und bevor eine neue Subdomain eingerichtet
-wird — gilt: **nz-dienstplan/docs/RUNBOOK-caddy.md** lesen.
-
-Kurzfassung der wichtigsten Falle: Das Caddyfile ist als *einzelne Datei*
-eingehängt. Docker bindet dabei die Inode, nicht den Pfad — ein `git pull`
-ersetzt die Datei, und der Container arbeitet mit der alten weiter.
-`caddy reload` meldet dann Erfolg und lädt trotzdem den alten Stand. So war
-das Caddyfile vom 22.06. bis 01.08.2026 unbemerkt eingefroren.
-
-Deshalb nach jeder Änderung **neu starten**, nicht neu laden:
-
-```bash
-cd ~/nz-dienstplan && docker compose -f docker-compose.prod.yml restart caddy
-bash ~/nz-dienstplan/scripts/caddy-pruefen.sh      # Erfolgskontrolle
-```
+[Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)

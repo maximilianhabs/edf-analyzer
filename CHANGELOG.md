@@ -5,6 +5,19 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased] — Vorbereitung der öffentlichen Veröffentlichung
 
+### Hinzugefügt
+- **DE/EN-Sprachumschalter** in der Oberfläche (`core/i18n.py`), Wahl per Cookie gespeichert.
+  Übersetzt ist alles, was zum Bedienen nötig ist (Navigation, Buttons, Auswahlfelder,
+  Hilfe- und Hinweistexte); klinische Parameternamen, Einheiten und Referenzwerte in Tabellen
+  bleiben in ihrer etablierten Form. `tools/check_i18n.py` prüft die Vollständigkeit.
+- `SECURITY.md` — wie Sicherheitsprobleme zu melden sind, plus Betriebshinweis zur Reichweite
+  des Passwort-Gates.
+- README zweisprachig: `README.md` (Englisch) und `README.de.md` (Deutsch).
+
+### Geändert
+- README: internes Betriebskapitel zu einem konkreten Server durch eine allgemeine
+  Selbst-Hosting-Anleitung ersetzt.
+
 ### Sicherheit
 - **Hartcodiertes Default-Passwort entfernt** (`core/auth.py`): Der Login-Schutz nutzte bisher
   `os.environ.get("EDF_PASSWORD", "<Default>")` — ein im Quellcode sichtbarer Fallback-Wert,
