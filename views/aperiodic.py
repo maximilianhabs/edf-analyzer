@@ -4,6 +4,7 @@ import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 
+from core.i18n import tr
 from core.shared import load_and_prepare, apply_channel_overrides, section_header, get_patient_info, kpi_tile
 from analysis.aperiodic import welch_psd, fit_aperiodic, corrected_peak
 from views.eeg_spectrum import _highpass, _alpha_band, BANDS
@@ -116,7 +117,7 @@ def _exponent_hint(exp: float, age) -> str:
 
 
 def render():
-    st.title(":material/waves: Aperiodische Komponente (1/f)")
+    st.title(":material/waves: " + tr("aperiodic.title"))
 
     # ── Biomarker-Headline (Biologie zuerst) ──────────────────────────────────
     st.markdown(
@@ -135,7 +136,7 @@ def render():
     )
 
     # ── Wie funktioniert die Trennung? (Kurzfassung) ──────────────────────────
-    with st.expander("Wie wird das gemessen? (Trennung von Hintergrund & Rhythmus)"):
+    with st.expander(tr("aperiodic.how_measured")):
         st.markdown(
             "Ein EEG-Spektrum ist die **Summe** aus (1) dem **1/f-Hintergrund** (aperiodisch, eine "
             "schräg abfallende Kurve *ohne* echten Rhythmus — ihre **Steilheit** ist der Exponent) "
@@ -150,17 +151,17 @@ def render():
 
     edf_path = st.session_state.get("edf_path", "")
     if not edf_path:
-        st.info("Bitte zuerst auf **Datei & Patient** eine EDF-Datei laden.", icon=":material/folder_open:")
+        st.info(tr("aperiodic.load_file_first"), icon=":material/folder_open:")
         return
     if not st.session_state.get("phi_validated"):
-        st.error("Datei wurde nicht durch den Datenschutz-Check validiert. Bitte erneut hochladen.", icon=":material/block:")
+        st.error(tr("shared.phi_not_validated"), icon=":material/block:")
         return
 
     edf = apply_channel_overrides(load_and_prepare(edf_path))
     fs = edf["sfreq"]
     eeg_map = edf["eeg_map"]
     if not eeg_map:
-        st.warning("Keine EEG-Kanäle (10-20) erkannt.")
+        st.warning(tr("aperiodic.no_eeg"))
         return
 
     age, _sex = get_patient_info()
@@ -188,7 +189,7 @@ def render():
     st.markdown("---")
     c1, c2 = st.columns([2, 3])
     with c1:
-        ch = st.selectbox("Kanal", all_eeg, index=all_eeg.index(default_ch),
+        ch = st.selectbox(tr("aperiodic.channel"), all_eeg, index=all_eeg.index(default_ch),
                           key="aper_channel", format_func=_ch_fmt)
     with c2:
         st.markdown(
@@ -198,7 +199,7 @@ def render():
             unsafe_allow_html=True,
         )
 
-    with st.expander("Welchen Kanal wählen?", icon=":material/info:"):
+    with st.expander(tr("aperiodic.which_channel"), icon=":material/info:"):
         st.markdown(
             "- **⭐ Posterior (O1, O2, Pz, P3, P4)** — beste Wahl: klarster "
             "Alpha-Gipfel und sauberes Signal → der 1/f-Fit ist am zuverlässigsten.\n"
@@ -213,11 +214,11 @@ def render():
     sig = _get(ch)
     freqs, psd = welch_psd(sig, fs, fmax=FIT_HI + 5)
     if freqs is None:
-        st.warning("Signal zu kurz für die Spektralschätzung.")
+        st.warning(tr("aperiodic.signal_too_short"))
         return
     res = fit_aperiodic(freqs, psd, fmin=FIT_LO, fmax=FIT_HI)
     if res is None:
-        st.warning("Aperiodischer Fit nicht möglich (zu wenige Frequenzpunkte).")
+        st.warning(tr("aperiodic.fit_impossible"))
         return
     # Zusätzlicher Fit im 1–20-Hz-Fenster (Maschke 2025: diagnostisch/prognostisch stärker)
     res20 = fit_aperiodic(freqs, psd, fmin=FIT_LO, fmax=20.0)
@@ -229,7 +230,7 @@ def render():
     apf_corr = corrected_peak(res, a_lo, a_hi)
 
     # ── Kennzahlen ────────────────────────────────────────────────────────────
-    section_header("Kennzahlen", f"Kanal {ch} · Fit 1–40 & 1–20 Hz")
+    section_header(tr("aperiodic.metrics"), f"Kanal {ch} · Fit 1–40 & 1–20 Hz")
     _r2_zone = "normal" if r2 >= 0.95 else ("grenzwertig" if r2 >= 0.90 else "pathologisch")
     _r2_col = {"normal": "#27ae60", "grenzwertig": "#e67e22", "pathologisch": "#c0392b"}[_r2_zone]
     _r2_txt = {"normal": "guter Fit", "grenzwertig": "mäßiger Fit", "pathologisch": "schwacher Fit"}[_r2_zone]
@@ -274,7 +275,7 @@ def render():
         )
 
     # ── Plot 1: Zerlegung im log-log-Raum ─────────────────────────────────────
-    section_header("Spektrale Zerlegung", "log-log: Original vs. aperiodischer Fit")
+    section_header(tr("aperiodic.spectral_decomposition"), tr("aperiodic.spectral_decomposition_sub"))
     f = res["freqs"]
     fig1 = go.Figure()
     # Band-Hintergründe. WICHTIG: Plotly transformiert bei Annotations (anders als bei
@@ -318,7 +319,7 @@ def render():
     )
 
     # ── Plot 2: Untergrund-bereinigtes Spektrum (Verhältnis) ──────────────────
-    section_header("Untergrund-bereinigtes Spektrum", "Vielfaches über dem 1/f-Untergrund")
+    section_header(tr("aperiodic.corrected_spectrum"), tr("aperiodic.corrected_spectrum_sub"))
     ratio = res["ratio"]
     fig2 = go.Figure()
     for bname, (lo, hi), bcol in BANDS:
@@ -349,7 +350,7 @@ def render():
     )
 
     # ── Kanal-Übersicht ───────────────────────────────────────────────────────
-    section_header("Exponent je Kanal", "Konsistenz-Check & Kanalwahl")
+    section_header(tr("aperiodic.exponent_per_channel"), tr("aperiodic.exponent_per_channel_sub"))
     _overview_chs = list(dict.fromkeys(_RECOMMENDED + [ch]))  # empfohlene + aktiver Kanal, keine Dubletten
     _exps = _all_channel_exponents(edf_path, FIT_LO, FIT_HI, channels=_overview_chs,
                                    overrides_key=str(sorted(st.session_state.get("channel_overrides", {}).items())))
@@ -392,7 +393,7 @@ def render():
 
     # ── Appendix ──────────────────────────────────────────────────────────────
     st.markdown("---")
-    with st.expander("Was ist die aperiodische Komponente? — Methodik & Literatur", icon=":material/menu_book:", expanded=False):
+    with st.expander(tr("aperiodic.methodology"), icon=":material/menu_book:", expanded=False):
         st.markdown(
             """
 ### Die zwei Anteile des EEG-Spektrums

@@ -19,6 +19,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+from core.i18n import tr
 from core.shared import get_edf_or_stop, section_header, safe_slider, render_banner, status_dot
 from analysis.ecg import detect_r_peaks_validated
 from analysis.ecg_quality import sqi_segments
@@ -92,7 +93,7 @@ def _detect_flip_diagnostic(edf_path: str, ch: str):
 
 
 def render():
-    st.title(":material/monitor_heart: Rhythmus-Screening")
+    st.title(":material/monitor_heart: " + tr("rhythm.title"))
     st.caption(
         "Add-on — prüft auf Vorhofflimmern-Verdacht (CosEn, Lake & Moorman 2011) und "
         "Extrasystolen-Hinweise (Kompensationspause + QRS-Breite), VOR der eigentlichen "
@@ -104,14 +105,12 @@ def render():
     all_non_eeg = [c for c in edf["ch_idx"].keys() if c not in edf.get("eeg_map", {})]
     cch1, cch2 = st.columns([1, 1])
     ch = cch1.selectbox(
-        "EKG-Kanal", ecg_channels + [c for c in all_non_eeg if c not in ecg_channels],
+        tr("rhythm.ecg_channel"), ecg_channels + [c for c in all_non_eeg if c not in ecg_channels],
         index=0, key="rhythm_ch",
     )
     det_label = cch2.selectbox(
-        "R-Zacken-Detektor", list(DETECTOR_METHODS.keys()), index=0, key="rhythm_detector",
-        help="Der eigene Detektor bleibt Default (bewährt). Bei Zweifeln/unklaren Fällen "
-             "auf einen validierten Detektor umschalten und vergleichen — beeinflusst das "
-             "gesamte Rhythmus-Screening dieser Seite (Artefakte/AFib/Ektopie/P-Welle).",
+        tr("rhythm.detector"), list(DETECTOR_METHODS.keys()), index=0, key="rhythm_detector",
+        help=tr("rhythm.detector_help"),
     )
     det_method = DETECTOR_METHODS[det_label]
     if det_method is not None:
@@ -144,7 +143,7 @@ def render():
         # DIESER konkreten Aufnahme sichtbar, statt nur zu behaupten. Zeigt exakt den Fehler,
         # den `views/ecg_hrv.py::compute_rr()` aktuell noch macht (Peak-Verfeinerung VOR dem
         # Flip) — Aufklärung, kein Ersatz für den noch ausstehenden Fix dort.
-        with st.expander("Polaritäts-Check: Analyse mit vs. ohne Korrektur anzeigen", icon=":material/search:"):
+        with st.expander(tr("rhythm.polarity_check"), icon=":material/search:"):
             diag = _detect_flip_diagnostic(edf_path, ch)
             st.markdown(
                 "**Warum das wichtig ist:** Die Peak-Verfeinerung sucht per `argmax()` den "
@@ -183,8 +182,8 @@ def render():
     removed = st.session_state[ov_key]
     peaks = np.array([p for p in peaks_all if int(p) not in removed])
     if len(peaks) < 4:
-        st.warning("Zu wenige R-Zacken nach manueller Korrektur — Entfernungen zurücksetzen?")
-        if st.button("Manuelle Korrekturen zurücksetzen"):
+        st.warning(tr("rhythm.too_few_rpeaks"))
+        if st.button(tr("rhythm.reset_manual")):
             st.session_state[ov_key] = set()
             st.rerun()
         return
@@ -249,7 +248,7 @@ def render():
         + "</div>", unsafe_allow_html=True)
 
     # ── Ampel-Übersicht ─────────────────────────────────────────────────────
-    section_header("Ampel-Übersicht", f"Kanal {ch} · {dur_s/60:.1f} min · "
+    section_header(tr("rhythm.traffic_light"), f"Kanal {ch} · {dur_s/60:.1f} min · "
                    f"{len(peaks)} R-Zacken ({len(removed)} manuell entfernt)")
     if rhythm["verdict"] == "afib_verdaechtig":
         _conf = rhythm.get("confidence") or "verdacht"
@@ -320,7 +319,7 @@ def render():
         f"({len(bad_zones)} als Artefakt markiert).</div>", unsafe_allow_html=True)
 
     # ── 1-Minuten-Fenster-Navigator ──────────────────────────────────────────
-    section_header("1-Minuten-Fenster-Navigator", "Rohsignal · R-Zacken farbcodiert · Artefakt-Zonen schattiert")
+    section_header(tr("rhythm.window_navigator"), tr("rhythm.window_navigator_sub"))
     # Kurzen "Rest" (< 25% eines Fensters, z. B. 1s bei 10:01min) ins letzte reguläre Fenster
     # verschmelzen statt ein fast leeres Extra-Fenster zu erzeugen (User-Feedback 2026-08-08).
     n_full = int(dur_s // WIN_S)
@@ -457,7 +456,7 @@ def render():
         "Fehldetektion). Rot schattiert = automatisch als Artefakt verworfener Bereich."
     )
     if removed:
-        if st.button(f"↺ Alle {len(removed)} manuellen Entfernungen zurücksetzen"):
+        if st.button(tr("rhythm.reset_all_removals", n=len(removed))):
             st.session_state[ov_key] = set()
             st.rerun()
 
@@ -489,12 +488,12 @@ def render():
     # Schlag-Summation (User-Anregung 2026-08-08): alle R-Zacken des aktuellen Fensters
     # ausgerichtet und gemittelt — zeigt P-QRS-T als ein Diagramm. Läuft auf JEDEM Fenster,
     # unabhängig vom Rhythmus-Urteil. Details/Methodik siehe analysis/p_wave_analysis.py.
-    section_header("PQRST-Ensemble & P-Welle", "Schlag-Summation des aktuellen Fensters — "
+    section_header(tr("rhythm.pqrst_ensemble"), "Schlag-Summation des aktuellen Fensters — "
                    "zweite, RR-unabhängige AFib-Evidenz (P-Wellen-Kohärenz statt Amplitude)")
     _pw = p_analyze_window(sig_filt, peaks, fs, t0, t1)
     if _pw is None:
-        st.info("Zu wenige vollständige Schläge in diesem Fenster für die Ensemble-Analyse "
-                "(braucht mind. 5 Schläge mit vollem ±450ms-Rand).")
+        st.info(tr("rhythm.too_few_beats_ensemble")
+                + "(braucht mind. 5 Schläge mit vollem ±450ms-Rand).")
     else:
         _pw_col = {"sichtbar": "#27ae60", "eingeschraenkt": "#e67e22",
                   "nicht_abgrenzbar": "#c0392b", "nicht_auswertbar": "#7f8c8d"}[_pw["verdict"]]
@@ -538,7 +537,7 @@ def render():
     # Echte Befunde, keine Artefakte: HF außerhalb 40-180bpm oder extreme RR-Variabilität
     # (z. B. schnelles AFib). Bewusst separat von der roten Artefakt-Galerie (amber statt rot).
     if notable_zones:
-        section_header("Auffällige Abschnitte", f"{len(notable_zones)} Abschnitte mit auffälliger "
+        section_header(tr("rhythm.notable_sections"), f"{len(notable_zones)} Abschnitte mit auffälliger "
                        "Herzfrequenz/RR-Variabilität — kein Artefakt, sondern möglicher Befund")
         n_show_n = min(6, len(notable_zones))
         step_n = max(1, len(notable_zones) // n_show_n)
@@ -564,7 +563,7 @@ def render():
 
     # ── Artefakt-Galerie ──────────────────────────────────────────────────────
     if bad_zones:
-        section_header("Artefakt-Galerie", f"Exemplarische Ausschnitte der {len(bad_zones)} verworfenen Abschnitte")
+        section_header(tr("rhythm.artifact_gallery"), tr("rhythm.artifact_gallery_sub", n=len(bad_zones)))
         n_show = min(6, len(bad_zones))
         step = max(1, len(bad_zones) // n_show)
         sample_zones = bad_zones[::step][:n_show]
@@ -587,7 +586,7 @@ def render():
                                 key=f"artgallery_{i}")
                 st.caption(f"t={b0/60:.2f}–{b1/60:.2f}min · {reason}")
 
-    with st.expander("Was bedeutet das? — Methodik", icon=":material/menu_book:", expanded=False):
+    with st.expander(tr("rhythm.methodology"), icon=":material/menu_book:", expanded=False):
         st.markdown(
             "**Ablauf:** ① Signalqualität prüfen (Orphanidou et al. 2015, angepasste Schwellen) "
             "→ ② Vorhofflimmern-Screening (CosEn, Lake & Moorman 2011) auf den verbleibenden, "
@@ -600,8 +599,8 @@ def render():
             "können oben per Klick entfernt werden."
         )
 
-    with st.expander("Stufe①-Regeln im Detail — wonach wird ein 10s-Segment als Artefakt "
-                     "verworfen?", icon=":material/science:", expanded=False):
+    with st.expander(tr("rhythm.stage1_rules")
+                     + "verworfen?", icon=":material/science:", expanded=False):
         st.markdown(
             "Jedes 10s-Segment durchläuft bis zu 6 Regeln (`analysis/ecg_quality.py`). Ein "
             "Segment gilt als **Artefakt** (wird von CosEn/Ektopie-Erkennung ausgeschlossen), "

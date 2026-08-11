@@ -10,6 +10,7 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 
+from core.i18n import tr
 from core.shared import (apply_global_style, section_header, get_edf_or_stop,
                          load_and_prepare, apply_channel_overrides, safe_slider)
 
@@ -63,7 +64,7 @@ def _detect_all(edf_path: str, ch: str):
 
 def _render_methods_table():
     from analysis.methods import METHODS
-    section_header("Methoden & Validität", "Welche Verfahren, welche Referenz, welcher Reifegrad")
+    section_header(tr("advanced.methods_validity"), tr("advanced.methods_validity_sub"))
     st.dataframe(pd.DataFrame(
         [{"Bereich": b, "Parameter": p, "Verfahren": v, "Referenz": r, "Reifegrad": m}
          for b, p, v, r, m in METHODS],
@@ -75,20 +76,20 @@ def _render_methods_table():
 
 
 def _render_rpeak_visual(edf, edf_path):
-    section_header("R-Zacken-Detektor — Vergleich & visuelle Kontrolle",
+    section_header(tr("advanced.detector_comparison"),
                    "Validierte Detektoren neben dem bewährten eigenen — mit Roh-EKG-Overlay")
     _default_vs_alt_badge("eigener Detektor (vereinfachtes Pan-Tompkins)",
                           "Hamilton 2002 / Pan-Tompkins (validiert, py-ecg-detectors)")
     ecg_channels = edf.get("ecg_channels") or []
     if not ecg_channels:
-        st.info("Kein EKG-Kanal identifiziert.")
+        st.info(tr("advanced.no_ecg"))
         return
 
     sf = edf["sfreq"]
     dur = edf["duration_s"]
     c1, c2 = st.columns([2, 3])
-    ch = c1.selectbox("EKG-Kanal", ecg_channels)
-    overlay = c2.multiselect("Overlay-Detektoren", list(_DET_STYLE.keys()),
+    ch = c1.selectbox(tr("advanced.ecg_channel"), ecg_channels)
+    overlay = c2.multiselect(tr("advanced.overlay_detectors"), list(_DET_STYLE.keys()),
                              default=["eigen (aktueller Default)", "Hamilton 2002 (validiert)"])
 
     det, _, sig_corr, was_flipped = _detect_all(edf_path, ch)
@@ -114,9 +115,9 @@ def _render_rpeak_visual(edf, edf_path):
 
     # ── Visuelle Kontrolle: Roh-EKG + überlagerte R-Zacken ───────────────────
     st.markdown("**Visuelle Kontrolle — passt die R-Zacken-Erkennung?**")
-    win = st.select_slider("Fensterbreite", options=[5, 10, 20, 30], value=10,
+    win = st.select_slider(tr("advanced.window_width"), options=[5, 10, 20, 30], value=10,
                            format_func=lambda s: f"{s} s")
-    t0 = safe_slider("Position (s)", 0.0, float(max(0.0, dur - win)),
+    t0 = safe_slider(tr("advanced.position_s"), 0.0, float(max(0.0, dur - win)),
                      min(30.0, float(max(0.0, dur - win))), step=1.0)
     i0, i1 = int(t0 * sf), int((t0 + win) * sf)
     tvec = np.arange(i0, i1) / sf
@@ -161,18 +162,18 @@ def _fooof_compare(edf_path, ch, hi, knee):
 
 
 def _render_fooof(edf, edf_path):
-    section_header("Aperiodik 1/f — FOOOF vs. eigener Fit (W2)",
+    section_header(tr("advanced.aperiodic_comparison"),
                    "Validierte Referenz-Implementierung (Donoghue 2020) parallel + visuelle Kontrolle")
     _default_vs_alt_badge("eigener Sigma-Clip-Geradenfit",
                           "FOOOF (Donoghue 2020, validierte Referenz-Implementierung)")
     eeg_map = edf.get("eeg_map", {})
     if not eeg_map:
-        st.info("Keine EEG-Kanäle.")
+        st.info(tr("advanced.no_eeg"))
         return
     posterior = [c for c in ("O2", "O1", "Pz", "P4", "P3") if c in eeg_map]
     opts = posterior + [c for c in eeg_map if c not in posterior]
     c1, c2, c3 = st.columns([2, 2, 2])
-    ch = c1.selectbox("Kanal", opts, key="fooof_ch")
+    ch = c1.selectbox(tr("advanced.channel"), opts, key="fooof_ch")
     hi = c2.select_slider("Fit-Obergrenze (Hz)", options=[20, 30, 40], value=40, key="fooof_hi")
     knee = c3.toggle("Knee-Modell", value=False, key="fooof_knee",
                      help="FOOOF mit Knick (aperiodic_mode='knee') — sinnvoll über breite Bereiche.")
@@ -188,7 +189,7 @@ def _render_fooof(edf, edf_path):
                      "Knee": (f"{ff['knee']:.1f}" if ff['knee'] is not None else "—"),
                      "Gipfel": str(len(ff["peaks"]))})
     else:
-        st.warning("FOOOF nicht verfügbar (Lib fehlt) — nur eigener Fit angezeigt.")
+        st.warning(tr("advanced.fooof_unavailable"))
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
     # ── Visuelle Kontrolle: Log-Log-PSD mit beiden 1/f-Fits ──────────────────
@@ -258,18 +259,18 @@ def _hrv_spectrum_compare(edf_path, ch):
 
 
 def _render_lombscargle(edf, edf_path):
-    section_header("HRV-Spektrum — Lomb-Scargle vs. Welch/Burg (W3)",
+    section_header(tr("advanced.hrv_spectrum_comparison"),
                    "Interpolationsfrei aus den RR-Zeitpunkten — belastbarer bei Lücken/Ektopie")
     _default_vs_alt_badge("Welch/Burg (mit PCHIP-Resampling)",
                           "Lomb-Scargle (interpolationsfrei, validiert)")
     ecg = edf.get("ecg_channels") or []
     if not ecg:
-        st.info("Kein EKG-Kanal identifiziert.")
+        st.info(tr("advanced.no_ecg"))
         return
-    ch = st.selectbox("EKG-Kanal", ecg, key="ls_ch")
+    ch = st.selectbox(tr("advanced.ecg_channel"), ecg, key="ls_ch")
     d = _hrv_spectrum_compare(edf_path, ch)
     if not d or not d["lomb"]:
-        st.info("Zu wenige RR-Intervalle für ein HRV-Spektrum.")
+        st.info(tr("advanced.too_few_rr"))
         return
     w, b, ls = d["welch"], d["burg"], d["lomb"]
 
@@ -331,7 +332,7 @@ def _asym_compute(edf_path):
 
 
 def _render_asymmetry(edf, edf_path):
-    section_header("Hemisphärische Asymmetrie — relativ vs. absolut (G1)",
+    section_header(tr("advanced.asymmetry"),
                    "AI zusätzlich auf relativer Bandpower — robuster gegen Impedanz/Amplitude")
     _default_vs_alt_badge("absolute Bandpower (Nuwer 1997)",
                           "relative Bandpower (impedanz-/amplitudenrobuster)")
@@ -358,7 +359,7 @@ def _render_asymmetry(edf, edf_path):
                          "AI absolut (%)": (round(a_abs) if a_abs == a_abs else "—"),
                          "AI relativ (%)": (f"{round(a_rel)}{flag}" if a_rel == a_rel else "—")})
     if not rows:
-        st.info("O1/O2 bzw. F3/F4 nicht verfügbar.")
+        st.info(tr("advanced.no_posterior_anterior"))
         return
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
     st.caption("Der **relative** AI (Bandpower als Anteil je Kanal) ist robuster gegen "
@@ -376,19 +377,19 @@ def _dfa_compare(edf_path, ch):
 
 
 def _render_dfa(edf, edf_path):
-    section_header("DFA — α1 + α2 mit überlappenden Fenstern (G6)",
+    section_header(tr("advanced.dfa"),
                    "Standard-DFA (Peng 1995) neben unserer nicht-überlappenden α1-Variante")
     _default_vs_alt_badge("eigene α1-Variante (nicht-überlappende Fenster)",
                           "Standard-DFA α1+α2, überlappende Fenster (Peng 1995)")
     ecg = edf.get("ecg_channels") or []
     if not ecg:
-        st.info("Kein EKG-Kanal identifiziert.")
+        st.info(tr("advanced.no_ecg"))
         return
-    ch = st.selectbox("EKG-Kanal", ecg, key="dfa_ch")
+    ch = st.selectbox(tr("advanced.ecg_channel"), ecg, key="dfa_ch")
     d = _dfa_compare(edf_path, ch)
     own, std = d["own"], d["std"]
     if not std:
-        st.info("Zu wenige Schläge für DFA (α2 braucht ~≥256).")
+        st.info(tr("advanced.too_few_beats_dfa"))
         return
 
     def _f(v, fmt=".2f"):
@@ -449,19 +450,19 @@ def _mt_compare(edf_path, ch):
 
 
 def _render_multitaper(edf, edf_path):
-    section_header("EEG-Spektrum — Multitaper vs. Welch (G7)",
+    section_header(tr("advanced.multitaper"),
                    "DPSS-Multitaper (Thomson 1982): weniger Leakage, schärfere Gipfel")
     _default_vs_alt_badge("Welch", "Multitaper (DPSS, Thomson 1982, validiert)")
     em = edf.get("eeg_map", {})
     if not em:
-        st.info("Keine EEG-Kanäle.")
+        st.info(tr("advanced.no_eeg"))
         return
     posterior = [c for c in ("O2", "O1", "Pz", "P4", "P3") if c in em]
     opts = posterior + [c for c in em if c not in posterior]
-    ch = st.selectbox("Kanal", opts, key="mt_ch")
+    ch = st.selectbox(tr("advanced.channel"), opts, key="mt_ch")
     d = _mt_compare(edf_path, ch)
     if "Welch" not in d or "Multitaper" not in d:
-        st.info("Spektrum nicht berechenbar.")
+        st.info(tr("advanced.spectrum_uncomputable"))
         return
     w, m = d["Welch"], d["Multitaper"]
 
@@ -494,7 +495,7 @@ def _render_multitaper(edf, edf_path):
 def render():
     apply_global_style()
     edf, edf_path = get_edf_or_stop()
-    st.title(":material/science: Erweiterte Analysen & Methodik")
+    st.title(":material/science: " + tr("advanced.title"))
     st.markdown(
         "**Add-on** zu den bestehenden Seiten — diese bleiben **unverändert** und sind weiterhin "
         "der Default. Hier werden feinere/validierte Verfahren **parallel** angeboten und mit "
