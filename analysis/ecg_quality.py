@@ -4,7 +4,7 @@ EKG-Signalqualität / Artefakt-Plausibilität — Stufe ① der Rhythmus-Screeni
 Bewertet, ob ein EKG-Segment überhaupt verlässliche R-Zacken für eine Rhythmus-
 Beurteilung liefert — VOR jeder AFib-/Ektopie-Klassifikation. Ohne diese Stufe
 werden Signalartefakte (Sättigung, Diskonnektion, Bewegung) leicht als schwere
-Rhythmusstörung fehlgedeutet (siehe Fall CA17734W: Verstärker-Sättigung erzeugte
+Rhythmusstörung fehlgedeutet (siehe Fall Referenzfall C: Verstärker-Sättigung erzeugte
 scheinbar chaotische RR-Werte, die ohne Prüfung wie AFib ausgesehen hätten).
 
 Regeln 1–4 nach Orphanidou et al. 2015 (IEEE J Biomed Health Inform 19(3):832-838),

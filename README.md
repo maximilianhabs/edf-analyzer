@@ -7,6 +7,7 @@ recordings in the European Data Format (EDF).** It derives quantitative neurophy
 autonomic (HRV) measures from routine recordings — with a strict separation between
 established standard methods and literature-validated add-on procedures.
 
+[![Tests](https://github.com/maximilianhabs/edf-analyzer/actions/workflows/test.yml/badge.svg)](https://github.com/maximilianhabs/edf-analyzer/actions/workflows/test.yml)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.9-blue)
 ![Status](https://img.shields.io/badge/status-active%20·%20research%20prototype-orange)
@@ -181,10 +182,18 @@ Please report bugs and suggestions via
 Two dependency-free scripts guard things that break quietly rather than loudly:
 
 ```bash
+pip install -r requirements-dev.txt
+pytest tests/                    # runs against synthetic fixtures only — no real recording
 python3 tools/check_i18n.py      # every UI string exists in both languages, same placeholders
 python3 tools/check_licenses.py  # declared == imported, no copyleft in the default install,
                                  # NOTICE matches requirements
+python3 tools/check_fonts.py     # every requested font resolves, no CDN reference
 ```
+
+All of this runs in CI on every push. The test suite deliberately needs **no** real recording:
+it works against the synthetic ground-truth fixtures in `tests/fixtures/`, whose expected
+values are documented in their manifests. To additionally check against a recording of your
+own, set `EDF_TEST_FILE=/path/to/file.edf`.
 
 Both read licences and strings from the actual state of the repo and the installed packages —
 never from a hand-maintained list, which is how `matplotlib` ended up documented as BSD when

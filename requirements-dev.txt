@@ -1,0 +1,6 @@
+# Nur für Entwicklung und CI — NICHT für den Betrieb nötig.
+#
+#     pip install -r requirements-dev.txt
+#
+# Die App selbst braucht davon nichts; `requirements.txt` bleibt die Laufzeit-Wahrheit.
+pytest>=7.0

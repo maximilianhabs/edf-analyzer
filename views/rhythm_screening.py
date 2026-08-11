@@ -74,7 +74,7 @@ def _detect(edf_path: str, ch: str, method: str | None):
         fallback_reason = _res.reason if _res.fell_back else ""
     # was_flipped=True heißt: die QRS-Auslenkung war im ROHEN Signal negativ dominant — bei
     # Standard-EKG-Elektrodenanlage sollte R positiv sein (User-Bestätigung 2026-08-08: verifiziert
-    # an GA2410DH mit komplett unverarbeitetem Rohsignal, echte QRS-Komplexe, kein Artefakt).
+    # an Referenzfall A mit komplett unverarbeitetem Rohsignal, echte QRS-Komplexe, kein Artefakt).
     # Typische Ursache: vertauschte/falsch angelegte Elektroden bei der Ableitung. Analyse bleibt
     # trotzdem möglich (Polarität wird automatisch korrigiert) — UI zeigt einen Hinweis, siehe
     # render(). WICHTIG: EEG-Viewer/EDF-Cropper zeigen dasselbe Signal ggf. trotzdem "aufrecht",
@@ -145,7 +145,7 @@ def render():
     dur_s = len(sig_uv) / fs
 
     # Polaritäts-Hinweis (User-Vorgabe 2026-08-08, PRÄZISIERT 2026-08-08 nach Gegenprüfung mit
-    # SYNTH_groundtruth.edf): Verifiziert an GA2410DH + CA177326 + 25-Datei-Stichprobe — ALLE
+    # SYNTH_groundtruth.edf): Verifiziert an Referenzfall A + Referenzfall E + 25-Datei-Stichprobe — ALLE
     # echten Aufnahmen mit POL-X1-Kanal zeigen dieselbe negative R-Zacke im Rohsignal. Das ist
     # NICHT eine Anomalie bei einzelnen Patienten/Ableitungen, sondern die durchgehende,
     # verlässliche GERÄTEKONVENTION dieses Aufnahmesystems für diesen Kanal — bestätigt durch

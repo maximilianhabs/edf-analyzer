@@ -13,7 +13,7 @@
     "rr_sd_ms": 115.99328142956347,
     "mean_hr_bpm": 95.39227357166946,
     "n_beats": 954,
-    "expected_cosen": "~-0.43 (Literatur AFib-Median -0.5, Range -0.8 bis -0.3; Referenzfall CA1772QO: -0.44) -> verdict sollte 'afib_verdaechtig' sein, in praktisch allen 30s-Fenstern."
+    "expected_cosen": "~-0.43 (Literatur AFib-Median -0.5, Range -0.8 bis -0.3; Referenzfall Referenzfall B: -0.44) -> verdict sollte 'afib_verdaechtig' sein, in praktisch allen 30s-Fenstern."
   },
   "p_wave": {
     "model": "Kontinuierliches 5-9Hz-Bandpass-Rauschen (~300-540/min, f-Wellen-Bereich 350-600/min), UNKORRELIERT zum R-Zacken-Timing -> mittelt sich in der Ensemble-Bildung heraus",

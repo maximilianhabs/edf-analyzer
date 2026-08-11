@@ -136,7 +136,7 @@ def build_ecg_signal():
     # Polaritaet an die ECHTE Geraetekonvention angleichen, nicht an Lehrbuch-Konvention
     # (User-Fund 2026-08-08): POL X1 zeigt bei praktisch JEDER echten Aufnahme dieses
     # Systems eine NEGATIVE R-Zacke im Rohsignal (durchgehende, verlaessliche Konvention,
-    # verifiziert an 25+ Dateien, u.a. GA2410DH/CA177326) -- unser Template wurde zuvor
+    # verifiziert an 25+ Dateien, u.a. Referenzfall A/Referenzfall E) -- unser Template wurde zuvor
     # nach Kardiologie-Lehrbuch (Lead II, R positiv) gebaut, das ist NICHT repraesentativ
     # fuer echte Testdaten aus diesem System. Ohne diesen Flip haette das Ground-Truth-EDF
     # nur den "kein Flip noetig"-Zweig der Polaritaetskorrektur getestet, nie den in der

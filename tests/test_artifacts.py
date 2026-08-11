@@ -130,14 +130,22 @@ def test_ecg_disturbance_is_confirmatory_not_gate():
     assert all(s["ecg_disturbed"] is False for s in res2.segments)
 
 
-# ── Sanity-Check an echter EDF (nur wenn vorhanden) ──────────────────────────
-_REAL = os.path.expanduser("~/Downloads/CA177317.edf")
+# ── Sanity-Check an einer echten EDF (optional, nur lokal) ───────────────────
+# Pfad kommt über die Umgebungsvariable, NICHT fest im Code: vorher stand hier ein fester
+# Pfad auf eine echte Aufnahme samt ihrer Fallnummer — in einem öffentlichen Repo unnötig,
+# und für alle ausser dem Autor war der Test ohnehin nicht lauffähig.
+#
+#     EDF_TEST_FILE=~/Downloads/meine.edf pytest tests/
+#
+# Ohne gesetzte Variable wird der Test übersprungen; die Aussagekraft der Suite hängt nicht
+# daran (die synthetischen Fixtures decken die Kette ab, siehe test_ecg_pipeline.py).
+_REAL = os.path.expanduser(os.environ.get("EDF_TEST_FILE", ""))
 
 
 def test_real_edf_conservative():
-    if not os.path.exists(_REAL):
-        print("SKIP: CA177317.edf nicht vorhanden")
-        return
+    if not _REAL or not os.path.exists(_REAL):
+        import pytest
+        pytest.skip("EDF_TEST_FILE nicht gesetzt oder Datei nicht vorhanden")
     import mne
     raw = mne.io.read_raw_edf(_REAL, preload=True, encoding="latin1", verbose="ERROR")
     eeg_names = [c for c in raw.ch_names if c.startswith("EEG") and "-Ref" in c
@@ -145,7 +153,7 @@ def test_real_edf_conservative():
     eeg_uv = raw.get_data(picks=eeg_names) * 1e6
     ecg = raw.get_data(picks=["POL X1"])[0]
     res = compute_artifact_mask(eeg_uv, raw.info["sfreq"], ecg_uv=ecg, ch_names=eeg_names)
-    print(f"CA177317: behalte {res.clean_frac*100:.0f}%, {len(res.segments)} Segmente, "
+    print(f"Referenzfall D: behalte {res.clean_frac*100:.0f}%, {len(res.segments)} Segmente, "
           f"Bad-Channels={[b['name'] for b in res.bad_channels]}")
     assert 0.90 < res.clean_frac < 1.0, "Mildes Routine-EEG: Großteil erhalten, aber Detektor aktiv"
     # Regionsbewusst: die klar globale Bewegung ~9:23 (563 s) wird erkannt; das temporal-

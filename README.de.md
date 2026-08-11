@@ -4,6 +4,7 @@
 
 **Ein browserbasiertes Forschungs- und Lehrwerkzeug zur quantitativen Auswertung von EEG- und EKG-Aufzeichnungen im European Data Format (EDF).** Es leitet aus Routine-Aufnahmen quantitative neurophysiologische und autonome (HRV-)Kennwerte ab — mit strikter Trennung zwischen bewährten Standard-Methoden und literatur-validierten Zusatzverfahren.
 
+[![Tests](https://github.com/maximilianhabs/edf-analyzer/actions/workflows/test.yml/badge.svg)](https://github.com/maximilianhabs/edf-analyzer/actions/workflows/test.yml)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Python](https://img.shields.io/badge/python-3.9-blue)
 ![Status](https://img.shields.io/badge/status-aktiv%20·%20research%20prototype-orange)
@@ -150,10 +151,18 @@ Fehler und Vorschläge bitte über die [Issues](https://github.com/maximilianhab
 Zwei abhängigkeitsfreie Skripte sichern das ab, was sonst still kaputtgeht statt laut:
 
 ```bash
+pip install -r requirements-dev.txt
+pytest tests/                    # läuft nur gegen synthetische Fixtures — keine echte Aufnahme
 python3 tools/check_i18n.py      # jeder Text in beiden Sprachen, gleiche Platzhalter
 python3 tools/check_licenses.py  # deklariert == importiert, kein Copyleft in der
                                  # Standardinstallation, NOTICE passt zu den Requirements
+python3 tools/check_fonts.py     # jede angeforderte Schrift auflösbar, kein CDN-Verweis
 ```
+
+Das alles läuft bei jedem Push in der CI. Die Test-Suite braucht bewusst **keine** echte
+Aufnahme: sie arbeitet gegen die synthetischen Ground-Truth-Dateien in `tests/fixtures/`,
+deren Sollwerte in den zugehörigen Manifesten dokumentiert sind. Wer zusätzlich gegen eine
+eigene Aufnahme prüfen möchte, setzt `EDF_TEST_FILE=/pfad/zur/datei.edf`.
 
 Beide lesen Lizenzen und Texte aus dem tatsächlichen Zustand von Repo und installierten
 Paketen — nie aus einer handgepflegten Liste. Genau daher stammte der Fehler, `matplotlib`

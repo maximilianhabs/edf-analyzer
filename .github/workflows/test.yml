@@ -1,0 +1,47 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Schnell und ohne schwere Abhängigkeiten: die drei Konsistenz-Prüfer brauchen nur die
+  # Standardbibliothek. Läuft deshalb als eigener Job, der in Sekunden ein Ergebnis liefert,
+  # statt auf die MNE/SciPy-Installation zu warten.
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Übersetzungen vollständig und konsistent
+        run: python3 tools/check_i18n.py
+      - name: Schriften auflösbar, kein CDN
+        run: python3 tools/check_fonts.py
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.9 ist die Zielversion (Dockerfile, wegen MNE); 3.12 als Vorwarnung, falls eine
+        # Abhängigkeit auf neueren Versionen bricht.
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      # Läuft OHNE EDF_TEST_FILE: die Suite muss allein mit den synthetischen Fixtures im
+      # Repo auskommen. Genau das war vorher nicht der Fall — die Tests hingen an einer
+      # echten Aufnahme auf dem Rechner des Autors und waren für niemanden sonst lauffähig.
+      - run: pytest tests/ -v
+      # Lizenzprüfung erst NACH der Installation: sie liest die Lizenzen aus den Metadaten
+      # der tatsächlich installierten Pakete, nicht aus einer gepflegten Liste.
+      - name: Abhängigkeiten und Lizenzen konsistent
+        run: python3 tools/check_licenses.py

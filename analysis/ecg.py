@@ -103,7 +103,7 @@ def detect_polarity_flip(signal: np.ndarray, sfreq: float, candidates=None,
     (±half_win_ms um jeden Kandidaten-Peak) statt nur des Vorzeichens am Peak-Sample selbst —
     bei biphasischer QRS-Form kann ein Detektor auf einem kleinen positiven Nebenpunkt sitzen,
     während der dominante Ausschlag (z. B. tiefe S-Zacke) deutlich größer und negativ ist
-    (gefunden 2026-08-08 an CA1772QO). `candidates` = grobe Peak-Kandidaten (z. B. aus
+    (gefunden 2026-08-08 an Referenzfall B). `candidates` = grobe Peak-Kandidaten (z. B. aus
     `detect_r_peaks`); wenn None, wird `detect_r_peaks` intern aufgerufen. Gibt True zurück,
     wenn geflippt werden sollte (R-Zacke ist im Rohsignal negativ dominant). Siehe
     [[project_edf_rhythm_screening]] für die Herleitung und den zugehörigen Nachverfeinerungs-

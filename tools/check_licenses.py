@@ -30,6 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 STD_REQ = ROOT / "requirements.txt"
 OPT_REQ = ROOT / "requirements-validated.txt"
+DEV_REQ = ROOT / "requirements-dev.txt"   # nur Entwicklung/CI, nicht für den Betrieb
 NOTICE = ROOT / "NOTICE"
 
 # Import-Name ≠ PyPI-Name
@@ -119,7 +120,8 @@ def is_copyleft(text):
 
 def main():
     std, opt = read_requirements(STD_REQ), read_requirements(OPT_REQ)
-    declared = set(std) | set(opt)
+    dev = read_requirements(DEV_REQ)
+    declared = set(std) | set(opt) | set(dev)
     used = imported_modules()
     problems, notes = [], []
 
@@ -139,7 +141,7 @@ def main():
         # Dateien, zieht `pip install -r requirements.txt` es trotzdem mit. Die frühere
         # Prüfung „ist es in der optionalen Datei?" ließ genau diesen Fall durchrutschen
         # (beim Selbsttest des Prüfers aufgefallen).
-        where = "standard" if pkg in std else "optional"
+        where = "standard" if pkg in std else ("dev" if pkg in dev else "optional")
         print(f"  {pkg:28s} {str(lic or '—'):34s} {src}")
         if lic is None and src == "nicht installiert":
             notes.append(f"'{pkg}' lokal nicht installiert — Lizenz nicht prüfbar")
@@ -152,7 +154,7 @@ def main():
     # 4 — NOTICE erwähnt jedes deklarierte Paket
     if NOTICE.exists():
         text = NOTICE.read_text(encoding="utf-8")
-        for pkg in sorted(declared):
+        for pkg in sorted(declared - set(dev)):   # Dev-Werkzeuge werden nicht ausgeliefert
             needle = PYPI_TO_NOTICE.get(pkg, pkg)
             if needle.lower() not in text.lower():
                 problems.append(f"[NOTICE unvollständig] '{pkg}' ist deklariert, kommt in "
@@ -165,8 +167,8 @@ def main():
         print("Hinweis: " + n)
     for p in problems:
         print("FEHLER: " + p)
-    print(f"\nDeklariert: {len(declared)} ({len(std)} standard, {len(opt)} optional)  |  "
-          f"importiert: {len(used)}")
+    print(f"\nDeklariert: {len(declared)} ({len(std)} standard, {len(opt)} optional, "
+          f"{len(dev)} dev)  |  importiert: {len(used)}")
     if problems:
         print(f"\n{len(problems)} Problem(e) gefunden.")
         return 1

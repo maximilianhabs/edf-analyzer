@@ -15,7 +15,7 @@ Elektrophysiologische AFib-Charakteristika, die hier gezielt modelliert werden (
    sinusoidale RSA-Modulation wie in der Normal-Datei, weil AFib per Definition nicht vom
    Sinusknoten getaktet wird. Kalibriert an `analysis/rhythm_screening.py::cosen()`: SD=120ms
    ergibt CosEn ≈ -0,43 (Zielbereich Sarkar/IOPscience 2015: Median -0,5, Range -0,8 bis -0,3;
-   deckungsgleich mit unserem einzigen bestätigten Referenzfall CA1772QO: -0,44).
+   deckungsgleich mit unserem einzigen bestätigten Referenzfall Referenzfall B: -0,44).
 2. **Keine P-Welle / Flimmerwellen statt geordneter Vorhofaktivität**: statt eines fixen
    PR-Intervalls (wie im Normal-File) wird eine KONTINUIERLICHE, zum R-Zacken-Timing
    UNKORRELIERTE Flimmerwellen-Baseline erzeugt (Bandpass-Rauschen 5-9Hz ≈ 300-540/min,
@@ -189,7 +189,7 @@ def main():
             "mean_rr_ms": float(rr_ms.mean()), "rr_sd_ms": float(rr_ms.std()),
             "mean_hr_bpm": float(60000.0 / rr_ms.mean()), "n_beats": int(len(beat_times)),
             "expected_cosen": "~-0.43 (Literatur AFib-Median -0.5, Range -0.8 bis -0.3; "
-                               "Referenzfall CA1772QO: -0.44) -> verdict sollte "
+                               "Referenzfall Referenzfall B: -0.44) -> verdict sollte "
                                "'afib_verdaechtig' sein, in praktisch allen 30s-Fenstern.",
         },
         "p_wave": {

@@ -11,7 +11,7 @@ WICHTIG — Screening-Hinweis, keine Diagnose. Die genaue VES/SVES-Unterscheidun
 eigentlich mehr als 1 Kanal (P-Welle, Vektor); hier nur ein grober, konservativ formulierter
 Anhaltspunkt. UI-Text: "SVES-/VES-verdächtig", nie "SVES:"/"VES:" als Befund.
 
-WICHTIG — Detektor-Sensitivität (empirisch geprüft 2026-08-06 an GA2410DH, Anstoß Kollaborator
+WICHTIG — Detektor-Sensitivität (empirisch geprüft 2026-08-06 an Referenzfall A, Anstoß Kollaborator
 Ruhid): die GRUNDSÄTZLICHE RR-Unregelmäßigkeit ist an 4 unabhängigen Detektoren (eigen,
 Hamilton, Christov, Pan-Tompkins-Lib) reproduzierbar — aber die EXAKTE Anzahl erkannter
 Kompensationspausen und wie sauber sie sich paaren, ist spürbar detektor-abhängig (Hamilton
@@ -125,7 +125,7 @@ def ectopy_summary(sig: np.ndarray, r_peaks: np.ndarray, fs: float) -> dict:
     NUR SINNVOLL INTERPRETIERBAR, WENN Stufe ② (`rhythm_screening.classify_afib_risk`)
     KEIN AFib-Verdikt liefert. Bei AFib ist der Rhythmus selbst schon chaotisch — die
     "Kompensationspause"-Heuristik setzt einen grundsätzlich regelmäßigen Rhythmus mit
-    gelegentlicher Störung voraus. Getestet an CA1772QO (bestätigtes AFib): 9,8% "Ereignisse"
+    gelegentlicher Störung voraus. Getestet an Referenzfall B (bestätigtes AFib): 9,8% "Ereignisse"
     — das ist KEIN echter SVES-Befund, sondern ein Artefakt der Heuristik auf chaotischer
     RR-Basis. Der Aufrufer MUSS Stufe ② zuerst prüfen und diese Zusammenfassung bei
     AFib-Verdacht nicht als Ektopie-Befund anzeigen.

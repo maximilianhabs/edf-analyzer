@@ -545,14 +545,14 @@ def render():
             # "Starre Herzfrequenz"-Warnung (User-Konzept 2026-08-08): die Balance-Achse
             # (vagal↔sympathisch) allein kann einen GLOBALEN Ausfall beider Äste nicht zeigen
             # (LF/HF kann unauffällig aussehen, obwohl beide Pole kollabiert sind — Fall
-            # GA2410DH: LF/HF=1,14, sogar unter dem Populationsmittel, trotz RMSSD/SDNN/pNN50
+            # Referenzfall A: LF/HF=1,14, sogar unter dem Populationsmittel, trotz RMSSD/SDNN/pNN50
             # praktisch am Boden). WICHTIG: der ursprünglich vorgesehene Trigger SDNN-z<-2
-            # (POOLED_REFERENCE-Sigma, nicht altersadjustiert) löst bei GA2410DH selbst NICHT
+            # (POOLED_REFERENCE-Sigma, nicht altersadjustiert) löst bei Referenzfall A selbst NICHT
             # aus (z=-1,22 — das grobe Populations-Sigma ist zu breit) — durch Testlauf entdeckt
             # und korrigiert. Stattdessen direkter, populationsmodell-unabhängiger Trigger:
             # pNN50 nahe 0% UND CV% sehr niedrig — beide beschreiben "praktisch keine Schlag-zu-
             # Schlag-Variabilität" ohne Umweg über ein Referenzmodell. Kalibriert an allen 5
-            # Referenzfällen: trennt GA2410DH (pNN50=0,00%/CV=1,9%) sauber von allen anderen,
+            # Referenzfällen: trennt Referenzfall A (pNN50=0,00%/CV=1,9%) sauber von allen anderen,
             # AUCH vom AFib-Fall (hohe statt niedrige Variabilität, löst korrekt nicht aus).
             _rigid_hr = (_pnn50 < 0.5) and (_cv < 3.0)
             if _rigid_hr:

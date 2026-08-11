@@ -15,7 +15,7 @@ Das EKG ist ein rein **bestätigendes** Zusatzsignal (Konfidenz), niemals ein Ga
 bewegt die Körperbewegung die EKG-Elektrode mit → EKG-Störung bestätigt Bewegung; bleibt das
 EKG ruhig (Blinzeln/SWS/lokal) → Hinweis, eher zu behalten.
 
-Empirisch kalibriert (2026-07-10) an zwei 10-min-Routine-EEGs (GA2410B4, CA177317):
+Empirisch kalibriert (2026-07-10) an zwei 10-min-Routine-EEGs (Referenzfall F, Referenzfall D):
 Default win=1 s / 50 % Überlapp / ≥3 Kanäle > 4× Eigen-Baseline / Konsens N=3 → Ruhephasen
 blieben in ALLEN getesteten Konfigurationen falschpositiv-frei.
 

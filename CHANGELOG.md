@@ -14,6 +14,28 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
   des Passwort-Gates.
 - README zweisprachig: `README.md` (Englisch) und `README.de.md` (Deutsch).
 
+### Behoben
+- **Test-Suite lief nur auf dem Rechner des Autors.** `tests/test_ecg_pipeline.py` und
+  `tests/test_artifacts.py` verwiesen fest auf eine echte Patientenaufnahme unter
+  `~/Downloads/`; für alle anderen war die Suite nicht ausführbar, und die Fallnummer stand
+  im Repository. Ausserdem **schlug ein Test fehl** (erwartete 2 EKG-Kanäle, der
+  nachgeschärfte Klassifizierer findet 1) — unbemerkt, weil die Tests nie automatisch liefen.
+  Jetzt gegen die synthetischen Ground-Truth-Fixtures mit belegten Sollwerten aus deren
+  Manifest; der optionale Lauf gegen eine echte Aufnahme geht über `EDF_TEST_FILE=…`.
+  Ergebnis: 13 grün ohne jede echte Datei.
+- **Echte Aufnahme-Kennungen aus dem Code entfernt.** An 30 Stellen dokumentierten
+  Fallnummern aus dem Kliniksystem, an welchem Fall ein Schwellenwert kalibriert wurde —
+  fachlich wertvoll, in einem öffentlichen Repo aber unnötig. Ersetzt durch stabile
+  Pseudonyme (`Referenzfall A`–`F`); die fachliche Aussage bleibt vollständig erhalten, die
+  Zuordnung liegt ausserhalb des Repositories.
+
+### Hinzugefügt (Fortsetzung)
+- **CI** (`.github/workflows/test.yml`): pytest auf Python 3.9 und 3.12 plus die drei
+  Konsistenz-Prüfer. Die schnellen, abhängigkeitsfreien Prüfer laufen als eigener Job und
+  liefern in Sekunden ein Ergebnis. Zuvor gab es Tests, aber niemand führte sie aus.
+- `requirements-dev.txt` (nur pytest) — vom Lizenz-Prüfer angemahnt, weil die Tests `pytest`
+  importieren, es aber nirgends deklariert war.
+
 ### Geändert
 - **Keine externen Verbindungen mehr zur Laufzeit** (gemessen, nicht angenommen):
   - Streamlits Nutzungs-Telemetrie jetzt auch in `.streamlit/config.toml` abgeschaltet

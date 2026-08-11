@@ -13,8 +13,8 @@ Referenzbereiche (Sarkar et al., IOPscience 2015, Physiol Meas 36:1873):
     Sinusrhythmus mit Ektopie: Median −1,7 (−2,0 bis −1,4)
 
 An 2 echten Fällen validiert (siehe [[project_edf_rhythm_screening]]):
-    CA1772QO (bestätigtes, durchgehendes AFib): Median CosEn −0,44, alle Fenster AFib-verdächtig
-    CA17734W (kein AFib in diesem Fenster, nach Artefaktausschluss): −2,17 bis −2,58, alle "normal"
+    Referenzfall B (bestätigtes, durchgehendes AFib): Median CosEn −0,44, alle Fenster AFib-verdächtig
+    Referenzfall C (kein AFib in diesem Fenster, nach Artefaktausschluss): −2,17 bis −2,58, alle "normal"
 
 WICHTIG — Screening-Marker, keine Diagnose. Sensitivität/Spezifität aus der Literatur
 (~90er-Bereich), nicht 100%. UI-Texte müssen "Verdacht auf..." sagen, nie "Diagnose:...".
@@ -100,7 +100,7 @@ def _afib_confidence(frac_afib: float, median_cosen_afib: float) -> str:
       (Sarkar/IOPscience 2015: −0,5, Range −0,8 bis −0,3), desto eindeutiger die Signatur,
       statt nur knapp über der −0,8-Schwelle zu liegen.
 
-    Schwellen kalibriert am einzigen bestätigten Volltag-AFib-Referenzfall (CA1772QO: frac=1,0,
+    Schwellen kalibriert am einzigen bestätigten Volltag-AFib-Referenzfall (Referenzfall B: frac=1,0,
     Median −0,42 → "gesichert") — bei weiteren Referenzfällen nachjustieren, siehe
     [[project_edf_rhythm_screening]]. Rein additiv zur bestehenden Verdikt-Logik, ändert NICHTS
     an der binären Verdikt-Schwelle selbst (weiterhin: ein Fenster genügt für "afib_verdaechtig").
@@ -123,7 +123,7 @@ def classify_afib_risk(sig: np.ndarray, r_peaks: np.ndarray, fs: float,
 
     `verdict` = "afib_verdaechtig" sobald MINDESTENS EIN Fenster (nicht nur der Median)
     im AFib-Bereich liegt — bewusst konservativ (hohe Sensitivität), da AFib klinisch oft
-    paroxysmal auftritt (siehe CA17734W: nur ein 20s-Ausschnitt betroffen hätte im
+    paroxysmal auftritt (siehe Referenzfall C: nur ein 20s-Ausschnitt betroffen hätte im
     Gesamt-Median untergehen können). Einzelne Fenster sind bereits klinisch relevant — die
     binäre Verdikt-Schwelle bleibt UNVERÄNDERT. `confidence` staffelt NUR, wie sicher wir uns
     innerhalb dieses Verdikts sind (User-Anstoß 2026-08-08: "Verdacht auf" ist nicht immer

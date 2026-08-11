@@ -4,7 +4,7 @@ P-Wellen-Nachweis via Ensemble-Mittelung (Schlag-Summation) — Stufe②b, Vorho
 Zweite, von der RR-Irregularität (CosEn, siehe rhythm_screening.py) UNABHÄNGIGE Evidenzquelle:
 Vorhofflimmern ist per Definition durch das Fehlen einer regelmäßigen P-Welle vor dem QRS-Komplex
 gekennzeichnet (Vorhofflattern/-flimmern statt organisierter atrialer Depolarisation). Reduziert
-vor allem Fehlalarme durch Ektopie (unregelmäßige RR, aber P-Welle vorhanden — siehe GA2410DH).
+vor allem Fehlalarme durch Ektopie (unregelmäßige RR, aber P-Welle vorhanden — siehe Referenzfall A).
 
 Methode: alle R-Zacken eines Zeitfensters werden auf den R-Zeitpunkt ausgerichtet und per Median
 zu einem "Ensemble-Schlag" zusammengefasst (Summation/Mittelung mehrerer QRS-Komplexe, wie vom
@@ -22,18 +22,18 @@ das Problem eines RR-adaptiven "stillen" Referenzfensters (bei schnellem AFib gi
 echte isoelektrische TP-Strecke).
 
 WICHTIGER FIX gegenüber der ersten Version (POC 2026-08-08): ungefiltertes Rohsignal vor der
-Mittelung zeigte bei einem artefaktbehafteten Fall (GA2410DH, GBS-Patient mit EMG-Kontamination)
+Mittelung zeigte bei einem artefaktbehafteten Fall (Referenzfall A, GBS-Patient mit EMG-Kontamination)
 eine durchgehende ~15-20Hz-Sägezahnschwingung über den GESAMTEN Vor-QRS-Bereich, die wie P-Wellen-
-Aktivität aussah, aber Muskelartefakt war — UND bei CA1772QO (echtes AFib) wusch die starke
+Aktivität aussah, aber Muskelartefakt war — UND bei Referenzfall B (echtes AFib) wusch die starke
 RR-Variabilität dieses Ringing beim Mitteln zufällig heraus, was den Fall fälschlich "sauberer"
 aussehen ließ als den Ektopie-Fall. Fix: 0.5-30Hz-Bandpass VOR der Mittelung (schmaler als die
 0.5-40Hz-Anzeigefilterung in ecg_hrv.py, um mehr EMG fernzuhalten, ohne die P-Welle selbst
 wegzufiltern).
 
 Validiert an allen 3 Referenzfällen (siehe [[project_edf_rhythm_screening]]):
-    CA17734W (Sinusrhythmus, kein AFib):     Median P-Kohärenz 0,99 — P-Welle klar sichtbar
-    GA2410DH (Ektopie, KEIN AFib):            Median P-Kohärenz 0,83 — P-Welle sichtbar
-    CA1772QO (bestätigtes, durchgehendes AFib): Median P-Kohärenz 0,41 — deutlich abgesetzt
+    Referenzfall C (Sinusrhythmus, kein AFib):     Median P-Kohärenz 0,99 — P-Welle klar sichtbar
+    Referenzfall A (Ektopie, KEIN AFib):            Median P-Kohärenz 0,83 — P-Welle sichtbar
+    Referenzfall B (bestätigtes, durchgehendes AFib): Median P-Kohärenz 0,41 — deutlich abgesetzt
 
 WICHTIG — Screening-Marker, keine Diagnose. Läuft NICHT nur bei AFib-Verdacht, sondern auf
 JEDEM Rhythmus-Fenster (User-Vorgabe 2026-08-08: "egal welchen Rhythmus wir uns anschauen") —
