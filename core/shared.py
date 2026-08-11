@@ -100,7 +100,7 @@ def render_sidebar_status():
                 "font-size:12px;"
                 "line-height:1.5;"
                 "'>"
-                f"<span class='material-symbols-outlined' style='font-size:0.95em;vertical-align:-2px'>folder_open</span> <b>{tr('sidebar.no_file_title')}</b><br>"
+                f"<span class='material-symbol' style='font-size:0.95em;vertical-align:-2px'>folder_open</span> <b>{tr('sidebar.no_file_title')}</b><br>"
                 f"<span style='font-size:11px'>{tr('sidebar.no_file_hint')}<i>{tr('sidebar.no_file_hint_page')}</i>{tr('sidebar.no_file_hint_suffix')}</span>"
                 "</div>",
                 unsafe_allow_html=True,
@@ -131,7 +131,7 @@ def render_sidebar_status():
             anns = edf.get("annotations", [])
             has_hv = any("HVT" in a.get("description","").upper() for a in anns)
 
-        _ecg_icon_span = ("<span class='material-symbols-outlined' "
+        _ecg_icon_span = ("<span class='material-symbol' "
                          "style='font-size:0.95em;vertical-align:-2px'>ecg_heart</span> ")
 
         _has_phi = st.session_state.get("phi_has_patient_data", False)
@@ -164,7 +164,7 @@ def render_sidebar_status():
             f"<div style='font-size:12px;font-weight:600;color:#1c2833;"
             f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
             f"margin-bottom:10px;' title='{file_name}'>"
-            f"<span class='material-symbols-outlined' style='font-size:0.95em;vertical-align:-2px'>description</span> {file_name}"
+            f"<span class='material-symbol' style='font-size:0.95em;vertical-align:-2px'>description</span> {file_name}"
             f"</div>"
             # Metriken-Grid
             f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:6px'>"
@@ -341,14 +341,49 @@ def apply_global_style():
                                     FONT_EYEBROW_PX, FONT_HERO_PX, FONT_SUBTITLE_PX)
     st.markdown(f"""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@40,400,0,0');
+    /* Schriften werden NICHT von einem CDN geladen (gemessen 2026-08-11: der frühere
+    @import auf fonts.googleapis.com erzeugte pro Seitenaufruf echte Requests, also eine
+    Übermittlung der Nutzer-IP an Google). Inter liegt jetzt lokal unter static/fonts/,
+    ausgeliefert über Streamlits statischen Ordner (server.enableStaticServing). */
+    /* latin */
+    @font-face {{
+        font-family: 'Inter';
+        src: url('app/static/fonts/Inter-latin.woff2') format('woff2');
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    }}
+    /* latin-ext */
+    @font-face {{
+        font-family: 'Inter';
+        src: url('app/static/fonts/Inter-latin-ext.woff2') format('woff2');
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+        unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+    }}
+    /* greek */
+    @font-face {{
+        font-family: 'Inter';
+        src: url('app/static/fonts/Inter-greek.woff2') format('woff2');
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+        unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+    }}
 
     /* Phase 6 GUI-Redesign (siehe [[project_edf_ui_redesign]]): Material-Symbols-Glyphen für
     eigenen HTML-Content (z. B. Kanal-Typ-Icons) — ersetzt Emoji außerhalb der von Streamlit
-    selbst gerenderten `:material/...:`-Shortcodes (Seitentitel/Nav, die brauchen das nicht). */
-    .material-symbols-outlined {{
-        font-family: 'Material Symbols Outlined';
+    selbst gerenderten `:material/...:`-Shortcodes (Seitentitel/Nav, die brauchen das nicht).
+
+    Nutzt bewusst 'Material Symbols Rounded': diese Variante bringt STREAMLIT bereits lokal
+    mit, es muss also keine zweite Schriftdatei ins Repo und es geht kein Request nach außen.
+    Nebeneffekt: die eigenen HTML-Icons sehen damit genauso aus wie Streamlits native
+    `:material/...:`-Icons. Die Ligaturnamen (z. B. `ecg_heart`) sind bei beiden Varianten
+    identisch, der Wechsel ändert nur die Strichführung. */
+    .material-symbol {{
+        font-family: 'Material Symbols Rounded';
         font-weight: normal;
         font-style: normal;
         line-height: 1;

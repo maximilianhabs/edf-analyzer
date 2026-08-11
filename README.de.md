@@ -78,6 +78,15 @@ Nach dem **Add-on-Prinzip** bleiben die bewährten Standard-Methoden unveränder
 - EDF-Dateien sind **im Repository nicht enthalten** und werden per `.gitignore` ausgeschlossen — es sind keinerlei Patientendaten Teil des Projekts.
 - Beim Upload prüft die App den EDF-Header auf identifizierende Angaben; ein Standalone-Skript (`anonymize.py`) kann Header anonymisieren.
 - Hochgeladene Dateien liegen in einem sitzungseigenen Temp-Ordner und werden durch einen Cleanup-Daemon nach spätestens ~4 h automatisch gelöscht.
+- **Keine externen Verbindungen zur Laufzeit.** Schriften werden lokal aus `static/fonts/`
+  ausgeliefert (vorher von einem CDN, wodurch bei jedem Aufruf die IP-Adresse des Nutzers an
+  einen Dritten ging), und Streamlits Nutzungs-Telemetrie ist abgeschaltet
+  (`gatherUsageStats = false`). Am 2026-08-11 über sechs Seiten geprüft: null Requests an
+  externe Hosts. Selbst nachmessen lässt sich das in der Browser-Konsole mit:
+  `performance.getEntriesByType('resource').map(r => r.name).filter(n => !n.includes(location.host))`
+  — das Ergebnis sollte ein leeres Array sein. Das betrifft **die Anwendung selbst**;
+  Streamlit ist Fremdsoftware, eine künftige Version könnte ihr Verhalten ändern — deshalb
+  ist hier die Prüfmethode dokumentiert statt einer pauschalen Garantie.
 - Wer EDF-Dateien schon *vor* dem Upload lokal anonymisieren möchte, kann dafür das eigenständige Begleit-Tool [edf-anonymizer](https://github.com/maximilianhabs/edf-anonymizer) nutzen — dependency-freies CLI plus optionale Web-Oberfläche, läuft komplett offline auf dem eigenen Rechner.
 
 ## Sicherheit

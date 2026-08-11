@@ -67,7 +67,10 @@ def require_login() -> bool:
 def _render_login():
     st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@40,400,0,0');
+    /* Kein CDN-Import: 'Material Symbols Rounded' bringt Streamlit selbst lokal mit
+    (siehe core/shared.py::apply_global_style). Der Login-Bildschirm läuft VOR
+    apply_global_style(), braucht die Glyphe aber schon — daher hier eigenständig
+    referenziert, ohne eigene Schriftdatei. */
 
     /* Sidebar + Header bei Login ausblenden */
     [data-testid="stSidebar"],
@@ -95,7 +98,7 @@ def _render_login():
         text-align: center;
     }
     .login-icon {
-        font-family: 'Material Symbols Outlined';
+        font-family: 'Material Symbols Rounded';
         font-size: 2.6rem;
         color: #0071e3;
         margin-bottom: 8px;

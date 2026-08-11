@@ -38,7 +38,7 @@ def _type_icon_html(meta: dict, size: str = "1.6rem") -> str:
     icon = meta["icon"]
     if icon == "⏚":
         return f"<span style='font-size:{size}'>{icon}</span>"
-    return (f"<span class='material-symbols-outlined' "
+    return (f"<span class='material-symbol' "
             f"style='font-size:{size};color:{meta['color']}'>{icon}</span>")
 
 
@@ -454,11 +454,11 @@ def render():
         section_header(tr("channel_report.aux_channels"))
         hc = st.columns(3)
         for col, label, icon, channels, color in (
-            (hc[0], "EKG", "<span class='material-symbols-outlined' "
+            (hc[0], "EKG", "<span class='material-symbol' "
                           f"style='font-size:1.1rem;color:#c0392b'>ecg_heart</span>", ecg, "#c0392b"),
-            (hc[1], "EOG", "<span class='material-symbols-outlined' "
+            (hc[1], "EOG", "<span class='material-symbol' "
                           f"style='font-size:1.1rem;color:#8e44ad'>visibility</span>", eog, "#8e44ad"),
-            (hc[2], "EMG", "<span class='material-symbols-outlined' "
+            (hc[2], "EMG", "<span class='material-symbol' "
                           f"style='font-size:1.1rem;color:#e67e22'>fitness_center</span>", emg, "#e67e22"),
         ):
             with col:

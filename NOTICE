@@ -1,0 +1,51 @@
+EDF-Analyzer
+Copyright 2026 Maximilian Habs
+
+Lizenziert unter der Apache License, Version 2.0. Der Lizenztext liegt in der Datei LICENSE.
+
+Dieses Werk enthält bzw. nutzt folgende Komponenten Dritter, die unter ihren jeweils eigenen
+Lizenzen stehen.
+
+
+MITGELIEFERTE SCHRIFTEN
+-----------------------
+
+  Inter — SIL Open Font License 1.1
+      https://github.com/rsms/inter — Rasmus Andersson
+      Dateien: static/fonts/Inter-latin.woff2, Inter-latin-ext.woff2, Inter-greek.woff2
+      Variable Schrift (Achse wght 100–900), Teilzeichensätze latin / latin-ext / greek.
+
+  Die Schriftdateien liegen bewusst IM Repository und werden lokal ausgeliefert, statt sie
+  von einem CDN zu laden. Ein Font-CDN würde bei jedem Seitenaufruf die IP-Adresse des
+  Nutzers an einen Dritten übermitteln — bei einer Anwendung, die EEG-/EKG-Aufzeichnungen
+  verarbeitet, ein vermeidbarer Datenabfluss. Siehe CHANGELOG.md.
+
+  Material Symbols wird NICHT mitgeliefert: die Variante „Material Symbols Rounded" bringt
+  Streamlit bereits lokal mit, die App referenziert nur diese.
+
+
+EINGEBUNDENE BIBLIOTHEKEN (Auswahl; vollständige Liste in requirements.txt)
+--------------------------------------------------------------------------
+
+  Streamlit — Apache-2.0                     https://streamlit.io
+  MNE-Python — BSD-3-Clause                  https://mne.tools
+  NumPy, SciPy, pandas — BSD-3-Clause
+  pyedflib — BSD                             https://github.com/holgern/pyedflib
+  FOOOF / specparam — Apache-2.0             https://fooof-tools.github.io
+  py-ecg-detectors — GPL-3.0                 https://github.com/berndporr/py-ecg-detectors
+  Plotly — MIT                               https://plotly.com/python/
+  ReportLab — BSD                            https://www.reportlab.com
+  openpyxl — MIT
+  extra-streamlit-components — MIT
+
+  Lizenzangaben wurden am 2026-08-11 gegen die installierten Paket-Metadaten geprüft
+  (`importlib.metadata`), nicht aus dem Gedächtnis übernommen.
+
+  **Hinweis zu py-ecg-detectors (GPL-3.0):** Diese Bibliothek steht unter einer Copyleft-
+  Lizenz, dieses Projekt unter Apache-2.0. Der Code importiert sie ausschließlich in
+  `analysis/ecg.py::detect_r_peaks_validated()`, dort in einem `try/except` mit Rückfall auf
+  den eigenen Detektor — die App funktioniert also vollständig ohne sie; betroffen sind nur
+  die vergleichenden, validierten R-Zacken-Detektoren auf der Seite „Erweiterte Analysen".
+  Wer den EDF-Analyzer weiterverbreitet oder in ein eigenes Produkt einbettet, sollte diese
+  Kombination bewusst prüfen: dann ggf. `py-ecg-detectors` aus `requirements.txt` nehmen und
+  nur bei Bedarf separat installieren.

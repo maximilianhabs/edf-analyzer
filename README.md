@@ -113,6 +113,15 @@ Analyses". Nothing is switched over silently.
   (`anonymize.py`) can anonymize headers.
 - Uploaded files live in a session-specific temp folder and are deleted automatically by a
   cleanup daemon after at most ~4 h.
+- **No external connections at runtime.** Fonts are served locally from `static/fonts/`
+  (previously loaded from a CDN, which transmitted every visitor's IP address to a third
+  party), and Streamlit's usage telemetry is switched off (`gatherUsageStats = false`).
+  Verified on 2026-08-11 across six pages: zero requests to external hosts. You can check
+  this yourself — open the browser console and run:
+  `performance.getEntriesByType('resource').map(r => r.name).filter(n => !n.includes(location.host))`
+  — the result should be an empty array. This covers **the application itself**; Streamlit is
+  third-party software and a future version could change its behavior, which is why the check
+  above is documented rather than a blanket guarantee.
 - To anonymize EDF files locally *before* uploading, use the standalone companion tool
   [edf-anonymizer](https://github.com/maximilianhabs/edf-anonymizer) — a dependency-free CLI
   plus optional web UI that runs entirely offline on your own machine.

@@ -15,6 +15,24 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 - README zweisprachig: `README.md` (Englisch) und `README.de.md` (Deutsch).
 
 ### Geändert
+- **Keine externen Verbindungen mehr zur Laufzeit** (gemessen, nicht angenommen):
+  - Streamlits Nutzungs-Telemetrie abgeschaltet (`gatherUsageStats = false`). Vorher gingen
+    pro Sitzung **fünf** Aufrufe an `webhooks.fivetran.com` — der gravierendere der beiden
+    Funde, weil er unabhängig von der Oberfläche bei jeder Nutzung auslöste.
+  - Schrift **Inter** wird lokal aus `static/fonts/` ausgeliefert statt vom Google-Fonts-CDN
+    (drei Teilzeichensätze latin/latin-ext/greek, zusammen 152 KB, variable Achse
+    `wght 100–900` vor dem Einchecken mit `fontTools` verifiziert). Erfordert
+    `server.enableStaticServing = true`.
+  - **Material Symbols** wird gar nicht mehr geladen: die Variante „Rounded" liefert
+    Streamlit bereits lokal mit, die eigene CSS-Klasse referenziert jetzt diese. Dadurch
+    keine zweite Schriftdatei im Repo — und die eigenen HTML-Icons sehen nun genauso aus wie
+    Streamlits native `:material/...:`-Icons. Klasse dabei von `.material-symbols-outlined`
+    zu `.material-symbol` umbenannt, damit der Name nicht die falsche Variante suggeriert.
+  - Ergebnis über sechs Seiten + Login-Bildschirm nachgemessen: **null externe Requests**.
+- `NOTICE` ergänzt (Schriftlizenz SIL OFL, Drittbibliotheken). Dabei aufgefallen:
+  `py-ecg-detectors` steht unter **GPL-3.0**, dieses Projekt unter Apache-2.0 — die
+  Bibliothek wird nur optional in einem `try/except` importiert (Rückfall auf den eigenen
+  Detektor), der Hinweis steht jetzt ausdrücklich in `NOTICE`.
 - README: internes Betriebskapitel zu einem konkreten Server durch eine allgemeine
   Selbst-Hosting-Anleitung ersetzt.
 
