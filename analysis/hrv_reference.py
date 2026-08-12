@@ -71,10 +71,43 @@ def _iqr_sigma(iqr: tuple) -> float:
     return (iqr[1] - iqr[0]) / 1.349
 
 
+# Gültigkeitsbereich der Quellstudie (Hansen 2024: n=875, 15–85 Jahre, CVD- und
+# diabetesfreie Population). Ausserhalb wird nicht extrapoliert, sondern am Rand gehalten:
+# ein log-lineares Modell fällt sonst unbegrenzt weiter, ohne dass dem eine Beobachtung
+# entspricht.
+_AGE_RANGE = (15.0, 85.0)
+_HR_RANGE = (45.0, 100.0)
+
+# Ab diesem Alter flacht der Abfall für HF- und LF-Power ab. Nicht geschätzt, sondern von der
+# Quellstudie selbst berichtet: „For HF and LF power the outcomes levelled off and assumed a
+# horizontal trend above the age of approximately 55 years." Die Literatur stützt das
+# unabhängig — der parasympathische Nadir liegt bei 75–80 Jahren, danach kein weiterer Abfall.
+_PLATEAU_AGE = {"hf_power": 55.0, "lf_power": 55.0}
+
+
 def hansen_p5_threshold(param: str, age: float, heart_rate: float) -> float:
-    """
-    Untere 5.-Perzentil-Normgrenze nach Hansen et al. 2024 (log-lineares Modell).
+    """Untere 5.-Perzentil-Normgrenze nach Hansen et al. 2024 (log-lineares Modell).
+
     param: 'sdnn', 'rmssd', 'hf_power', 'lf_power', 'total_power'
+
+    **Korrektur 2026-08-12.** Vorher lief das Modell als ungebremster Exponentialabfall über
+    den gesamten Altersbereich hinaus. Für HF-Power ergab das bei 80 Jahren eine Normgrenze
+    von 2,6 ms² und bei 85 Jahren 1,9 ms² — der aus der Studie selbst ableitbare, über ALLE
+    Altersgruppen gepoolte P5 liegt bei rund 9,5 ms² (Median 100, IQR 38–263, log-normal).
+    Eine altersadjustierte Grenze, die um ein Vielfaches unter der gepoolten liegt, kann nicht
+    stimmen: die gepoolte Gruppe enthält die Alten ja.
+
+    Ursache war nicht der Modellansatz, sondern die fehlende Begrenzung. Die Quellstudie
+    berichtet für HF und LF ausdrücklich ein Abflachen oberhalb ~55 Jahre; das Modell hier
+    setzte den linearen Abfall stattdessen bis 85 fort. Jetzt begrenzt:
+
+      * Alter und Herzfrequenz werden auf den in der Studie tatsächlich abgedeckten Bereich
+        geklemmt (kein Extrapolieren ins Unbeobachtete),
+      * für HF und LF endet der Alterseffekt bei 55 Jahren.
+
+    Wirkung (HF-Power, HF 70 min⁻¹): 80 Jahre 2,6 → 11,0 ms². Für SDNN, RMSSD und Total Power
+    ändert sich innerhalb des Studienbereichs nichts — dort berichtet die Studie kein Plateau,
+    und die Werte lagen ohnehin in plausibler Größenordnung.
     """
     coefs = {
         "sdnn":        (5.43, 0.018, 0.022),
@@ -84,7 +117,10 @@ def hansen_p5_threshold(param: str, age: float, heart_rate: float) -> float:
         "total_power": (9.33, 0.039, 0.037),
     }
     c0, c_age, c_hr = coefs[param]
-    return float(np.exp(c0 - c_age * age - c_hr * heart_rate))
+    a = float(np.clip(age, *_AGE_RANGE))
+    a = min(a, _PLATEAU_AGE.get(param, _AGE_RANGE[1]))
+    hr = float(np.clip(heart_rate, *_HR_RANGE))
+    return float(np.exp(c0 - c_age * a - c_hr * hr))
 
 
 def pnn50_expected_from_rmssd(rmssd_ms: float) -> float:
@@ -295,21 +331,17 @@ def classify_parameter(param: str, value: float, age: float, heart_rate: float,
         p5 = max(0.01, lo_border)
     else:
         p5 = hansen_p5_threshold(param, age, heart_rate)
-        # Mindest-Delta für Gelbe Zone: bei sehr alten/kranken Patienten kann
-        # 1.5×P5 biologisch zu schmal werden (z.B. RMSSD P5=10ms → Gelbe Zone nur 10–15ms).
-        # Lösung: Gelbe Zone mindestens 5ms/ms²/% breit halten (je nach Einheit).
-        _min_delta = {"sdnn": 5.0, "rmssd": 5.0,
-                      "hf_power": 20.0, "lf_power": 20.0, "total_power": 50.0}.get(param, 0)
-        # OFFENER BEFUND (2026-08-12, gefunden per ruff F841): dieser Wert wird berechnet,
-        # aber NIRGENDS verwendet — die Klassifikation unten rechnet weiterhin mit dem harten
-        # `p5 * 1.5`. Die im Kommentar oben beschriebene Verbreiterung der gelben Zone ist
-        # also nie wirksam geworden. Nachgemessen: bei einem 80-Jährigen läge die Grenze für
-        # HF-Power heute bei 1,0 ms² statt der beabsichtigten 20,7 ms² — Werte dazwischen
-        # erscheinen als „normal" statt „grenzwertig", ausgerechnet bei der Patientengruppe,
-        # für die die Regel gedacht war.
-        # BEWUSST NICHT nebenbei repariert: die Korrektur ändert angezeigte Bewertungen und
-        # ist damit eine fachliche Entscheidung, keine Aufräumarbeit. Siehe Backlog.
-        border_hi = max(p5 * 1.5, p5 + _min_delta)  # noqa: F841
+        # Hier stand bis 2026-08-12 ein `_min_delta`, das die gelbe Zone auf mindestens
+        # 5 ms / 20 ms² / 50 ms² verbreitern sollte — begründet damit, dass 1,5×P5 „bei sehr
+        # alten/kranken Patienten biologisch zu schmal" werde. Der Wert wurde berechnet und
+        # nie verwendet (gefunden per ruff F841).
+        #
+        # Er ist ersatzlos entfallen, weil er das falsche Problem behandelte: zu schmal war
+        # nicht die Zone, sondern die Normgrenze selbst — das Altersmodell fiel unbegrenzt
+        # weiter, statt wie in der Quellstudie oberhalb ~55 Jahren abzuflachen (siehe
+        # `hansen_p5_threshold`). Mit der dortigen Korrektur liegt die HF-Grenze bei 11 ms²
+        # statt 2,6, und die gelbe Zone hat wieder eine sinnvolle Breite, ohne dass ihr eine
+        # zweite, frei gewählte Konstante aufgesetzt werden muss.
         ref = POOLED_REFERENCE[param]
         ref_lo, ref_hi = ref["iqr"]
 

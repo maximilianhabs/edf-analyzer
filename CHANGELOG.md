@@ -32,6 +32,50 @@ kein Quick Win. Der alte Parameter funktioniert weiterhin. Ebenso die Pillow-War
 stammt aus matplotlib, nicht aus diesem Projekt, und die Obergrenze `matplotlib<4` lässt eine
 korrigierte Version automatisch nachrücken.
 
+### Behoben — die HRV-Normgrenze fiel im Alter ins Bodenlose
+
+Aufgefallen über den toten `border_hi`-Wert (siehe unten), die Ursache lag aber tiefer. Das
+altersadjustierte Modell nach Hansen et al. 2024 war als reiner Exponentialabfall
+implementiert, ohne Begrenzung. Für HF-Power ergab das mit 70 min⁻¹:
+
+| Alter | vorher | jetzt |
+|---|---|---|
+| 55 J. | 11,0 ms² | 11,0 ms² |
+| 70 J. | 4,6 ms² | 11,0 ms² |
+| 80 J. | 2,6 ms² | 11,0 ms² |
+| 85 J. | 1,9 ms² | 11,0 ms² |
+
+Dass das nicht stimmen kann, lässt sich **ohne zusätzliche Literatur** zeigen: der über alle
+Altersgruppen gepoolte P5 derselben Studie liegt bei rund 9,5 ms² (Median 100, IQR 38–263,
+log-normal genähert). Eine altersadjustierte Grenze, die um das 24-Fache darunter liegt, ist
+in sich widersprüchlich — die gepoolte Gruppe enthält die Alten ja.
+
+Die Quellstudie berichtet für HF und LF ausdrücklich ein Abflachen oberhalb etwa 55 Jahren
+(„levelled off and assumed a horizontal trend"); die Implementierung setzte den Abfall
+stattdessen bis 85 fort. Die Literatur stützt das unabhängig: der parasympathische Nadir liegt
+bei 75–80 Jahren. Jetzt umgesetzt:
+
+- Für **HF und LF** endet der Alterseffekt bei 55 Jahren — kein selbst gewähltes Plateau,
+  sondern das der Quelle.
+- **Alter und Herzfrequenz** werden auf den Bereich geklemmt, den die Studie abdeckt
+  (15–85 Jahre, 45–100 min⁻¹). Ausserhalb gibt es keine Beobachtung, an der sich eine Grenze
+  festmachen ließe.
+- Für **SDNN, RMSSD und Total Power** ändert sich nichts: dort berichtet die Studie kein
+  Plateau, und die Werte lagen in plausibler Größenordnung.
+
+Praktische Folge: Bei einem 80-Jährigen mit 90 min⁻¹ steigt die HF-Power-Grenze von 0,7 auf
+2,9 ms². Werte dazwischen erschienen bisher als „normal" und heißen jetzt „pathologisch" —
+betroffen ist genau die Patientengruppe, bei der eine vagale Depression klinisch zählt.
+
+**Der tote `_min_delta` ist ersatzlos entfallen.** Er sollte die gelbe Zone auf mindestens
+5 ms bzw. 20 ms² verbreitern, wurde berechnet und nie verwendet (gefunden per `ruff F841`).
+Er behandelte das Symptom: zu schmal war nicht die Zone, sondern die Normgrenze selbst. Mit
+deren Korrektur braucht es keine zweite frei gewählte Konstante — ein Test verhindert, dass
+sie zurückkommt.
+
+`tests/test_hrv_reference.py` prüft die Selbstkonsistenz gegen den gepoolten P5, das Plateau,
+das Nicht-Extrapolieren und den konkreten alten Fehlerfall.
+
 ### Hinzugefügt — maschinenlesbares Manifest und ein Linter
 
 - **`{Datei}_manifest.json`** als vierter Export neben PDF, Excel und visuellem Report. PDF
