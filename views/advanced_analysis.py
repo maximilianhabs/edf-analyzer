@@ -70,16 +70,32 @@ def _detect_all(edf_path: str, ch: str):
 
 
 def _render_methods_table():
-    from analysis.methods import METHODS
+    from analysis.methods import METHODS, count_by_level, LITERATURE, IMPLEMENTATION, CLINICAL
+    from core.i18n import current_lang
+    lang = current_lang()
     section_header(tr("advanced.methods_validity"), tr("advanced.methods_validity_sub"))
-    st.dataframe(pd.DataFrame(
-        [{"Bereich": b, "Parameter": p, "Verfahren": v, "Referenz": r, "Reifegrad": m}
-         for b, p, v, r, m in METHODS],
-        columns=["Bereich", "Parameter", "Verfahren", "Referenz", "Reifegrad"]),
-        hide_index=True, use_container_width=True)
-    st.caption("✅ validiert · 🟡 akzeptierte Methode, vereinfachte Umsetzung · 🔬 Forschungs-"
-               "Proxy/geplant. Diese Seite hebt die Umsetzung schrittweise (W-Serie) an — "
-               "**parallel**, ohne die bestehenden Analysen zu ändern.")
+    cols = [tr("advanced.col_domain"), tr("advanced.col_parameter"), tr("advanced.col_procedure"),
+            tr("advanced.col_reference"), tr("advanced.col_fidelity"), tr("advanced.col_level"),
+            tr("advanced.col_evidence"), tr("advanced.col_limitations")]
+    rows = []
+    for m in METHODS:
+        # Der Beleg steht in derselben Zeile wie das Etikett — wer „implementierungsvalidiert"
+        # liest, sieht unmittelbar daneben, woran das geprüft wurde. Ohne Beleg ein Strich,
+        # keine Leerstelle, die nach „steht noch aus" aussieht.
+        ev = (f"{m.evidence.checked}: {m.evidence.expected} {m.evidence.tolerance} "
+              f"({m.evidence.dataset})") if m.evidence else "—"
+        rows.append({cols[0]: m.domain, cols[1]: m.parameter, cols[2]: m.procedure,
+                     cols[3]: m.reference, cols[4]: m.fidelity_label(lang),
+                     cols[5]: m.level_label(lang), cols[6]: ev,
+                     # Ohne diese Spalte läse sich ein „—" bei den literaturbasierten Zeilen
+                     # wie „noch nicht geprüft". Bei den Vergleichsdetektoren ist es aber das
+                     # Gegenteil: sie sind geprüft worden und durchgefallen. Der Grund gehört
+                     # daneben, nicht nur in den Quelltext.
+                     cols[7]: m.limitations or "—"})
+    st.dataframe(pd.DataFrame(rows, columns=cols), hide_index=True, use_container_width=True)
+    c = count_by_level()
+    st.caption(tr("advanced.methods_legend",
+                  n_lit=c[LITERATURE], n_impl=c[IMPLEMENTATION], n_clin=c[CLINICAL]))
 
 
 def _render_rpeak_visual(edf, edf_path):

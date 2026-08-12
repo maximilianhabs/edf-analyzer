@@ -99,3 +99,127 @@ def test_afib_fixture_laedt():
         pytest.skip("AFib-Fixture nicht vorhanden")
     edf = load_and_prepare(afib)
     assert edf["ecg_channels"], "kein EKG-Kanal in der AFib-Fixture erkannt"
+
+
+def test_lomb_scargle_findet_denselben_hf_peak():
+    """Beleg für: „Lomb-Scargle (Add-on, W3)". Das interpolationsfreie Periodogramm muss die
+    eingebaute RSA-Frequenz genauso treffen wie Welch — sonst vergleicht die Seite
+    „Erweiterte Analysen" zwei Verfahren, von denen keines nachweislich richtig liegt."""
+    from core.shared import load_and_prepare
+    from analysis.ecg import detect_r_peaks_polarity_safe, build_rr_series
+    from analysis.hrv_lombscargle import lombscargle_hrv
+
+    m = _manifest()
+    edf = load_and_prepare(FIXTURE)
+    sig = edf["data"][edf["ch_idx"][m["format"]["ecg_channel"]]].astype(float)
+    _, peaks, _ = detect_r_peaks_polarity_safe(sig, edf["sfreq"])
+    rr = build_rr_series(peaks, edf["sfreq"])
+    ok = ~rr.artifact_mask
+    res = lombscargle_hrv(rr.rr_ms[ok], rr.rr_times_s[ok])
+    assert res is not None
+    soll = m["ecg"]["expected_hf_peak_hz"]
+    assert abs(res["hf_peak_freq"] - soll) < 0.02, \
+        f"Lomb-Scargle HF-Peak {res['hf_peak_freq']:.3f} Hz, erwartet {soll} Hz"
+    # Die Modulation sitzt ausschliesslich im HF-Band — HF muss LF klar dominieren.
+    assert res["hf"] > res["lf"], f"HF {res['hf']:.3g} nicht über LF {res['lf']:.3g}"
+
+
+def test_validierte_detektoren_laufen_und_melden_ihr_verfahren():
+    """Beleg für: die Umschaltung selbst. Jeder angebotene Detektor muss laufen und
+    ausweisen, dass er wirklich gelaufen ist — ein stiller Rückfall auf den eigenen
+    Detektor wäre die schlimmste Variante, weil der Vergleich dann sich selbst vergleicht."""
+    import pytest
+    from analysis.ecg import validated_detectors_available, detect_r_peaks_validated_ex
+    if not validated_detectors_available():
+        pytest.skip("py-ecg-detectors nicht installiert (optionale Abhängigkeit)")
+    from core.shared import load_and_prepare
+    from analysis.ecg import detect_r_peaks_polarity_safe
+
+    edf = load_and_prepare(FIXTURE)
+    sig = edf["data"][edf["ch_idx"][_manifest()["format"]["ecg_channel"]]].astype(float)
+    corr, _, _ = detect_r_peaks_polarity_safe(sig, edf["sfreq"])
+    for method in ("hamilton", "pan_tompkins", "christov", "engzee", "two_average"):
+        res = detect_r_peaks_validated_ex(corr, edf["sfreq"], method=method)
+        assert res.method == method, f"{method} lief als '{res.method}'"
+        assert not res.fell_back, f"{method} fiel zurück: {res.reason}"
+        assert len(res.peaks) > 0
+
+
+def test_zwei_validierte_detektoren_treffen_die_schlagzahl():
+    """Christov und Two-Average treffen die im Manifest festgelegte Schlagzahl. Nur für
+    diese beiden ist der Nachweis erbracht — siehe den folgenden Test."""
+    import pytest
+    from analysis.ecg import validated_detectors_available, detect_r_peaks_validated_ex
+    if not validated_detectors_available():
+        pytest.skip("py-ecg-detectors nicht installiert (optionale Abhängigkeit)")
+    from core.shared import load_and_prepare
+    from analysis.ecg import detect_r_peaks_polarity_safe
+
+    m = _manifest()
+    edf = load_and_prepare(FIXTURE)
+    sig = edf["data"][edf["ch_idx"][m["format"]["ecg_channel"]]].astype(float)
+    corr, _, _ = detect_r_peaks_polarity_safe(sig, edf["sfreq"])
+    soll = m["ecg"]["n_beats"]
+    for method in ("christov", "two_average"):
+        n = len(detect_r_peaks_validated_ex(corr, edf["sfreq"], method=method).peaks)
+        assert 0.93 * soll <= n <= 1.02 * soll, f"{method}: {n} R-Zacken, erwartet ~{soll}"
+
+
+def test_hamilton_und_pan_tompkins_brechen_nach_dem_amplitudensprung_ab():
+    """Festgehaltener BEFUND (2026-08-12), kein Sollwert-Test — und der Grund, warum die
+    validierten Vergleichsdetektoren in `analysis/methods.py` NICHT auf
+    `implementation-validated` stehen.
+
+    Die Fixture enthält bei 400–410 s ein Fenster mit siebenfacher EKG-Amplitude (reine
+    Skalierung, keine Formänderung). Hamilton und Pan-Tompkins aus `py-ecg-detectors`
+    detektieren bis dorthin sauber und **hören danach vollständig auf**: letzter erkannter
+    Schlag bei 409 s, danach 190 s Aufnahme ohne einen einzigen Schlag — 462 statt 702, ein
+    Drittel fehlt. Ihre adaptive Schwelle steigt mit dem Ausschlag und erholt sich nicht.
+
+    Zwei Dinge daran sind wichtig:
+
+      1. Der **eigene** Detektor der App übersteht denselben Sprung (685 Schläge, letzter bei
+         599,9 s). Die als „validiert" geltende Referenz ist hier also nicht die bessere.
+      2. `fell_back` ist dabei **False** — die Detektoren melden keinen Fehler, sie liefern
+         still ein plausibel aussehendes, aber um ein Drittel unvollständiges Ergebnis. Eine
+         HRV-Auswertung darauf wäre falsch, ohne dass es jemandem auffiele.
+
+    Daraus folgt ein offener Punkt (Backlog): eine Abdeckungs-Plausibilisierung, die meldet,
+    wenn ein Detektor über einen längeren Abschnitt gar nichts findet. Dieser Test hält den
+    Befund fest, bis das umgesetzt ist.
+
+    Ausserdem hier festgehalten: **Engzee ist polaritätskritisch** — auf dem unkorrigierten
+    Signal findet er 7 Schläge, nach der Polaritätskorrektur 678. Die Korrektur ist für
+    diesen Detektor also nicht Kosmetik, sondern Voraussetzung.
+    """
+    import pytest
+    from analysis.ecg import validated_detectors_available, detect_r_peaks_validated_ex
+    if not validated_detectors_available():
+        pytest.skip("py-ecg-detectors nicht installiert (optionale Abhängigkeit)")
+    from core.shared import load_and_prepare
+    from analysis.ecg import detect_r_peaks_polarity_safe
+
+    m = _manifest()
+    edf = load_and_prepare(FIXTURE)
+    fs = edf["sfreq"]
+    sig = edf["data"][edf["ch_idx"][m["format"]["ecg_channel"]]].astype(float)
+    corr, own, _ = detect_r_peaks_polarity_safe(sig, fs)
+    hoch_ende = m["ecg_amplitude_artifacts"]["high_amplitude_window_s"][1]
+
+    for method in ("hamilton", "pan_tompkins"):
+        peaks = detect_r_peaks_validated_ex(corr, fs, method=method).peaks
+        letzter_s = peaks[-1] / fs
+        assert letzter_s < hoch_ende + 5, (
+            f"{method} findet jetzt Schläge bis {letzter_s:.1f} s — der Befund ist behoben "
+            f"oder die Fixture hat sich geändert. Dann diesen Test entfernen und den "
+            f"Registry-Eintrag samt limitations neu bewerten.")
+
+    # Der eigene Detektor deckt die volle Aufnahme ab — das ist der Kontrast, um den es geht.
+    assert own[-1] / fs > 0.95 * edf["duration_s"], \
+        f"eigener Detektor endet schon bei {own[-1] / fs:.1f} s"
+
+    # Polaritätsabhängigkeit von Engzee — festgehalten, weil sie die Reihenfolge
+    # Polaritätskorrektur → Detektion zwingend macht.
+    roh = len(detect_r_peaks_validated_ex(sig, fs, method="engzee").peaks)
+    korr = len(detect_r_peaks_validated_ex(corr, fs, method="engzee").peaks)
+    assert korr > 10 * roh, f"Engzee: roh {roh}, polaritätskorrigiert {korr}"

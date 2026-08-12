@@ -403,7 +403,24 @@ STRINGS = {
             "too_few_beats_dfa": "Zu wenige Schläge für DFA (α2 braucht ~≥256).",
             "spectrum_uncomputable": "Spektrum nicht berechenbar.",
             "methods_validity": "Methoden & Validität",
-            "methods_validity_sub": "Welche Verfahren, welche Referenz, welcher Reifegrad",
+            "methods_validity_sub": "Welche Verfahren, welche Referenz, welcher Beleg",
+            "col_domain": "Bereich",
+            "col_parameter": "Parameter",
+            "col_procedure": "Verfahren",
+            "col_reference": "Referenz",
+            "col_fidelity": "Umsetzung",
+            "col_level": "Belegstufe",
+            "col_evidence": "Beleg",
+            "col_limitations": "Einschränkungen",
+            "methods_legend":
+                "Zwei getrennte Achsen: **Umsetzung** sagt, wie treu wir der publizierten "
+                "Vorschrift folgen (vollständig · 🟡 vereinfacht · 🔬 Proxy). **Belegstufe** "
+                "sagt, worauf sich das stützt: 📖 literaturbasiert = das Verfahren ist "
+                "publiziert, *diese* Implementierung aber nicht nachgemessen · "
+                "✅ implementierungsvalidiert = liefert auf einem Datensatz mit bekannter "
+                "Wahrheit die Sollwerte · 🏥 klinisch validiert = gegen einen klinischen "
+                "Referenzstandard geprüft. Stand: {n_lit} literaturbasiert, {n_impl} "
+                "implementierungsvalidiert, {n_clin} klinisch validiert.",
             "detector_comparison": "R-Zacken-Detektor — Vergleich & visuelle Kontrolle",
             "aperiodic_comparison": "Aperiodik 1/f — FOOOF vs. eigener Fit (W2)",
             "hrv_spectrum_comparison": "HRV-Spektrum — Lomb-Scargle vs. Welch/Burg (W3)",
@@ -943,7 +960,24 @@ STRINGS = {
             "too_few_beats_dfa": "Too few beats for DFA (α2 needs ~≥256).",
             "spectrum_uncomputable": "Spectrum cannot be computed.",
             "methods_validity": "Methods & validity",
-            "methods_validity_sub": "Which methods, which reference, which maturity level",
+            "methods_validity_sub": "Which methods, which reference, which evidence",
+            "col_domain": "Domain",
+            "col_parameter": "Parameter",
+            "col_procedure": "Procedure",
+            "col_reference": "Reference",
+            "col_fidelity": "Implementation",
+            "col_level": "Evidence level",
+            "col_evidence": "Evidence",
+            "col_limitations": "Limitations",
+            "methods_legend":
+                "Two separate axes: **implementation** says how closely we follow the "
+                "published procedure (full · 🟡 simplified · 🔬 proxy). **Evidence level** "
+                "says what that rests on: 📖 literature-based = the method is published, but "
+                "*this* implementation has not been measured against known values · "
+                "✅ implementation-validated = reproduces the expected values on a dataset "
+                "with known ground truth · 🏥 clinically validated = checked against a "
+                "clinical reference standard. Current state: {n_lit} literature-based, "
+                "{n_impl} implementation-validated, {n_clin} clinically validated.",
             "detector_comparison": "R-peak detector — comparison & visual check",
             "aperiodic_comparison": "Aperiodic 1/f — FOOOF vs. own fit (W2)",
             "hrv_spectrum_comparison": "HRV spectrum — Lomb-Scargle vs. Welch/Burg (W3)",

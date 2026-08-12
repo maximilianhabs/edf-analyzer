@@ -2,7 +2,7 @@
 
 **[English](README.md) · Deutsch**
 
-**Ein browserbasiertes Forschungs- und Lehrwerkzeug zur quantitativen Auswertung von EEG- und EKG-Aufzeichnungen im European Data Format (EDF).** Es leitet aus Routine-Aufnahmen quantitative neurophysiologische und autonome (HRV-)Kennwerte ab — mit strikter Trennung zwischen bewährten Standard-Methoden und literatur-validierten Zusatzverfahren.
+**Ein browserbasiertes Forschungs- und Lehrwerkzeug zur quantitativen Auswertung von EEG- und EKG-Aufzeichnungen im European Data Format (EDF).** Es leitet aus Routine-Aufnahmen quantitative neurophysiologische und autonome (HRV-)Kennwerte ab — mit strikter Trennung zwischen bewährten Standard-Methoden und Zusatzverfahren, und mit einer ausdrücklichen Angabe, worauf der Beleg für jedes Verfahren tatsächlich beruht.
 
 [![Tests](https://github.com/maximilianhabs/edf-analyzer/actions/workflows/test.yml/badge.svg)](https://github.com/maximilianhabs/edf-analyzer/actions/workflows/test.yml)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
@@ -71,24 +71,38 @@ Danach [http://localhost:8501](http://localhost:8501) öffnen. Der Upload erwart
 
 - **Kanal-Identifikation** — signalbasierter Classifier (EEG/EKG/EOG/EMG/Referenz/Vital) mit Konfidenz und manueller Korrektur.
 - **EEG-Spektralanalyse** — Welch/Multitaper-PSD, absolute/relative Bandpower, Alpha-Grundrhythmus, A/P-Gradient, hemisphärische Asymmetrie.
-- **Aperiodik (1/f)** — eigener Log-Log-Fit plus validierter FOOOF/specparam-Fit.
-- **Rhythmus-Screening** — vorgeschaltetes AFib-/Ektopie-Screening vor der HRV-Analyse: Artefakt-Filterung (Orphanidou 2015), Vorhofflimmern-Erkennung via CosEn (Lake & Moorman 2011) mit gestufter Sicherheit, P-Wellen-Nachweis via Schlag-Summation, Ektopie-Erkennung (Kompensationspause/QRS-Breite), Detektor-Umschaltung (eigen/Hamilton/Christov/Pan-Tompkins/…), automatische Polaritätskorrektur mit In-App-Diagnose.
+- **Aperiodik (1/f)** — eigener Log-Log-Fit plus FOOOF/specparam als Referenz-Implementierung.
+- **Rhythmus-Screening** — vorgeschaltetes AFib-/Ektopie-Screening vor der HRV-Analyse: Artefakt-Filterung (Orphanidou 2015), **Screening auf AFib-Verdacht** via CosEn (Lake & Moorman 2011) mit gestufter Sicherheit — ein Hinweis zur Nachprüfung, keine Diagnose, so formuliert es auch die App —, P-Wellen-Nachweis via Schlag-Summation, Ektopie-Erkennung (Kompensationspause/QRS-Breite), Detektor-Umschaltung (eigen/Hamilton/Christov/Pan-Tompkins/…), automatische Polaritätskorrektur mit In-App-Diagnose.
 - **EKG & HRV** — QRS-Detektion, RR-Bereinigung, Zeitdomäne (SDNN/RMSSD/pNN50/CV/Poincaré), Frequenzdomäne (Welch + Burg, Lomb-Scargle), DFA α₁/α₂, autonome Gesamtaktivitäts-Warnung bei "starrer Herzfrequenz".
 - **Komplexität** — Sample Entropy, Lempel-Ziv, Permutationsentropie.
 - **Artefaktkorrektur** — regelbasierte Auto-Maske plus klickbares Editing; Gesamt- und bereinigte Auswertung laufen parallel.
-- **Reports** — tabellarischer PDF/Excel-Export (Gesamt vs. korrigiert) und ein visueller PDF-Abstract.
+- **Reports** — tabellarischer PDF/Excel-Export (Gesamt vs. korrigiert) und ein visueller PDF-Abstract. Jeder Report trägt seine **Herkunft**: Version, Git-Commit, Python- und Paketversionen, SHA-256 der Aufnahme und einen Analyse-Fingerabdruck — damit zwei Reports derselben Aufnahme überhaupt vergleichbar sind.
 
 ## Wissenschaftliche Transparenz
 
-Der Anspruch ist methodische Ehrlichkeit statt Feature-Marketing. Eine zentrale Registry (`analysis/methods.py`) klassifiziert **alle 22 eingesetzten Verfahren**:
+Der Anspruch ist methodische Ehrlichkeit statt Feature-Marketing. Eine zentrale Registry (`analysis/methods.py`) klassifiziert **alle 22 eingesetzten Verfahren** — auf **zwei getrennten Achsen**, weil hier zwei verschiedene Fragen zu beantworten sind.
 
-| Status | Anzahl | Bedeutung |
+**Achse 1 — Umsetzungstreue:** wie nah folgt unsere Umsetzung der publizierten Vorschrift?
+
+| Umsetzung | Anzahl | Bedeutung |
 |---|---|---|
-| ✅ validiert | 15 | folgt einem publizierten Standard (z. B. Task Force 1996 für HRV, Pan & Tompkins 1985, FOOOF/Donoghue 2020, Nuwer für Asymmetrie) |
+| vollständig | 15 | folgt der publizierten Vorschrift vollständig (z. B. Task Force 1996 für HRV, Hamilton 2002, FOOOF/Donoghue 2020) |
 | 🟡 vereinfacht | 6 | funktionsfähige, bewusst vereinfachte Variante — als solche gekennzeichnet |
-| 🔬 Proxy | 1 | explorativer Ersatzmarker, nicht klinisch etabliert |
+| 🔬 Proxy | 1 | explorativer Ersatzmarker ohne etablierte Norm |
 
-Nach dem **Add-on-Prinzip** bleiben die bewährten Standard-Methoden unverändert; für jede vereinfachte Default-Methode existiert ein validiertes Pendant zum direkten Vergleich in der Rubrik „Erweiterte Analysen". Es wird nichts stillschweigend umgestellt.
+**Achse 2 — Belegstufe:** worauf stützt sich die Aussage, dass die Berechnung stimmt?
+
+| Belegstufe | Anzahl | Bedeutung |
+|---|---|---|
+| 📖 literaturbasiert | 4 | das Verfahren ist publiziert — über *diese* Implementierung sagt das nichts aus |
+| ✅ implementierungsvalidiert | 18 | reproduziert auf einem Datensatz mit bekannter Wahrheit die Sollwerte, mit dokumentierter Toleranz und Test |
+| 🏥 klinisch validiert | 0 | gegen einen klinischen Referenzstandard oder eine annotierte Datenbank geprüft (z. B. MIT-BIH) |
+
+Diese Trennung ist **2026-08 nachgezogen worden**. Vorher stand über 15 Verfahren „✅ validiert", definiert als „publizierter Standard-Algorithmus" — das ist literaturbasiert, das Etikett behauptete aber eine geprüfte Implementierung. Ein externes Review hat den Widerspruch zu Recht beanstandet. Die Registry lässt eine höhere Stufe jetzt technisch nur mit hinterlegtem Beleg (Datensatz, Sollwert, Toleranz, Test) zu, und die Seite „Erweiterte Analysen" zeigt diesen Beleg in derselben Zeile wie das Etikett.
+
+Die Belege stammen aus den synthetischen Ground-Truth-Dateien (`tests/fixtures/`) und aus analytisch bekannten Werten — die Permutationsentropie weissen Rauschens ist 1,0, der DFA-Exponent unkorrelierten Rauschens 0,5, die SDNN einer sinusförmig modulierten RR-Reihe A/√2. Die vier weiterhin literaturbasierten Verfahren sind der ehrliche Rest: für zwei legt die Fixture kein Zahlenniveau fest (ein selbst gesetzter Sollwert wäre keine Validierung), eines braucht ein Testsignal, das die Fixture nicht enthält, und eines — die GPL-Vergleichsdetektoren — ist im Test **durchgefallen**: bei einem Amplitudensprung hören Hamilton und Pan-Tompkins auf zu detektieren und verlieren still ein Drittel der Schläge. Einzelheiten in `analysis/methods.py` unter `limitations`.
+
+Nach dem **Add-on-Prinzip** bleiben die bewährten Standard-Methoden unverändert; für jede vereinfachte Default-Methode existiert ein vollständiges Pendant zum direkten Vergleich in der Rubrik „Erweiterte Analysen". Es wird nichts stillschweigend umgestellt.
 
 ## Limitationen
 
@@ -157,6 +171,8 @@ python3 tools/check_i18n.py      # jeder Text in beiden Sprachen, gleiche Platzh
 python3 tools/check_licenses.py  # deklariert == importiert, kein Copyleft in der
                                  # Standardinstallation, NOTICE passt zu den Requirements
 python3 tools/check_fonts.py     # jede angeforderte Schrift auflösbar, kein CDN-Verweis
+python3 tools/check_methods.py   # Methoden-Registry: keine Belegstufe ohne Nachweis,
+                                 # beide READMEs stimmen mit der Registry überein
 ```
 
 Das alles läuft bei jedem Push in der CI. Die Test-Suite braucht bewusst **keine** echte

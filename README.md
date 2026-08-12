@@ -5,7 +5,8 @@
 **A browser-based research and teaching tool for the quantitative analysis of EEG and ECG
 recordings in the European Data Format (EDF).** It derives quantitative neurophysiological and
 autonomic (HRV) measures from routine recordings — with a strict separation between
-established standard methods and literature-validated add-on procedures.
+established standard methods and add-on procedures, and an explicit statement of what the
+evidence for each procedure actually is.
 
 [![Tests](https://github.com/maximilianhabs/edf-analyzer/actions/workflows/test.yml/badge.svg)](https://github.com/maximilianhabs/edf-analyzer/actions/workflows/test.yml)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
@@ -88,10 +89,11 @@ Then open [http://localhost:8501](http://localhost:8501). The upload expects an 
   confidence scores and manual correction.
 - **EEG spectral analysis** — Welch/multitaper PSD, absolute/relative band power, alpha
   background rhythm, A/P gradient, hemispheric asymmetry.
-- **Aperiodic component (1/f)** — own log-log fit plus a validated FOOOF/specparam fit.
+- **Aperiodic component (1/f)** — own log-log fit plus FOOOF/specparam as the reference implementation.
 - **Rhythm screening** — AFib/ectopy screening upstream of the HRV analysis: artifact
-  filtering (Orphanidou 2015), atrial fibrillation detection via CosEn (Lake & Moorman 2011)
-  with graded certainty, P-wave detection via beat summation, ectopy detection (compensatory
+  filtering (Orphanidou 2015), **screening for suspected atrial fibrillation** via CosEn (Lake
+  & Moorman 2011) with graded certainty — a flag for review, not a diagnosis, which is also
+  how the app words it — P-wave detection via beat summation, ectopy detection (compensatory
   pause/QRS width), switchable detectors (own/Hamilton/Christov/Pan-Tompkins/…), automatic
   polarity correction with in-app diagnostics.
 - **ECG & HRV** — QRS detection, RR cleaning, time domain (SDNN/RMSSD/pNN50/CV/Poincaré),
@@ -101,20 +103,52 @@ Then open [http://localhost:8501](http://localhost:8501). The upload expects an 
 - **Artifact correction** — rule-based auto mask plus click-based editing; the total and the
   corrected analysis run in parallel.
 - **Reports** — tabular PDF/Excel export (total vs. corrected) and a visual PDF abstract.
+  Every report carries its **provenance**: version, git commit, Python and package versions,
+  the SHA-256 of the recording and an analysis fingerprint — so two reports of the same
+  recording can actually be compared.
 
 ## Scientific transparency
 
 The aim is methodological honesty rather than feature marketing. A central registry
-(`analysis/methods.py`) classifies **all 22 procedures in use**:
+(`analysis/methods.py`) classifies **all 22 procedures in use** on **two separate axes**,
+because there are two different questions to answer here.
 
-| Status | Count | Meaning |
+**Axis 1 — implementation fidelity:** how closely does our implementation follow the published
+procedure?
+
+| Implementation | Count | Meaning |
 |---|---|---|
-| ✅ validated | 15 | follows a published standard (e.g. Task Force 1996 for HRV, Pan & Tompkins 1985, FOOOF/Donoghue 2020, Nuwer for asymmetry) |
+| full | 15 | follows the published procedure in full (e.g. Task Force 1996 for HRV, Hamilton 2002, FOOOF/Donoghue 2020) |
 | 🟡 simplified | 6 | working but deliberately simplified variant — labeled as such |
-| 🔬 proxy | 1 | exploratory surrogate marker, not clinically established |
+| 🔬 proxy | 1 | exploratory surrogate marker with no established norm |
+
+**Axis 2 — evidence level:** what does the claim that the computation is correct actually rest
+on?
+
+| Evidence level | Count | Meaning |
+|---|---|---|
+| 📖 literature-based | 4 | the method is published — which says nothing about *this* implementation |
+| ✅ implementation-validated | 18 | reproduces the expected values on a dataset with known ground truth, with a documented tolerance and test |
+| 🏥 clinically validated | 0 | checked against a clinical reference standard or an annotated database (e.g. MIT-BIH) |
+
+This separation was **introduced in 2026-08**. Before that, 15 procedures carried the label
+"✅ validated", defined as "published standard algorithm" — that is literature-based, while the
+label claimed a verified implementation. An external review rightly flagged the contradiction.
+The registry now technically refuses a higher level unless the evidence (dataset, expected
+value, tolerance, test) is recorded with it, and the "Advanced Analyses" page shows that
+evidence in the same row as the label.
+
+The evidence comes from the synthetic ground-truth fixtures (`tests/fixtures/`) and from
+analytically known values — the permutation entropy of white noise is 1.0, the DFA exponent of
+uncorrelated noise is 0.5, the SDNN of a sinusoidally modulated RR series is A/√2. The four
+procedures still at literature-based are the honest remainder: for two of them the fixture
+defines no numeric target (a self-chosen one would not be a validation), one needs a test
+signal the fixture does not contain, and one — the GPL comparison detectors — **failed** its
+test: on an amplitude step, Hamilton and Pan-Tompkins stop detecting and silently lose a third
+of the beats. Details in `analysis/methods.py` under `limitations`.
 
 Following the **add-on principle**, the established standard methods stay unchanged; for every
-simplified default method a validated counterpart exists for direct comparison under "Advanced
+simplified default method a full counterpart exists for direct comparison under "Advanced
 Analyses". Nothing is switched over silently.
 
 ## Limitations
@@ -179,7 +213,7 @@ Please report bugs and suggestions via
 
 ## Checks
 
-Two dependency-free scripts guard things that break quietly rather than loudly:
+Dependency-free scripts guard things that break quietly rather than loudly:
 
 ```bash
 pip install -r requirements-dev.txt
@@ -188,6 +222,8 @@ python3 tools/check_i18n.py      # every UI string exists in both languages, sam
 python3 tools/check_licenses.py  # declared == imported, no copyleft in the default install,
                                  # NOTICE matches requirements
 python3 tools/check_fonts.py     # every requested font resolves, no CDN reference
+python3 tools/check_methods.py   # method registry: no evidence level without proof,
+                                 # and both READMEs match the registry
 ```
 
 All of this runs in CI on every push. The test suite deliberately needs **no** real recording:
