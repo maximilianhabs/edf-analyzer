@@ -4,7 +4,7 @@ message: >-
   Wenn Sie diese Software in wissenschaftlichen Arbeiten verwenden,
   zitieren Sie sie bitte wie folgt.
 type: software
-version: 0.2.0
+version: 0.3.0
 date-released: "2026-08-12"
 authors:
   - family-names: Habs

@@ -3,7 +3,17 @@
 Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
-## [Unreleased]
+## [0.3.0] — 2026-08-12
+
+Eine Fassung, die vor allem **korrigiert und benennt**. Zwei Dinge darin ändern, was die App
+ausgibt: eine Normgrenze, die im Alter ins Bodenlose fiel, und eine Warnung, wenn ein
+R-Zacken-Detektor über längere Abschnitte gar nichts findet. Beides waren stille Fehler —
+die Werte sahen plausibel aus und waren es nicht.
+
+Dazu der Haftungshinweis, der bisher nur in den READMEs stand, ein maschinenlesbares
+Manifest, ein Linter mit bewusst schmaler Regelauswahl und die ausdrückliche Begründung,
+warum Delta hier bei 1 Hz beginnt.
+
 
 ### Behoben / Geändert — Quick Wins
 
