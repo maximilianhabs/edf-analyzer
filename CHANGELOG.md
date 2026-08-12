@@ -3,7 +3,19 @@
 Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
-## [Unreleased] — Vorbereitung der öffentlichen Veröffentlichung
+## [0.2.0] — 2026-08-12
+
+Diese Fassung fügt keine einzige neue Analysemethode hinzu. Sie beantwortet stattdessen für
+die vorhandenen 22 Verfahren die Frage, die ein externes Review zu Recht gestellt hat:
+**worauf stützt sich eigentlich die Behauptung, dass sie richtig rechnen?**
+
+Vier Dinge sind daraus geworden: ehrliche Etiketten mit hinterlegtem Nachweis, Tests gegen
+bekannte Sollwerte, nachvollziehbare Herkunft in jedem Report und eine Spezifikation der
+Vorverarbeitung. Dazu eine Reihe von Befunden, die dabei aufgefallen sind — darunter zwei,
+die still falsche Ergebnisse erzeugen konnten.
+
+Die Version 0.1.0 (2026-08-11) war der Stand der ersten öffentlichen Schaltung; ein getaggtes
+Release gab es dafür nicht.
 
 ### Geändert — Methoden-Registry: „validiert" heißt jetzt, was es sagt
 
@@ -35,121 +47,6 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
   App selbst formuliert durchgehend „AFib-**Verdacht**, Screening, keine Diagnose". Die
   Überspitzung stand also nur in der Doku und ist dort jetzt korrigiert (im Deutschen
   ebenso), genauso wie „literatur-validierte Zusatzverfahren" im Vorspann.
-
-### Hinzugefügt — Betriebshärtung
-
-**Upload-Prüfung (`core/edf_validation.py`).** Bisher prüfte der Upload nur Dateiendung und
-Größe; alles andere fiel erst beim Laden auf — als Stacktrace. Ein Fall fiel **gar nicht**
-auf: eine abgeschnitten übertragene Datei lädt MNE klaglos als kürzere Aufnahme
-(nachgemessen: eine halbierte 600-s-Datei wird zu 299 s), und die Analyse rechnet auf dem
-Bruchstück weiter, ohne dass es jemandem auffällt. Geprüft wird jetzt allein anhand der
-Header, in Millisekunden und ohne die Datei zu laden: ist es überhaupt eine EDF (umbenannte
-Fremddatei, BDF), ist der Header in sich schlüssig, passt die Dateigröße zu den
-angekündigten Datenblöcken, ist die Aufnahme lang genug.
-
-Abgelehnt wird nur, was nicht analysierbar ist. Kurze Aufnahmen (< 5 min, HRV-Frequenzdomäne)
-und niedrige Abtastraten (< 100 Hz) erzeugen eine **Warnung** — die App ist ein
-Forschungswerkzeug, kein Torwächter; ungewöhnlich ist nicht unbrauchbar. Jede Meldung sagt,
-was nicht stimmt und was zu tun ist, statt „ungültige Datei", und liegt **zweisprachig** vor:
-eine abgelehnte Datei ist genau die Stelle, an der ein anderssprachiger Nutzer sonst ohne
-Erklärung stehen bliebe. `tools/check_i18n.py` prüft diesen zweiten Übersetzungsort mit
-(fehlende Fassung, unübersetzt gebliebener Text, abweichende Platzhalter — letztere würden
-zur Laufzeit in `.format()` scheitern).
-
-**Container.** Läuft nicht mehr als root, sondern als eigener Nutzer (`uid 10001`) — der
-Container verarbeitet hochgeladene Fremddateien mit einem umfangreichen Parser-Stack, es gibt
-keinen Grund für root-Rechte. Ressourcengrenzen gehören an den Start und stehen als
-Betriebshinweis im Dockerfile; eine 200-MB-EDF wird von MNE vollständig als float64 in den
-Speicher geladen, und ohne Grenze zieht eine einzelne große Aufnahme den Host in den Swap.
-Das ist der realistische Fall — nicht ein Angreifer, sondern eine lange Aufnahme.
-
-Nachgeprüft statt angenommen: das Image wurde gebaut und mit `--read-only --memory=2g
---cpus=2` plus tmpfs gestartet, und darin die **komplette Kette** durchlaufen —
-Validierung, Laden, alle 15 Report-Sektionen, Tabellen-PDF, Excel und visueller Report. Alles
-grün als Nicht-root auf einem schreibgeschützten Dateisystem.
-
-**Abhängigkeiten.** Ober- **und** Untergrenzen statt nur `>=`. Exakte Pins wären für eine
-Anwendung das Naheliegende — gerade weil die Reports jetzt die Paketversionen mitschreiben —
-gehen hier aber nicht: das Image läuft auf Python 3.9 (wegen MNE), CI und Entwicklung
-zusätzlich auf 3.12, und für mehrere Pakete gibt es keine auf beiden installierbare Version
-(numpy 2.0.2 ist die letzte mit 3.9-Rädern). Die Obergrenzen schließen den nächsten
-Major-Sprung aus; welche Versionen ein konkretes Ergebnis erzeugt haben, steht ohnehin im
-Report. Dazu `.github/dependabot.yml`: monatlich, die wissenschaftlichen Pakete als **eine**
-Gruppe, weil numpy/scipy/pandas/matplotlib einzeln aktualisiert entweder nicht installieren
-oder eine Kombination ergeben, die niemand zusammen getestet hat.
-
-
-### Hinzugefügt — `docs/PREPROCESSING.md`
-
-Zwischen der EDF-Datei und einem ausgegebenen Kennwert liegen Filter, Fensterwahl,
-Artefaktbehandlung und Umtastung. Sie standen nirgends zusammenhängend — über ein Dutzend
-Filteraufrufe verteilt über `analysis/` und `views/`, jeder für sich kommentiert, ohne
-Gesamtbild. Wer einen Wert nachrechnen wollte, musste den Code lesen.
-
-Die Spezifikation ist **aus dem Code abgeleitet, nicht aus der Absicht**, und
-`tests/test_preprocessing_doc.py` bindet sie daran: Bandgrenzen, Artefaktschwellen,
-HRV-Frequenzparameter und die Filterordnungen werden aus den Modulen gelesen und gegen das
-Dokument geprüft. Eine aus dem Code abgeleitete Doku veraltet sonst leise — und ist dann
-schlimmer als keine, weil sie einen Rechenweg behauptet, den es nicht mehr gibt.
-
-Der wichtigste Satz darin klärt die häufigste Fehlannahme: **die Filtereinstellungen im
-EEG-Viewer beeinflussen keinen berechneten Wert.** Sie ändern nur die dargestellte Kurve;
-die Kennwerte beruhen unverändert auf dem 1-Hz-hochpassgefilterten Signal.
-
-**Beim Ableiten gefunden:**
-
-- **Eine tote, abweichende EKG-Pipeline.** `analysis/ecg.py` enthält `run_ecg_analysis()`,
-  das `preprocess_ecg()` (Bandpass 0,5–40 Hz) vor der R-Zacken-Suche anwendet und den
-  Frequenzbereich über `compute_hrv_frequency_domain()` rechnet. **Diese Funktion ruft
-  niemand auf**, und die beiden anderen ausschließlich sie. Der tatsächliche Pfad filtert
-  *nicht* 0,5–40 Hz vor und nutzt eine andere Frequenzbereichsfunktion. Wer die Datei von
-  oben liest, muss den Eindruck gewinnen, die EKG-Kette beginne mit diesem Filter. Ein Test
-  hält den Zustand fest, bis die Leiche entfernt ist.
-- **Delta beginnt bei 1 Hz, nicht bei 0,5 Hz** — ergibt sich zwingend aus dem 1-Hz-Hochpass
-  und dem Ausgabeband, stand aber an keiner für Anwender sichtbaren Stelle. Für
-  Enzephalopathie und Vigilanzminderung ist gerade der Bereich darunter relevant. Als
-  offener Prüfpunkt notiert; nicht nebenbei geändert, weil es jeden Delta-abgeleiteten
-  Quotienten verschieben würde.
-- **Zwei Welch-Implementierungen, nachgemessen gleichwertig.** `_compute_psd` nutzt das
-  symmetrische `np.hanning`, `scipy.signal.welch` das periodische Hann-Fenster (Energie
-  299,6 gegen 300,0). Der Unterschied kürzt sich in der Normierung heraus: Alpha-Power,
-  Alpha-Schwerpunkt und SEF95 stimmen auf sechs Stellen überein. Festgehalten, damit die
-  Frage nicht ein zweites Mal untersucht wird.
-
-
-### Hinzugefügt — Herkunft in den Reports
-
-Ein exportierter Report zeigte bisher Werte, aber nichts darüber, **womit** sie entstanden
-sind. Es gab überhaupt keine Versionsnummer im Code — nur `CITATION.cff` nannte eine. Wer
-zwei Reports derselben Aufnahme aus verschiedenen Wochen nebeneinander legte, konnte nicht
-entscheiden, ob ein Unterschied aus der Aufnahme oder aus einer Codeänderung stammt.
-
-- **`core/version.py`** (neu) — eine einzige Versionsquelle: die Nummer wird aus
-  `CITATION.cff` gelesen, nicht zusätzlich im Code gepflegt. Ein Test verhindert, dass
-  später doch eine zweite Konstante dazukommt.
-- **Git-Commit**, mit `+dirty`, wenn beim Erzeugen uncommittete Änderungen vorlagen — dann
-  ist das Ergebnis eben *nicht* allein über den Commit reproduzierbar, und genau das soll man
-  sehen. `.dockerignore` schließt `.git/` aus, im Image gibt es also kein Repository; der
-  Commit wird deshalb beim Bauen hereingereicht
-  (`--build-arg EDF_BUILD_COMMIT=$(git rev-parse --short HEAD)`). Fehlt er, steht
-  „unbekannt" da statt einer erfundenen Angabe.
-- **Python- und Paketversionen der laufenden Umgebung** (aus `importlib.metadata`, nicht aus
-  `requirements.txt`: was installiert ist, entscheidet über das Ergebnis).
-- **SHA-256 der EDF-Datei und ein Analyse-Fingerabdruck** aus Datei + Version + Commit +
-  Analyseparametern. Gleicher Fingerabdruck heißt: gleiche Datei, gleicher Code, gleiche
-  Einstellungen — ein Unterschied in den Werten wäre dann erklärungsbedürftig. Der Hash
-  identifiziert die Aufnahme, ohne etwas über sie preiszugeben.
-- Sichtbar in **allen drei** Ausgaben: als eigene Sektion im Tabellen-Report (PDF und Excel),
-  als Block im HRV-Report und als Fußzeile auf **jeder Seite** des visuellen Reports — aus
-  dem werden einzelne Seiten ausgedruckt und weitergereicht, und eine Seite ohne ihre
-  Herkunft verliert sie genau dann, wenn es darauf ankommt.
-
-**Beim Ansehen der erzeugten PDFs gefunden und behoben:** ReportLab bricht rohe Zellentexte
-nicht um — die neue Paketliste lief rechts aus dem Satzspiegel und „Parameter: pädiatrische
-Normwerte" überdruckte seinen eigenen Wert. `build_pdf` kann jetzt Sektionen umbrechen
-lassen (`wrap`) und eigene Spaltenbreiten mitgeben. Der Fehler war nur sichtbar, weil die
-Reports tatsächlich geöffnet und nicht nur erzeugt wurden.
-
 
 ### Hinzugefügt — Sollwerte in die Tests, und was dabei herauskam
 
@@ -204,6 +101,127 @@ Detektor über einen längeren Abschnitt gar nichts findet.
   den verwendeten Amplituden auf, bei 25 ms Amplitude täte es das nicht — ein solcher Fall
   ist deshalb absichtlich nicht im Test.
 
+
+### Hinzugefügt — Herkunft in den Reports
+
+Ein exportierter Report zeigte bisher Werte, aber nichts darüber, **womit** sie entstanden
+sind. Es gab überhaupt keine Versionsnummer im Code — nur `CITATION.cff` nannte eine. Wer
+zwei Reports derselben Aufnahme aus verschiedenen Wochen nebeneinander legte, konnte nicht
+entscheiden, ob ein Unterschied aus der Aufnahme oder aus einer Codeänderung stammt.
+
+- **`core/version.py`** (neu) — eine einzige Versionsquelle: die Nummer wird aus
+  `CITATION.cff` gelesen, nicht zusätzlich im Code gepflegt. Ein Test verhindert, dass
+  später doch eine zweite Konstante dazukommt.
+- **Git-Commit**, mit `+dirty`, wenn beim Erzeugen uncommittete Änderungen vorlagen — dann
+  ist das Ergebnis eben *nicht* allein über den Commit reproduzierbar, und genau das soll man
+  sehen. `.dockerignore` schließt `.git/` aus, im Image gibt es also kein Repository; der
+  Commit wird deshalb beim Bauen hereingereicht
+  (`--build-arg EDF_BUILD_COMMIT=$(git rev-parse --short HEAD)`). Fehlt er, steht
+  „unbekannt" da statt einer erfundenen Angabe.
+- **Python- und Paketversionen der laufenden Umgebung** (aus `importlib.metadata`, nicht aus
+  `requirements.txt`: was installiert ist, entscheidet über das Ergebnis).
+- **SHA-256 der EDF-Datei und ein Analyse-Fingerabdruck** aus Datei + Version + Commit +
+  Analyseparametern. Gleicher Fingerabdruck heißt: gleiche Datei, gleicher Code, gleiche
+  Einstellungen — ein Unterschied in den Werten wäre dann erklärungsbedürftig. Der Hash
+  identifiziert die Aufnahme, ohne etwas über sie preiszugeben.
+- Sichtbar in **allen drei** Ausgaben: als eigene Sektion im Tabellen-Report (PDF und Excel),
+  als Block im HRV-Report und als Fußzeile auf **jeder Seite** des visuellen Reports — aus
+  dem werden einzelne Seiten ausgedruckt und weitergereicht, und eine Seite ohne ihre
+  Herkunft verliert sie genau dann, wenn es darauf ankommt.
+
+**Beim Ansehen der erzeugten PDFs gefunden und behoben:** ReportLab bricht rohe Zellentexte
+nicht um — die neue Paketliste lief rechts aus dem Satzspiegel und „Parameter: pädiatrische
+Normwerte" überdruckte seinen eigenen Wert. `build_pdf` kann jetzt Sektionen umbrechen
+lassen (`wrap`) und eigene Spaltenbreiten mitgeben. Der Fehler war nur sichtbar, weil die
+Reports tatsächlich geöffnet und nicht nur erzeugt wurden.
+
+
+### Hinzugefügt — `docs/PREPROCESSING.md`
+
+Zwischen der EDF-Datei und einem ausgegebenen Kennwert liegen Filter, Fensterwahl,
+Artefaktbehandlung und Umtastung. Sie standen nirgends zusammenhängend — über ein Dutzend
+Filteraufrufe verteilt über `analysis/` und `views/`, jeder für sich kommentiert, ohne
+Gesamtbild. Wer einen Wert nachrechnen wollte, musste den Code lesen.
+
+Die Spezifikation ist **aus dem Code abgeleitet, nicht aus der Absicht**, und
+`tests/test_preprocessing_doc.py` bindet sie daran: Bandgrenzen, Artefaktschwellen,
+HRV-Frequenzparameter und die Filterordnungen werden aus den Modulen gelesen und gegen das
+Dokument geprüft. Eine aus dem Code abgeleitete Doku veraltet sonst leise — und ist dann
+schlimmer als keine, weil sie einen Rechenweg behauptet, den es nicht mehr gibt.
+
+Der wichtigste Satz darin klärt die häufigste Fehlannahme: **die Filtereinstellungen im
+EEG-Viewer beeinflussen keinen berechneten Wert.** Sie ändern nur die dargestellte Kurve;
+die Kennwerte beruhen unverändert auf dem 1-Hz-hochpassgefilterten Signal.
+
+**Beim Ableiten gefunden:**
+
+- **Eine tote, abweichende EKG-Pipeline.** `analysis/ecg.py` enthält `run_ecg_analysis()`,
+  das `preprocess_ecg()` (Bandpass 0,5–40 Hz) vor der R-Zacken-Suche anwendet und den
+  Frequenzbereich über `compute_hrv_frequency_domain()` rechnet. **Diese Funktion ruft
+  niemand auf**, und die beiden anderen ausschließlich sie. Der tatsächliche Pfad filtert
+  *nicht* 0,5–40 Hz vor und nutzt eine andere Frequenzbereichsfunktion. Wer die Datei von
+  oben liest, muss den Eindruck gewinnen, die EKG-Kette beginne mit diesem Filter. Ein Test
+  hält den Zustand fest, bis die Leiche entfernt ist.
+- **Delta beginnt bei 1 Hz, nicht bei 0,5 Hz** — ergibt sich zwingend aus dem 1-Hz-Hochpass
+  und dem Ausgabeband, stand aber an keiner für Anwender sichtbaren Stelle. Für
+  Enzephalopathie und Vigilanzminderung ist gerade der Bereich darunter relevant. Als
+  offener Prüfpunkt notiert; nicht nebenbei geändert, weil es jeden Delta-abgeleiteten
+  Quotienten verschieben würde.
+- **Zwei Welch-Implementierungen, nachgemessen gleichwertig.** `_compute_psd` nutzt das
+  symmetrische `np.hanning`, `scipy.signal.welch` das periodische Hann-Fenster (Energie
+  299,6 gegen 300,0). Der Unterschied kürzt sich in der Normierung heraus: Alpha-Power,
+  Alpha-Schwerpunkt und SEF95 stimmen auf sechs Stellen überein. Festgehalten, damit die
+  Frage nicht ein zweites Mal untersucht wird.
+
+
+### Hinzugefügt — Betriebshärtung
+
+**Upload-Prüfung (`core/edf_validation.py`).** Bisher prüfte der Upload nur Dateiendung und
+Größe; alles andere fiel erst beim Laden auf — als Stacktrace. Ein Fall fiel **gar nicht**
+auf: eine abgeschnitten übertragene Datei lädt MNE klaglos als kürzere Aufnahme
+(nachgemessen: eine halbierte 600-s-Datei wird zu 299 s), und die Analyse rechnet auf dem
+Bruchstück weiter, ohne dass es jemandem auffällt. Geprüft wird jetzt allein anhand der
+Header, in Millisekunden und ohne die Datei zu laden: ist es überhaupt eine EDF (umbenannte
+Fremddatei, BDF), ist der Header in sich schlüssig, passt die Dateigröße zu den
+angekündigten Datenblöcken, ist die Aufnahme lang genug.
+
+Abgelehnt wird nur, was nicht analysierbar ist. Kurze Aufnahmen (< 5 min, HRV-Frequenzdomäne)
+und niedrige Abtastraten (< 100 Hz) erzeugen eine **Warnung** — die App ist ein
+Forschungswerkzeug, kein Torwächter; ungewöhnlich ist nicht unbrauchbar. Jede Meldung sagt,
+was nicht stimmt und was zu tun ist, statt „ungültige Datei", und liegt **zweisprachig** vor:
+eine abgelehnte Datei ist genau die Stelle, an der ein anderssprachiger Nutzer sonst ohne
+Erklärung stehen bliebe. `tools/check_i18n.py` prüft diesen zweiten Übersetzungsort mit
+(fehlende Fassung, unübersetzt gebliebener Text, abweichende Platzhalter — letztere würden
+zur Laufzeit in `.format()` scheitern).
+
+**Container.** Läuft nicht mehr als root, sondern als eigener Nutzer (`uid 10001`) — der
+Container verarbeitet hochgeladene Fremddateien mit einem umfangreichen Parser-Stack, es gibt
+keinen Grund für root-Rechte. Ressourcengrenzen gehören an den Start und stehen als
+Betriebshinweis im Dockerfile; eine 200-MB-EDF wird von MNE vollständig als float64 in den
+Speicher geladen, und ohne Grenze zieht eine einzelne große Aufnahme den Host in den Swap.
+Das ist der realistische Fall — nicht ein Angreifer, sondern eine lange Aufnahme.
+
+Nachgeprüft statt angenommen: das Image wurde gebaut und mit `--read-only --memory=2g
+--cpus=2` plus tmpfs gestartet, und darin die **komplette Kette** durchlaufen —
+Validierung, Laden, alle 15 Report-Sektionen, Tabellen-PDF, Excel und visueller Report. Alles
+grün als Nicht-root auf einem schreibgeschützten Dateisystem.
+
+**Abhängigkeiten.** Ober- **und** Untergrenzen statt nur `>=`. Exakte Pins wären für eine
+Anwendung das Naheliegende — gerade weil die Reports jetzt die Paketversionen mitschreiben —
+gehen hier aber nicht: das Image läuft auf Python 3.9 (wegen MNE), CI und Entwicklung
+zusätzlich auf 3.12, und für mehrere Pakete gibt es keine auf beiden installierbare Version
+(numpy 2.0.2 ist die letzte mit 3.9-Rädern). Die Obergrenzen schließen den nächsten
+Major-Sprung aus; welche Versionen ein konkretes Ergebnis erzeugt haben, steht ohnehin im
+Report. Dazu `.github/dependabot.yml`: monatlich, die wissenschaftlichen Pakete als **eine**
+Gruppe, weil numpy/scipy/pandas/matplotlib einzeln aktualisiert entweder nicht installieren
+oder eine Kombination ergeben, die niemand zusammen getestet hat.
+
+
+## [0.1.0] — 2026-08-11 — erste öffentliche Fassung
+
+Der Stand, mit dem das Repository von privat auf öffentlich geschaltet wurde: Sicherheits-
+Fix am Passwort-Gate, Zweisprachigkeit, Lizenz- und Datenschutz-Bereinigung, lauffähige
+Test-Suite und CI. Ein getaggtes Release gab es dafür nicht.
 
 ### Hinzugefügt
 - **DE/EN-Sprachumschalter** in der Oberfläche (`core/i18n.py`), Wahl per Cookie gespeichert.
