@@ -5,6 +5,125 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased] — Vorbereitung der öffentlichen Veröffentlichung
 
+### Geändert — Methoden-Registry: „validiert" heißt jetzt, was es sagt
+
+- **Das Etikett „✅ validiert" ist ersatzlos verschwunden.** Es stand über 15 Verfahren,
+  während die Definition im selben Modul „publizierter/akzeptierter Standard-Algorithmus"
+  lautete — das ist *literaturbasiert*. Das Etikett behauptete damit eine geprüfte
+  Implementierung, die es nicht gab. Ein externes Review hat den Widerspruch beanstandet; er
+  saß ausgerechnet in dem Teil des Projekts, der methodische Ehrlichkeit verspricht.
+- **Zwei getrennte Achsen statt einer.** In dem einen alten Feld steckten zwei verschiedene
+  Aussagen. Jetzt: **Umsetzungstreue** (vollständig · 🟡 vereinfacht · 🔬 Proxy — 15/6/1,
+  inhaltlich unverändert) und **Belegstufe** (📖 literaturbasiert · ✅ implementierungs-
+  validiert · 🏥 klinisch validiert).
+- **Ausgangsstand bewusst ehrlich: 22 literaturbasiert, 0 implementierungsvalidiert.** Das
+  war unbequemer als vorher und war der tatsächliche Stand. Die Belege sind unmittelbar
+  danach entstanden (siehe nächster Abschnitt) — aber erst, nachdem die Etiketten stimmten.
+- **Ein Etikett ist ohne Nachweis technisch nicht mehr setzbar.** Die Registry ist von einem
+  namenlosen 5-Tupel auf ein `Method`-Datenmodell umgestellt; jede Stufe oberhalb von
+  literaturbasiert braucht ein `Evidence`-Objekt (Datensatz, geprüfte Größe, Sollwert,
+  Toleranz, Test), sonst wirft die Konstruktion einen Fehler. Zusätzliches Feld
+  `limitations` für Einschränkungen, die vorher nur in Prosa in der Referenzspalte standen.
+- **`tools/check_methods.py`** (neu, abhängigkeitsfrei, im schnellen CI-Job): prüft, dass
+  Belege vollständig sind und auf existierende Testdateien zeigen, dass die Zahlen in
+  **beiden** READMEs zur Registry passen und dass das alte Etikett nicht zurückkehrt.
+  Absichtlich gegen drei Fehlerfälle getestet. Dazu `tests/test_methods_registry.py`, damit
+  auch ein lokales `pytest` den Widerspruch findet — die alte Fehlklassifikation überlebte
+  so lange, weil sie an keiner einzigen Stelle geprüft wurde.
+- **README (beide Sprachen):** neue Doppel-Tabelle samt Erklärung, warum umgestellt wurde.
+  Ausserdem sagte das englische README „atrial fibrillation **detection** via CosEn" — die
+  App selbst formuliert durchgehend „AFib-**Verdacht**, Screening, keine Diagnose". Die
+  Überspitzung stand also nur in der Doku und ist dort jetzt korrigiert (im Deutschen
+  ebenso), genauso wie „literatur-validierte Zusatzverfahren" im Vorspann.
+
+### Hinzugefügt — Herkunft in den Reports
+
+Ein exportierter Report zeigte bisher Werte, aber nichts darüber, **womit** sie entstanden
+sind. Es gab überhaupt keine Versionsnummer im Code — nur `CITATION.cff` nannte eine. Wer
+zwei Reports derselben Aufnahme aus verschiedenen Wochen nebeneinander legte, konnte nicht
+entscheiden, ob ein Unterschied aus der Aufnahme oder aus einer Codeänderung stammt.
+
+- **`core/version.py`** (neu) — eine einzige Versionsquelle: die Nummer wird aus
+  `CITATION.cff` gelesen, nicht zusätzlich im Code gepflegt. Ein Test verhindert, dass
+  später doch eine zweite Konstante dazukommt.
+- **Git-Commit**, mit `+dirty`, wenn beim Erzeugen uncommittete Änderungen vorlagen — dann
+  ist das Ergebnis eben *nicht* allein über den Commit reproduzierbar, und genau das soll man
+  sehen. `.dockerignore` schließt `.git/` aus, im Image gibt es also kein Repository; der
+  Commit wird deshalb beim Bauen hereingereicht
+  (`--build-arg EDF_BUILD_COMMIT=$(git rev-parse --short HEAD)`). Fehlt er, steht
+  „unbekannt" da statt einer erfundenen Angabe.
+- **Python- und Paketversionen der laufenden Umgebung** (aus `importlib.metadata`, nicht aus
+  `requirements.txt`: was installiert ist, entscheidet über das Ergebnis).
+- **SHA-256 der EDF-Datei und ein Analyse-Fingerabdruck** aus Datei + Version + Commit +
+  Analyseparametern. Gleicher Fingerabdruck heißt: gleiche Datei, gleicher Code, gleiche
+  Einstellungen — ein Unterschied in den Werten wäre dann erklärungsbedürftig. Der Hash
+  identifiziert die Aufnahme, ohne etwas über sie preiszugeben.
+- Sichtbar in **allen drei** Ausgaben: als eigene Sektion im Tabellen-Report (PDF und Excel),
+  als Block im HRV-Report und als Fußzeile auf **jeder Seite** des visuellen Reports — aus
+  dem werden einzelne Seiten ausgedruckt und weitergereicht, und eine Seite ohne ihre
+  Herkunft verliert sie genau dann, wenn es darauf ankommt.
+
+**Beim Ansehen der erzeugten PDFs gefunden und behoben:** ReportLab bricht rohe Zellentexte
+nicht um — die neue Paketliste lief rechts aus dem Satzspiegel und „Parameter: pädiatrische
+Normwerte" überdruckte seinen eigenen Wert. `build_pdf` kann jetzt Sektionen umbrechen
+lassen (`wrap`) und eigene Spaltenbreiten mitgeben. Der Fehler war nur sichtbar, weil die
+Reports tatsächlich geöffnet und nicht nur erzeugt wurden.
+
+
+### Hinzugefügt — Sollwerte in die Tests, und was dabei herauskam
+
+- **`tests/test_eeg_groundtruth.py`** (neu): die EEG-Sollwerte der synthetischen Fixture
+  standen seit ihrer Erzeugung im Manifest, geprüft wurde davon aber nur die EKG-Seite.
+  Jetzt geprüft: Alpha-Peak 10,0 Hz auf **allen 19 Kanälen** (±0,3 Hz), Multitaper gegen
+  Welch, 1/f-Exponent 2,2 kanalweise, Asymmetrie O1/O2 und die zeitliche Lage des
+  Artefakt-Bursts bei 240–245 s.
+- **`tests/test_analytic_groundtruth.py`** (neu): Verfahren gegen ihre analytisch bekannte
+  Wahrheit — Permutationsentropie von weissem Rauschen = 1,0, DFA-Exponent = 0,5 bzw. 1,0,
+  SDNN einer sinusförmigen RR-Reihe = A/√2, SEF95 eines flachen Spektrums, die
+  Poincaré-Identität SD1²+SD2² = 2·SDNN². Solche Prüfungen sind schärfer als jede Messung an
+  einer Aufnahme, weil der Sollwert nicht selbst geschätzt ist.
+- **Registry-Stand danach: 18 implementierungsvalidiert, 4 literaturbasiert.** Jeder der 18
+  Einträge trägt Datensatz, Sollwert, Toleranz und den Test, der es prüft — in der App
+  sichtbar in derselben Tabellenzeile wie das Etikett, zusammen mit den Einschränkungen.
+
+**Dabei gefunden — die Vergleichsdetektoren brechen still ab.** Die Fixture enthält bei
+400–410 s ein Fenster mit siebenfacher EKG-Amplitude. **Hamilton und Pan-Tompkins** aus
+`py-ecg-detectors` detektieren bis dorthin sauber und hören dann vollständig auf: letzter
+Schlag bei 409 s, **462 statt 702 Schlägen**, 190 s Aufnahme ohne einen einzigen Treffer.
+Dabei melden sie keinen Fehler — eine HRV-Auswertung darauf wäre falsch, ohne dass es
+auffiele. Der **eigene** Detektor der App übersteht denselben Sprung (685 Schläge, bis
+599,9 s), Christov und Two-Average ebenfalls. Folge: der Eintrag „R-Zacken (validierte
+Option)" bleibt **literaturbasiert** — ein Verfahren, das im Test durchfällt, bekommt kein
+Etikett. Als offener Punkt notiert: eine Abdeckungs-Plausibilisierung, die meldet, wenn ein
+Detektor über einen längeren Abschnitt gar nichts findet.
+
+**Weitere Befunde, jeweils als Test festgehalten statt als Toleranz versteckt:**
+
+- **FOOOF unterschätzt den 1/f-Exponenten bei schmalbandigen Linien** — auf der Fixture 1,74
+  statt 2,2 bei R² = 0,80, während der eigene, als „vereinfacht" gekennzeichnete Fit 2,20
+  trifft. Ursache ist nicht die Einbindung (ohne Gipfel trifft FOOOF alle Testexponenten auf
+  ±0,02), sondern die untere Grenze von `peak_width_limits`: eine reine Sinus-Linie lässt
+  sich nicht als Gaußgipfel modellieren und landet im aperiodischen Anteil. Der eigene
+  Sigma-Clip wirft sie heraus. Bei realistisch breiten EEG-Gipfeln tritt der Effekt nicht auf.
+- **DFA α₁ liegt auf dem klinischen Fenster (Skalen 4–16) bei 0,584 statt 0,5** für
+  unkorreliertes Rauschen — der bekannte Kleinskalen-Versatz, kein Rechenfehler: derselbe
+  Code trifft auf Skalen 16–256 die Theorie (0,511 / 0,493). α₁-Werte sind untereinander
+  vergleichbar, dürfen aber nicht gegen 0,5 als Normwert gelesen werden.
+- **Engzee ist polaritätskritisch** — 7 Schläge auf dem Rohsignal, 678 nach der
+  Polaritätskorrektur. Die Reihenfolge Korrektur → Detektion ist damit zwingend.
+- **Die Fixture trägt oberhalb ~25 Hz keine 1/f-Wahrheit mehr**: bei physikalischem Bereich
+  ±500 µV und 16 Bit liegt die Quantisierungsstufe bei 0,0153 µV, deren weisses Rauschen
+  überdeckt das zu hohen Frequenzen hin verschwindende Signal (gemessene Steigung 40–60 Hz:
+  1,72 statt 2,2; eine Kontrollreihe ohne EDF-Umweg bleibt flach bei 2,2). Der Fixture-Fit
+  läuft deshalb über 1–20 Hz — kein aufgeweichter Toleranzbereich, sondern der Bereich, in
+  dem die Datei die behauptete Wahrheit überhaupt trägt.
+- **Die Poincaré-Identität lässt sich nur bei großer Variabilität scharf prüfen**, weil
+  `compute_hrv_time_domain` auf 0,1 ms gerundete Werte zurückgibt. Die Toleranz ist aus
+  dieser Rundung hergeleitet statt gegriffen; nachgemessen fällt ein um 3 % falsches SD1 bei
+  den verwendeten Amplituden auf, bei 25 ms Amplitude täte es das nicht — ein solcher Fall
+  ist deshalb absichtlich nicht im Test.
+
+
 ### Hinzugefügt
 - **DE/EN-Sprachumschalter** in der Oberfläche (`core/i18n.py`), Wahl per Cookie gespeichert.
   Übersetzt ist alles, was zum Bedienen nötig ist (Navigation, Buttons, Auswahlfelder,
