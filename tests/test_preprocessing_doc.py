@@ -109,9 +109,15 @@ def test_der_dokumentierte_ekg_pfad_ist_der_tatsaechliche():
         baum = ast.parse(fh.read())
     definiert = {n.name for n in ast.walk(baum) if isinstance(n, ast.FunctionDef)}
     if "run_ecg_analysis" not in definiert:
-        # Aufgeräumt — dann darf das Dokument sie nicht mehr als Befund führen.
-        assert "run_ecg_analysis" not in _doc(), \
-            "run_ecg_analysis ist entfernt, steht aber noch als offener Befund im Dokument"
+        # Aufgeräumt. Das Dokument DARF die Leiche weiterhin erwähnen — die Geschichte
+        # erklärt, warum der EKG-Pfad so aussieht, wie er aussieht. Es darf sie nur nicht
+        # mehr als OFFENEN Punkt führen. (Erste Fassung dieses Tests verlangte, dass der
+        # Name gar nicht mehr vorkommt — das hätte die Begründung mitgelöscht.)
+        doc = _doc()
+        assert "✅ entfernt" in doc or "entfernt" in doc, \
+            "run_ecg_analysis ist weg, das Dokument sagt aber nicht, dass es aufgeräumt wurde"
+        assert "→ Offener Punkt: die tote Kette entfernen" not in doc, \
+            "erledigt, steht aber noch als offener Punkt im Dokument"
         return
 
     aufrufer = []

@@ -5,6 +5,33 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Behoben / Geändert — Quick Wins
+
+- **Tote EKG-Kette entfernt** (74 Zeilen): `run_ecg_analysis()`, `preprocess_ecg()`,
+  `compute_rr_intervals()` und `compute_hrv_frequency_domain()` rief niemand auf, sie
+  suggerierten aber einen 0,5–40-Hz-Vorfilter vor der QRS-Suche, den der tatsächliche Pfad
+  nicht hat. An ihrer Stelle steht eine Notiz, die auf den wirklichen Weg verweist.
+- **„G■sior" statt „Gąsior" im HRV-Report behoben.** `pdf_report.py` nutzte ReportLabs
+  Helvetica, die kein ą kennt; jetzt dieselbe DejaVu-Registrierung wie im Tabellen-Report.
+  Dabei wurde die Einheiten-Spalte breiter, weil DejaVu breiter läuft — sonst brach „Einheit"
+  im Kopf um.
+- **Überlappende Bewertungsspalte behoben.** Im Tabellen-Report überdruckte eine lange
+  Bewertung („leicht-mäßig grenzwertig") den Wert der Nachbarzelle. Alle Sektionen brechen
+  jetzt um; Zahlenspalten bleiben rechtsbündig, damit Gesamt und Korrigiert vergleichbar
+  bleiben.
+- **Spektralparameter in der Report-Herkunft**: Hochpass, PSD-Verfahren (Welch, 4-s-Epochen,
+  Hann, 50 %, Ausgabeband), Multitaper-Einstellung, QRS-Bandpass, HRV-Resampling und die
+  Analysefenster-Regel. Ohne sie ließ sich eine Bandpower aus dem Report allein nicht
+  nachrechnen, obwohl Version und Commit danebenstanden. Ein Test bindet die Angaben an die
+  Konstanten im Code.
+
+**Bewusst NICHT gemacht:** `use_container_width` (abgekündigt) durch `width=` ersetzt — 114
+Fundstellen, und der Nachfolger existiert erst ab Streamlit ~1.49, während die Requirements
+bei `>=1.36` stehen. Der Umbau erzwingt eine höhere Mindestversion und berührt jede Tabelle;
+kein Quick Win. Der alte Parameter funktioniert weiterhin. Ebenso die Pillow-Warnung: sie
+stammt aus matplotlib, nicht aus diesem Projekt, und die Obergrenze `matplotlib<4` lässt eine
+korrigierte Version automatisch nachrücken.
+
 ### Hinzugefügt — Abdeckungsprüfung: ein Detektor kann nicht mehr still aussetzen
 
 Der gefährlichste Fehlerfall der HRV-Kette war nicht der Absturz, sondern der stille

@@ -234,19 +234,16 @@ korrigierte Rechnung laufen parallel nebeneinander, nichts wird stillschweigend 
 Das Ableiten aus dem Code hat drei Dinge zutage gefördert, die vorher niemandem auffallen
 konnten — genau deshalb entsteht so ein Dokument aus dem Code und nicht aus der Erinnerung.
 
-### 1. Eine tote, abweichende EKG-Pipeline
+### 1. Eine tote, abweichende EKG-Pipeline — ✅ entfernt
 
-`analysis/ecg.py` enthält `run_ecg_analysis()`, das `preprocess_ecg()` (Bandpass 0,5–40 Hz)
-auf das Signal anwendet, **bevor** es die R-Zacken sucht, und den Frequenzbereich über
-`compute_hrv_frequency_domain()` rechnet. **Diese Funktion ruft niemand auf** — und die
-beiden anderen ausschließlich sie.
+`analysis/ecg.py` enthielt `run_ecg_analysis()`, das `preprocess_ecg()` (Bandpass 0,5–40 Hz)
+auf das Signal anwendete, **bevor** es die R-Zacken suchte, und den Frequenzbereich über
+`compute_hrv_frequency_domain()` rechnete. **Diese Funktion rief niemand auf** — und die
+anderen ausschließlich sie. Wer die Datei von oben las, musste schließen, die EKG-Kette
+beginne mit einem 0,5–40-Hz-Filter. Sie tut es nicht.
 
-Der tatsächlich benutzte Pfad (`detect_r_peaks_polarity_safe` → `build_rr_series` →
-`analysis.hrv_freq.compute_frequency_domain`) filtert **nicht** 0,5–40 Hz vor und nutzt eine
-andere Frequenzbereichsfunktion. Wer `analysis/ecg.py` von oben liest, muss den Eindruck
-gewinnen, die EKG-Kette beginne mit einem 0,5–40-Hz-Filter. Sie tut es nicht.
-
-→ Offener Punkt: die tote Kette entfernen, damit der Code nur noch einen ECG-Weg zeigt.
+Am 2026-08-12 gelöscht (74 Zeilen), mit einer Notiz an ihrer Stelle. Der Code zeigt jetzt nur
+noch einen EKG-Weg — den oben beschriebenen.
 
 ### 2. Zwei Welch-Implementierungen — nachgemessen gleichwertig
 

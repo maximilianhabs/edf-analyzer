@@ -34,15 +34,33 @@ _ZONE_COLOR = {
 }
 
 
+def _fonts():
+    """DejaVu statt Helvetica — wiederverwendet aus `report_export.py`, wo dieselbe Frage
+    schon gelöst ist.
+
+    Anlass: Im erzeugten Bericht stand „G■sior" statt „Gąsior" (Referenz Gąsior et al. 2018).
+    Helvetica, ReportLabs Standard, kennt kein ą. Aufgefallen erst beim ANSEHEN des PDFs —
+    erzeugt wurde es die ganze Zeit fehlerfrei. Betroffen sind alle diakritischen Zeichen der
+    zitierten Literatur, also genau die Stellen, an denen Namen korrekt stehen müssen.
+    """
+    from analysis.report_export import _register_font
+    return _register_font()
+
+
 def _styles():
     ss = getSampleStyleSheet()
+    font, font_b = _fonts()
+    # Alle mitgelieferten Basis-Stile auf die Unicode-Schrift umstellen, sonst erbt jeder
+    # davon abgeleitete Stil wieder Helvetica.
+    for name in ("Normal", "Heading1", "Heading2", "BodyText"):
+        ss[name].fontName = font
     ss.add(ParagraphStyle("ReportTitle",
         parent=ss["Heading1"], alignment=TA_CENTER,
         fontSize=15, textColor=_C_HEADER, spaceAfter=2))
     ss.add(ParagraphStyle("SectionHead",
         parent=ss["Heading2"],
         fontSize=10, textColor=_C_SUBHEAD,
-        fontName="Helvetica-Bold",
+        fontName=font_b,
         spaceBefore=10, spaceAfter=3))
     ss.add(ParagraphStyle("Body10",
         parent=ss["Normal"], fontSize=10, textColor=_C_VALUE, leading=14))
@@ -51,7 +69,7 @@ def _styles():
     ss.add(ParagraphStyle("Cell9",
         parent=ss["Normal"], fontSize=9, textColor=_C_VALUE, leading=12))
     ss.add(ParagraphStyle("CellBold",
-        parent=ss["Normal"], fontSize=9, fontName="Helvetica-Bold",
+        parent=ss["Normal"], fontSize=9, fontName=font_b,
         textColor=_C_LABEL, leading=12))
     ss.add(ParagraphStyle("CellRight",
         parent=ss["Normal"], fontSize=9, textColor=_C_VALUE, leading=12,
@@ -65,8 +83,8 @@ def _rule():
 
 def _section_table_style():
     return TableStyle([
-        ("FONTNAME",    (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTNAME",    (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME",    (0, 0), (0, -1), _fonts()[1]),
+        ("FONTNAME",    (0, 0), (-1, 0), _fonts()[1]),
         ("FONTSIZE",    (0, 0), (-1, -1), 9),
         ("TEXTCOLOR",   (0, 0), (-1, 0), _C_SUBHEAD),
         ("BACKGROUND",  (0, 0), (-1, 0), colors.HexColor("#eaecee")),
@@ -188,7 +206,7 @@ def build_hrv_pdf(
     # ── Zeitbereich ───────────────────────────────────────────────────────────
     def _val_cell(value, fmt, zone):
         col = _ZONE_COLOR.get(zone, _C_VALUE) if zone != "info" else _C_VALUE
-        style = ParagraphStyle("VZ", parent=ss["Cell9"], textColor=col, fontName="Helvetica-Bold")
+        style = ParagraphStyle("VZ", parent=ss["Cell9"], textColor=col, fontName=_fonts()[1])
         return Paragraph(_nan_str(value, fmt), style)
 
     g_hr    = grade_hrv("heart_rate", mean_hr, patient_age, mean_hr, is_pediatric=is_pediatric)
@@ -224,7 +242,7 @@ def build_hrv_pdf(
          Paragraph(g_pnn50["ref_text"], ss["Cell9"]),
          Paragraph("Vagaler Marker (korreliert mit RMSSD)", ss["Cell9"])],
     ]
-    td_table = Table(td_rows, colWidths=[38*mm, 18*mm, 16*mm, 38*mm, 60*mm])
+    td_table = Table(td_rows, colWidths=[38*mm, 18*mm, 20*mm, 36*mm, 58*mm])   # Einheiten-Spalte: DejaVu ist breiter
     td_table.setStyle(_section_table_style())
     el.append(td_table)
     el.append(Paragraph(
@@ -311,7 +329,7 @@ def build_hrv_pdf(
              Paragraph(g_resp["ref_text"], ss["Cell9"]),
              Paragraph("Aus HF-Gipfelfrequenz × 60", ss["Cell9"])],
         ]
-        fd_table = Table(fd_rows, colWidths=[34*mm, 18*mm, 14*mm, 44*mm, 60*mm])
+        fd_table = Table(fd_rows, colWidths=[34*mm, 18*mm, 18*mm, 42*mm, 58*mm])
         fd_table.setStyle(_section_table_style())
         el.append(KeepTogether(fd_table))
         el.append(Spacer(1, 8))
@@ -348,7 +366,7 @@ def build_hrv_pdf(
         for r in lab_rows:
             zone_col = _ZONE_COLOR.get(r.get("zone", "info"), _C_MUTED)
             zone_style = ParagraphStyle("ZS", parent=ss["Cell9"], textColor=zone_col,
-                                        fontName="Helvetica-Bold")
+                                        fontName=_fonts()[1])
             p5_str = f"{r['p5']:.1f}" if r.get("p5") is not None else "—"
             nv_data.append([
                 Paragraph(r.get("label", ""), ss["Cell9"]),
@@ -358,7 +376,7 @@ def build_hrv_pdf(
                 Paragraph(r.get("zone", "—"), zone_style),
                 Paragraph(r.get("severity", "—"), ss["Cell9"]),
             ])
-        nv_table = Table(nv_data, colWidths=[38*mm, 18*mm, 14*mm, 28*mm, 24*mm, 48*mm])
+        nv_table = Table(nv_data, colWidths=[36*mm, 18*mm, 18*mm, 26*mm, 24*mm, 48*mm])
         nv_table.setStyle(_section_table_style())
         el.append(KeepTogether(nv_table))
         el.append(Spacer(1, 8))

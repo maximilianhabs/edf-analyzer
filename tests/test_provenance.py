@@ -149,3 +149,34 @@ def test_hrv_report_laeuft_auch_ohne_dateipfad():
                         pct_removed=0.0, quality_label="gut", balance_label="ausgeglichen",
                         lab_rows=[], method_used="welch")
     assert len(pdf) > 3_000
+
+
+def test_spektralparameter_stehen_im_report_und_stimmen_mit_dem_code():
+    """Ein Report soll für sich allein nachrechenbar sein: ohne Fensterlänge, Fenstertyp und
+    Überlapp lässt sich eine Bandpower nicht reproduzieren, auch wenn Version und Commit
+    danebenstehen.
+
+    Die Angaben sind Text und könnten vom Code abdriften — deshalb hier gegen die
+    tatsächlichen Konstanten geprüft, nicht nur auf Vorhandensein.
+    """
+    from core.shared import load_and_prepare
+    from analysis.report_export import collect_sections
+    from views.eeg_spectrum import FREQ_MAX
+    from analysis.hrv_freq import resample_rr
+    import inspect
+
+    secs = collect_sections(load_and_prepare(FIXTURE), FIXTURE, age=45)
+    herkunft = [s for s in secs if s["name"].startswith("Herkunft")][0]
+    werte = {r[0]: str(r[1]) for r in herkunft["rows"]}
+
+    psd = werte.get("Parameter: PSD-Verfahren", "")
+    assert "Welch" in psd and "4 s" in psd and "50 %" in psd, psd
+    assert f"1–{FREQ_MAX:g} Hz" in psd, f"Ausgabeband stimmt nicht mit FREQ_MAX überein: {psd}"
+
+    fs_interp = inspect.signature(resample_rr).parameters["fs_interp"].default
+    assert f"{fs_interp:g} Hz" in werte.get("Parameter: HRV-Frequenzdomäne", ""), \
+        "Resampling-Rate im Report weicht von analysis/hrv_freq.py ab"
+
+    for pflicht in ("Parameter: EEG-Hochpass", "Parameter: QRS-Detektion",
+                    "Parameter: Analysefenster"):
+        assert werte.get(pflicht, "").strip(), f"{pflicht} fehlt"

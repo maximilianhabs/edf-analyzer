@@ -365,12 +365,23 @@ def _add_provenance(sections, edf, edf_path, corr_segments, age, is_pediatric):
     from core.version import provenance, provenance_lines
     # Die Parameter, die das Ergebnis tatsächlich verschieben — nicht jede Einstellung der
     # Oberfläche, sondern das, was in die Zahlen eingeht.
+    from views.eeg_spectrum import FREQ_MAX
     params = {
         "Artefaktmaske": (f"{len(corr_segments)} Segment(e)" if corr_segments
                           else "keine"),
         "Alter": age,
         "pädiatrische Normwerte": "ja" if is_pediatric else "nein",
         "Abtastrate": f"{edf['sfreq']:g} Hz",
+        # Die Spektralparameter gehören in den Report, nicht nur in docs/PREPROCESSING.md:
+        # ein Report soll für sich allein nachrechenbar sein. Ohne Fensterlänge, Fenstertyp
+        # und Überlapp lässt sich eine Bandpower nicht reproduzieren, auch wenn Version und
+        # Commit danebenstehen.
+        "EEG-Hochpass": "1 Hz, Butterworth 4. Ordnung, nullphasig (filtfilt)",
+        "PSD-Verfahren": f"Welch, Epochen 4 s, Hann, 50 % Überlapp, Density, 1–{FREQ_MAX:g} Hz",
+        "Multitaper (optional)": "DPSS, NW=3, K=5",
+        "QRS-Detektion": "Bandpass 5–15 Hz (Ordnung 2), 150-ms-Integration, ±40-ms-Refinement",
+        "HRV-Frequenzdomäne": "PCHIP-Resampling 4 Hz; Welch und Burg (Ordnung 16)",
+        "Analysefenster": "bestes sauberes 60-s-Fenster nach posteriorer Alpha-Relativpower",
     }
     try:
         prov = provenance(edf_path, params)
@@ -689,7 +700,7 @@ def build_pdf(sections, disp_name: str) -> bytes:
     widths = {2: [40 * mm, 146 * mm],
               4: [60 * mm, 40 * mm, 22 * mm, 64 * mm],
               5: [56 * mm, 27 * mm, 27 * mm, 18 * mm, 58 * mm],
-              6: [42 * mm, 22 * mm, 22 * mm, 30 * mm, 16 * mm, 54 * mm]}
+              6: [40 * mm, 20 * mm, 20 * mm, 28 * mm, 26 * mm, 52 * mm]}   # Bewertung breiter
     _zone_bg = {"normal": colors.HexColor("#e3f2e3"), "grenzwertig": colors.HexColor("#fdf3d9"),
                "pathologisch": colors.HexColor("#fbe1de")}
     _zone_fg = {"normal": colors.HexColor("#1e7b34"), "grenzwertig": colors.HexColor("#9c6f00"),
@@ -699,12 +710,28 @@ def build_pdf(sections, disp_name: str) -> bytes:
     # Aufgefallen beim ersten Ansehen des Herkunft-Abschnitts — die Paketliste lief rechts aus
     # der Seite, "pädiatrische Normwerte" ueberschrieb seinen eigenen Wert.
     cell = ParagraphStyle("cell", parent=normal, fontSize=7.5, leading=9)
+    # Zahlen rechtsbündig — sonst lassen sich Gesamt- und Korrigiert-Spalte nicht mehr
+    # untereinander vergleichen. Die Table-ALIGN-Regeln greifen bei Paragraph-Zellen nicht
+    # mehr, die Ausrichtung muss deshalb in den Absatzstil.
+    cell_r = ParagraphStyle("cell_r", parent=cell, alignment=2)   # 2 = rechts
+    # Welche Spalten Zahlen tragen, hängt an der Spaltenzahl — dieselbe Zuordnung, die die
+    # bisherigen ALIGN-Regeln weiter unten verwenden.
+    _num_cols = {4: (1, 2), 5: (1, 2, 3), 6: (1, 2, 3)}
     for sec in sections:
         cols = sec["columns"]
         story.append(Paragraph(sec["name"], h_sec))
         rows = [list(r) for r in sec["rows"]]
         if sec.get("wrap"):
             rows = [[Paragraph(str(c), cell) for c in r] for r in rows]
+        else:
+            # Rohe Strings brechen in ReportLab NICHT um: eine zu lange Bewertung wie
+            # „leicht-mäßig grenzwertig" lief in die Nachbarzelle und überdruckte deren Wert
+            # (im erzeugten PDF gesehen, in keinem Test). Deshalb brechen jetzt ALLE
+            # Sektionen um — der Preis sind etwas höhere Zeilen, der Gewinn ist, dass nichts
+            # mehr stillschweigend unlesbar wird.
+            num = _num_cols.get(len(cols), ())
+            rows = [[Paragraph(str(c), cell_r if i in num else cell)
+                     for i, c in enumerate(r)] for r in rows]
         data = [cols] + rows
         tbl = Table(data, colWidths=sec.get("col_widths_mm") and
                     [w * mm for w in sec["col_widths_mm"]] or widths.get(len(cols)),
