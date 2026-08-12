@@ -36,6 +36,44 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
   Überspitzung stand also nur in der Doku und ist dort jetzt korrigiert (im Deutschen
   ebenso), genauso wie „literatur-validierte Zusatzverfahren" im Vorspann.
 
+### Hinzugefügt — `docs/PREPROCESSING.md`
+
+Zwischen der EDF-Datei und einem ausgegebenen Kennwert liegen Filter, Fensterwahl,
+Artefaktbehandlung und Umtastung. Sie standen nirgends zusammenhängend — über ein Dutzend
+Filteraufrufe verteilt über `analysis/` und `views/`, jeder für sich kommentiert, ohne
+Gesamtbild. Wer einen Wert nachrechnen wollte, musste den Code lesen.
+
+Die Spezifikation ist **aus dem Code abgeleitet, nicht aus der Absicht**, und
+`tests/test_preprocessing_doc.py` bindet sie daran: Bandgrenzen, Artefaktschwellen,
+HRV-Frequenzparameter und die Filterordnungen werden aus den Modulen gelesen und gegen das
+Dokument geprüft. Eine aus dem Code abgeleitete Doku veraltet sonst leise — und ist dann
+schlimmer als keine, weil sie einen Rechenweg behauptet, den es nicht mehr gibt.
+
+Der wichtigste Satz darin klärt die häufigste Fehlannahme: **die Filtereinstellungen im
+EEG-Viewer beeinflussen keinen berechneten Wert.** Sie ändern nur die dargestellte Kurve;
+die Kennwerte beruhen unverändert auf dem 1-Hz-hochpassgefilterten Signal.
+
+**Beim Ableiten gefunden:**
+
+- **Eine tote, abweichende EKG-Pipeline.** `analysis/ecg.py` enthält `run_ecg_analysis()`,
+  das `preprocess_ecg()` (Bandpass 0,5–40 Hz) vor der R-Zacken-Suche anwendet und den
+  Frequenzbereich über `compute_hrv_frequency_domain()` rechnet. **Diese Funktion ruft
+  niemand auf**, und die beiden anderen ausschließlich sie. Der tatsächliche Pfad filtert
+  *nicht* 0,5–40 Hz vor und nutzt eine andere Frequenzbereichsfunktion. Wer die Datei von
+  oben liest, muss den Eindruck gewinnen, die EKG-Kette beginne mit diesem Filter. Ein Test
+  hält den Zustand fest, bis die Leiche entfernt ist.
+- **Delta beginnt bei 1 Hz, nicht bei 0,5 Hz** — ergibt sich zwingend aus dem 1-Hz-Hochpass
+  und dem Ausgabeband, stand aber an keiner für Anwender sichtbaren Stelle. Für
+  Enzephalopathie und Vigilanzminderung ist gerade der Bereich darunter relevant. Als
+  offener Prüfpunkt notiert; nicht nebenbei geändert, weil es jeden Delta-abgeleiteten
+  Quotienten verschieben würde.
+- **Zwei Welch-Implementierungen, nachgemessen gleichwertig.** `_compute_psd` nutzt das
+  symmetrische `np.hanning`, `scipy.signal.welch` das periodische Hann-Fenster (Energie
+  299,6 gegen 300,0). Der Unterschied kürzt sich in der Normierung heraus: Alpha-Power,
+  Alpha-Schwerpunkt und SEF95 stimmen auf sechs Stellen überein. Festgehalten, damit die
+  Frage nicht ein zweites Mal untersucht wird.
+
+
 ### Hinzugefügt — Herkunft in den Reports
 
 Ein exportierter Report zeigte bisher Werte, aber nichts darüber, **womit** sie entstanden

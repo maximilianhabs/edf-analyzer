@@ -151,6 +151,12 @@ Following the **add-on principle**, the established standard methods stay unchan
 simplified default method a full counterpart exists for direct comparison under "Advanced
 Analyses". Nothing is switched over silently.
 
+**What happens to the signal before a number appears** — every filter, the choice of analysis
+window, artifact handling, resampling — is specified in
+[docs/PREPROCESSING.md](docs/PREPROCESSING.md), derived from the code rather than from
+intent. The most common misconception it settles: the filter settings in the EEG viewer do
+**not** affect any computed value; they only change the displayed trace.
+
 ## Limitations
 
 - **Not clinically validated.** There is (as yet) no prospective validation against

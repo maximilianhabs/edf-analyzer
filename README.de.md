@@ -104,6 +104,8 @@ Die Belege stammen aus den synthetischen Ground-Truth-Dateien (`tests/fixtures/`
 
 Nach dem **Add-on-Prinzip** bleiben die bewährten Standard-Methoden unverändert; für jede vereinfachte Default-Methode existiert ein vollständiges Pendant zum direkten Vergleich in der Rubrik „Erweiterte Analysen". Es wird nichts stillschweigend umgestellt.
 
+**Was mit dem Signal geschieht, bevor eine Zahl entsteht** — jeder Filter, die Wahl des Analysefensters, die Artefaktbehandlung, die Umtastung — steht in [docs/PREPROCESSING.md](docs/PREPROCESSING.md), aus dem Code abgeleitet statt aus der Absicht. Die häufigste Fehlannahme, die dort geklärt wird: die Filtereinstellungen im EEG-Viewer beeinflussen **keinen** berechneten Wert, sie ändern nur die dargestellte Kurve.
+
 ## Limitationen
 
 - **Nicht klinisch validiert.** Es existiert (noch) keine prospektive Validierung gegen etablierte Referenzsysteme oder annotierte Datensätze (z. B. MIT-BIH). Ergebnisse sind explorativ.
