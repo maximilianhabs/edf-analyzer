@@ -340,7 +340,40 @@ def collect_sections(edf: dict, edf_path: str, corr_segments=None,
 
     # ── Validierte Zusatzverfahren (eigen vs. validiert) ──────────────────────
     _add_validated(sections, edf, edf_path, has_ecg, em)
+
+    # ── Herkunft ──────────────────────────────────────────────────────────────
+    # Bewusst am ENDE und in beiden Ausgabeformaten: Wer zwei Reports derselben Aufnahme
+    # vergleicht, muss entscheiden können, ob ein Unterschied aus der Aufnahme oder aus einer
+    # Codeänderung stammt. Ohne diese Angaben ging das nicht.
+    _add_provenance(sections, edf, edf_path, corr_segments, age, is_pediatric)
     return sections
+
+
+def _add_provenance(sections, edf, edf_path, corr_segments, age, is_pediatric):
+    from core.version import provenance, provenance_lines
+    # Die Parameter, die das Ergebnis tatsächlich verschieben — nicht jede Einstellung der
+    # Oberfläche, sondern das, was in die Zahlen eingeht.
+    params = {
+        "Artefaktmaske": (f"{len(corr_segments)} Segment(e)" if corr_segments
+                          else "keine"),
+        "Alter": age,
+        "pädiatrische Normwerte": "ja" if is_pediatric else "nein",
+        "Abtastrate": f"{edf['sfreq']:g} Hz",
+    }
+    try:
+        prov = provenance(edf_path, params)
+        rows = [[k, v] for k, v in provenance_lines(prov)]
+    except Exception as exc:                      # nie den ganzen Report daran scheitern lassen
+        rows = [["Herkunft nicht ermittelbar", str(exc)]]
+    sections.append({
+        "name": "Herkunft & Reproduzierbarkeit",
+        "columns": ["Angabe", "Wert"],
+        "rows": rows,
+        # Die Paketliste ist lang und die Bezeichnungen sind es teilweise auch — diese
+        # Sektion MUSS umbrechen duerfen, sonst laeuft sie aus der Seite.
+        "wrap": True,
+        "col_widths_mm": [52, 134],
+    })
 
 
 def _add_eeg_sections(sections, ef, ec, age=None):
@@ -649,11 +682,21 @@ def build_pdf(sections, disp_name: str) -> bytes:
                "pathologisch": colors.HexColor("#fbe1de")}
     _zone_fg = {"normal": colors.HexColor("#1e7b34"), "grenzwertig": colors.HexColor("#9c6f00"),
                "pathologisch": colors.HexColor("#b23a24")}
+    # Zellenstil fuer umbrechende Sektionen. Reportlab bricht rohe Strings NICHT um: ein zu
+    # langer Wert laeuft stumm ueber den Satzspiegel hinaus oder ueberdruckt die Nachbarzelle.
+    # Aufgefallen beim ersten Ansehen des Herkunft-Abschnitts — die Paketliste lief rechts aus
+    # der Seite, "pädiatrische Normwerte" ueberschrieb seinen eigenen Wert.
+    cell = ParagraphStyle("cell", parent=normal, fontSize=7.5, leading=9)
     for sec in sections:
         cols = sec["columns"]
         story.append(Paragraph(sec["name"], h_sec))
-        data = [cols] + [list(r) for r in sec["rows"]]
-        tbl = Table(data, colWidths=widths.get(len(cols)), repeatRows=1)
+        rows = [list(r) for r in sec["rows"]]
+        if sec.get("wrap"):
+            rows = [[Paragraph(str(c), cell) for c in r] for r in rows]
+        data = [cols] + rows
+        tbl = Table(data, colWidths=sec.get("col_widths_mm") and
+                    [w * mm for w in sec["col_widths_mm"]] or widths.get(len(cols)),
+                    repeatRows=1)
         style = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef3fb")),
             ("FONTNAME", (0, 0), (-1, -1), font),

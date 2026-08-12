@@ -2343,6 +2343,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                         balance_label=balance["label"],
                         lab_rows=pdf_lab_rows, method_used=freq_method,
                         fd_welch=fd_welch, fd_burg=fd_burg, is_pediatric=is_pediatric,
+                        edf_path=edf_path,
                     )
                 st.session_state["pdf_bytes"] = pdf_bytes
             if "pdf_bytes" in st.session_state:

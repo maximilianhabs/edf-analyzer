@@ -36,6 +36,13 @@ RUN if [ "$WITH_VALIDATED_DETECTORS" = "1" ]; then \
 # App-Code
 COPY . .
 
+# Herkunft im Report: `.dockerignore` schliesst `.git/` aus, im Image gibt es also kein
+# Repository, aus dem sich der Commit lesen liesse. Er wird deshalb beim Bauen hereingereicht:
+#     docker build --build-arg EDF_BUILD_COMMIT=$(git rev-parse --short HEAD) -t edf-analyzer .
+# Fehlt er, steht im Report ausdruecklich "unbekannt" statt einer erfundenen Angabe.
+ARG EDF_BUILD_COMMIT=""
+ENV EDF_BUILD_COMMIT=$EDF_BUILD_COMMIT
+
 EXPOSE 8501
 
 # Healthcheck über Python (curl ist im slim-Image nicht vorhanden).

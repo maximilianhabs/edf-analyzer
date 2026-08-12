@@ -4,3 +4,8 @@
 #
 # Die App selbst braucht davon nichts; `requirements.txt` bleibt die Laufzeit-Wahrheit.
 pytest>=7.0
+
+# Liest die erzeugten Reports zurück: ReportLab komprimiert die Textströme, eine Suche
+# im Rohbytestrom findet die Herkunftsangaben nicht. Ohne pypdf könnten die Report-Tests
+# nur prüfen, DASS ein PDF entsteht — nicht, was darin steht.
+pypdf>=4.0

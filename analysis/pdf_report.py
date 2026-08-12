@@ -107,6 +107,7 @@ def build_hrv_pdf(
     fd_welch: Optional[dict] = None,
     fd_burg: Optional[dict] = None,
     is_pediatric: bool = False,
+    edf_path: Optional[str] = None,
 ) -> bytes:
     """Baut den klinischen Tabellen-Report (kein Grafik-Export, nur Werte).
 
@@ -368,6 +369,22 @@ def build_hrv_pdf(
         "Alle Berechnungen lokal — keine Datenübertragung.",
         ss["Small8"],
     ))
+
+    # ── Herkunft ──────────────────────────────────────────────────────────────
+    # Ohne diese Angaben ließ sich an einem ausgedruckten Report nicht mehr feststellen, mit
+    # welchem Stand er entstanden ist. `edf_path` ist optional, damit ältere Aufrufer nicht
+    # brechen — fehlt er, entfallen Dateihash und Fingerabdruck, der Rest bleibt.
+    try:
+        from core.version import provenance, provenance_lines
+        prov = provenance(edf_path, {"Alter": patient_age,
+                                     "Frequenzmethode": method_used,
+                                     "pädiatrisch": "ja" if is_pediatric else "nein"})
+        el.append(Spacer(1, 4))
+        el.append(Paragraph("Herkunft & Reproduzierbarkeit", ss["SectionHead"]))
+        el.append(Paragraph(
+            " · ".join(f"<b>{k}:</b> {v}" for k, v in provenance_lines(prov)), ss["Small8"]))
+    except Exception as exc:
+        el.append(Paragraph(f"Herkunftsangaben nicht ermittelbar: {exc}", ss["Small8"]))
 
     doc.build(el)
     return buf.getvalue()

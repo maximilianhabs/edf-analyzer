@@ -45,6 +45,16 @@ def _page(title, subtitle, color):
     return fig
 
 
+def _footer(fig, prov_line):
+    """Herkunftszeile ganz unten auf JEDER Seite.
+
+    Auf jeder Seite, nicht nur auf dem Deckblatt: aus diesem Report werden einzelne Seiten
+    ausgedruckt und weitergereicht. Eine Seite, die ihre Herkunft nicht mitbringt, verliert
+    sie genau dann, wenn es darauf ankommt.
+    """
+    fig.text(0.035, 0.018, prov_line, fontsize=6.5, color=C_MUTED, va="center")
+
+
 def _cap(fig, y, text):
     """Klartext-Zeile unter einer Grafik: was sehe ich / warum wichtig."""
     fig.text(0.035, y, text, fontsize=8.8, color=C_MUTED, va="center")
@@ -393,6 +403,7 @@ def _page_cover(pdf, d, disp):
                      "Alle folgenden Beispiel-Ausschnitte stammen aus einem sauberen Abschnitt.")
     fig.text(0.035, 0.06, "Nur robuste, verlässliche Marker · erzeugt vom EDF-Analyzer",
              fontsize=8, color=C_MUTED, style="italic")
+    _footer(fig, d.get("prov_line", ""))
     pdf.savefig(fig); plt.close(fig)
 
 
@@ -417,6 +428,7 @@ def _page_raw_eeg(pdf, edf, d):
                 C_M if a in ("Fz", "Cz") else C_L)
             traces.append((f"{a}–{b}", s, col))
     if not traces:
+        _footer(fig, d.get("prov_line", ""))
         pdf.savefig(fig); plt.close(fig); return
     g95 = float(np.percentile(np.abs(np.concatenate([t[1] for t in traces])), 95)) or 1.0
     gain = 0.45 / g95
@@ -436,6 +448,7 @@ def _page_raw_eeg(pdf, edf, d):
     fig.text(0.905, 0.885, "Mittellinie", color=C_M, fontsize=9, fontweight="bold")
     _cap(fig, 0.055, "Das unverarbeitete EEG — hierauf beruhen alle folgenden Auswertungen. "
                      "Negativ ist oben (klinische Konvention).")
+    _footer(fig, d.get("prov_line", ""))
     pdf.savefig(fig); plt.close(fig)
 
 
@@ -444,6 +457,7 @@ def _page_spectrum(pdf, d):
     fig = _page("EEG — Frequenz & Grundrhythmus", "Spektrogramm · Leistungsspektrum · Bandverteilung (posterior O1/O2, artefaktbereinigt)", C_EEG_HDR)
     sf, post = d["sf"], d.get("post")
     if post is None:
+        _footer(fig, d.get("prov_line", ""))
         pdf.savefig(fig); plt.close(fig); return
 
     # Spektrogramm
@@ -505,6 +519,7 @@ def _page_spectrum(pdf, d):
     _cap(fig, 0.055, "Der okzipitale Alpha-Gipfel ist der Grundrhythmus des wachen, entspannten Gehirns "
                      "(hier aus dem sauberen Abschnitt mit dem klarsten Alpha). Verschiebt er sich "
                      "nach links (langsamer), spricht das für eine Funktionsstörung.")
+    _footer(fig, d.get("prov_line", ""))
     pdf.savefig(fig); plt.close(fig)
 
 
@@ -576,6 +591,7 @@ def _page_topo(pdf, d):
                  fontweight="bold", color=C_INK, loc="left", pad=6)
     _cap(fig, 0.075, "Gesundes waches EEG ist hinten Alpha-dominant (A/P > 1) und weitgehend symmetrisch. "
                      "Der 1/f-Untergrund trennt echte Oszillationen von Rauschen.")
+    _footer(fig, d.get("prov_line", ""))
     pdf.savefig(fig); plt.close(fig)
 
 
@@ -619,6 +635,7 @@ def _page_ecg(pdf, d):
                  fontweight="bold", color=C_INK, loc="left", pad=6)
     _cap(fig, 0.065, "Jede R-Zacke ist ein Herzschlag. Aus den Abständen (RR) entsteht die gesamte "
                      "Variabilitätsanalyse — deshalb muss die Detektion exakt sein.")
+    _footer(fig, d.get("prov_line", ""))
     pdf.savefig(fig); plt.close(fig)
 
 
@@ -681,6 +698,7 @@ def _page_hrv(pdf, d):
 
     _cap(fig, 0.065, "Die Poincaré-Wolke zeigt die Regulationsbreite des Herzens: breit = flexibles, "
                      "gesundes autonomes Nervensystem. HF steht für Vagus (Erholung), LF für Regulation.")
+    _footer(fig, d.get("prov_line", ""))
     pdf.savefig(fig); plt.close(fig)
 
 
@@ -786,6 +804,7 @@ def _page_rhythm(pdf, d):
     _cap(fig, 0.075, "Eine schmale RR-Säule/geringe ΔRR-Streuung spricht für einen regelmäßigen "
                      "Rhythmus; die PQRST-Summation zeigt, ob eine zeitlich fixierte P-Welle vor "
                      "dem Kammerkomplex nachweisbar ist. Screening-Marker, keine Diagnose.")
+    _footer(fig, d.get("prov_line", ""))
     pdf.savefig(fig); plt.close(fig)
 
 
@@ -796,6 +815,14 @@ def build_glory_pdf(edf: dict, edf_path: str, disp_name: str = "EDF",
     Laborwert-Balken (siehe [[project_edf_report_audit]]) — ohne Alter fällt die Bewertung
     auf den Erwachsenen-Default zurück (wie überall sonst in der App)."""
     d = _collect(edf, edf_path, age=age, is_pediatric=is_pediatric)
+    try:
+        from core.version import provenance, short_line
+        d["prov_line"] = short_line(provenance(edf_path, {
+            "Alter": age, "pädiatrisch": "ja" if is_pediatric else "nein"}))
+    except Exception:
+        # Ein fehlgeschlagener Herkunftsvermerk darf keinen Report verhindern — aber er
+        # darf auch nicht so aussehen, als sei alles in Ordnung.
+        d["prov_line"] = "Herkunftsangaben nicht ermittelbar"
     buf = io.BytesIO()
     with PdfPages(buf) as pdf:
         _page_cover(pdf, d, disp_name)
