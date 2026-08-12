@@ -48,6 +48,9 @@ def _detect_all(edf_path: str, ch: str):
     # Detektoren + die spätere Roh-EKG-Anzeige, damit Overlay und Kurve konsistent bleiben.
     # Siehe [[project_edf_rhythm_screening]].
     sig_corr, eigen_peaks, was_flipped = detect_r_peaks_polarity_safe(sig, sf)
+    from analysis.ecg import coverage_gaps as _cov
+    gaps_own = _cov(eigen_peaks, sf, len(sig) / sf)
+    coverage_frac_own = round(1.0 - sum(b - a for a, b in gaps_own) / (len(sig) / sf), 4)
     # Diese Seite STELLT die Detektoren GEGENÜBER — hier ist ein stiller Rückfall besonders
     # irreführend: die Tabelle zeigte sonst dreimal dieselben Zahlen unter drei Namen. Daher
     # wird pro Eintrag mitgeführt, ob der validierte Detektor wirklich lief.
@@ -65,7 +68,13 @@ def _detect_all(edf_path: str, ch: str):
         td = compute_hrv_time_domain(rr.rr_ms[~rr.artifact_mask]) if rr is not None else {}
         out[label] = {"peaks": pk, "hrv": td,
                       "fell_back": bool(res.fell_back) if res is not None else False,
-                      "reason": res.reason if res is not None else ""}
+                      "reason": res.reason if res is not None else "",
+                      # Ein Detektor kann „erfolgreich" laufen und trotzdem ein Drittel der
+                      # Aufnahme übersehen — die Schlagzahl allein verrät das nicht, weil
+                      # niemand die Sollzahl kennt. Die Abdeckung schon.
+                      "coverage": (res.coverage_frac if res is not None
+                                   else coverage_frac_own),
+                      "gaps": (res.coverage_gaps if res is not None else gaps_own)}
     return out, sf, sig_corr, was_flipped
 
 
@@ -140,11 +149,27 @@ def _render_rpeak_visual(edf, edf_path):
         if d.get("fell_back"):
             _fallbacks.append(f"**{label}**: {d.get('reason', 'Grund unbekannt')}")
         rows.append({"Detektor": shown, "#R-Zacken": len(d["peaks"]),
+                     "Abdeckung (%)": round(d.get("coverage", 1.0) * 100, 1),
                      "HR (bpm)": td.get("mean_hr_bpm", float("nan")),
                      "SDNN (ms)": td.get("sdnn_ms", float("nan")),
                      "RMSSD (ms)": td.get("rmssd_ms", float("nan")),
                      "pNN50 (%)": td.get("pnn50_pct", float("nan"))})
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+    # Abdeckung unter 95 % heißt: über längere Abschnitte wurde gar nichts gefunden. Das ist
+    # die stillste Art, falsch zu liegen — die Zeile sieht aus wie jede andere.
+    _luecken = {lbl: d for lbl, d in det.items() if d.get("gaps")}
+    if _luecken:
+        st.warning(
+            "**Achtung — nicht jede Zeile deckt die ganze Aufnahme ab.** Diese Detektoren "
+            "haben über längere Abschnitte KEINEN Schlag gefunden; ihre HRV-Werte beziehen "
+            "sich nur auf den Rest und sind mit den übrigen Zeilen nicht vergleichbar:\n\n"
+            + "\n".join(
+                f"- **{lbl}**: {d['coverage'] * 100:.0f} % Abdeckung, Lücken bei "
+                + ", ".join(f"{a:.0f}–{b:.0f} s" for a, b in d["gaps"][:4])
+                for lbl, d in _luecken.items()),
+            icon=":material/warning:")
+
     if _fallbacks:
         st.warning("Diese Zeilen zeigen **Werte des eigenen Detektors**, nicht des benannten "
                    "Verfahrens — der Vergleich ist insoweit keiner:\n\n- "

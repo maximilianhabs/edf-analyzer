@@ -5,6 +5,34 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt — Abdeckungsprüfung: ein Detektor kann nicht mehr still aussetzen
+
+Der gefährlichste Fehlerfall der HRV-Kette war nicht der Absturz, sondern der stille
+Teilausfall: Hamilton und Pan-Tompkins hörten nach einem Amplitudensprung auf zu detektieren,
+meldeten **keinen** Fehler und lieferten ein Ergebnis, das plausibel aussah und dem ein
+Drittel der Aufnahme fehlte. 462 Schläge sind für sich genommen keine auffällige Zahl — und
+niemand kennt die Sollzahl einer fremden Aufnahme.
+
+`analysis/ecg.py::coverage_gaps()` misst deshalb nicht, wie viele Schläge gefunden wurden,
+sondern ob über die Aufnahme hinweg überhaupt welche kommen: jeder Abschnitt ab 10 s ohne
+einen einzigen Schlag gilt als Lücke — Anfang und Ende eingeschlossen, denn genau dort trat
+der reale Fall auf. `DetectorResult` führt Lücken und Abdeckungsanteil mit; eine einzelne
+ausgelassene R-Zacke löst nichts aus, sonst warnte die App bei jeder Extrasystole und würde
+ignoriert.
+
+Sichtbar an den drei Stellen, an denen die Schlagfolge zu Zahlen wird:
+
+- **EKG & HRV** — Banner mit den betroffenen Abschnitten und dem Hinweis, dass alle Werte
+  sich nur auf den Rest beziehen.
+- **Rhythmus-Screening** — dort bauen Artefaktfilter, AFib-Verdacht, Ektopie und P-Welle
+  *alle* auf der Schlagfolge auf.
+- **Detektor-Vergleich** — neue Spalte „Abdeckung (%)" plus Warnung, welche Zeilen nicht die
+  ganze Aufnahme abdecken und deshalb mit den übrigen nicht vergleichbar sind.
+
+Auf der synthetischen Fixture meldet nun auch der eigene Detektor eine Lücke: 330–345 s, das
+absichtlich eingebaute Schwachsignal-Fenster mit 5 % Amplitude. Das ist kein Fehlalarm,
+sondern genau die Information, die vorher fehlte.
+
 ### Hinzugefügt — Haftungshinweis dort, wo er gelesen wird
 
 „Kein Medizinprodukt, keine Diagnosesoftware" stand bisher **ausschließlich in den beiden

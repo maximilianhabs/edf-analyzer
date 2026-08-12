@@ -223,3 +223,66 @@ def test_hamilton_und_pan_tompkins_brechen_nach_dem_amplitudensprung_ab():
     roh = len(detect_r_peaks_validated_ex(sig, fs, method="engzee").peaks)
     korr = len(detect_r_peaks_validated_ex(corr, fs, method="engzee").peaks)
     assert korr > 10 * roh, f"Engzee: roh {roh}, polaritätskorrigiert {korr}"
+
+
+def test_abdeckungsluecken_werden_erkannt():
+    """Beleg für die Plausibilisierung, die aus dem Hamilton-Befund entstanden ist.
+
+    Der Detektor-Abbruch war deshalb gefährlich, weil das Ergebnis plausibel AUSSAH: 462
+    Schläge sind für sich genommen keine auffällige Zahl, und niemand kennt die Sollzahl
+    einer fremden Aufnahme. Die Abdeckung verrät es trotzdem — sie misst nicht, wie viele
+    Schläge gefunden wurden, sondern ob über die ganze Aufnahme hinweg überhaupt welche
+    kommen.
+    """
+    from analysis.ecg import coverage_gaps
+    import numpy as np
+
+    fs, dauer = 200.0, 600.0
+    # Sauberer Fall: durchgehend ein Schlag pro Sekunde → keine Lücke.
+    peaks = np.arange(0, dauer, 1.0) * fs
+    assert coverage_gaps(peaks, fs, dauer) == ()
+
+    # Der reale Fall: Detektor hört bei 409 s auf.
+    peaks = np.arange(0, 409.0, 1.0) * fs
+    luecken = coverage_gaps(peaks, fs, dauer)
+    assert len(luecken) == 1
+    a, b = luecken[0]
+    assert 405 < a < 412 and b == 600.0, luecken
+
+    # Lücke am ANFANG — wird ebenso erkannt (ein Detektor, der erst spät anspringt).
+    peaks = np.arange(120.0, dauer, 1.0) * fs
+    assert coverage_gaps(peaks, fs, dauer)[0][0] == 0.0
+
+    # Gar nichts gefunden → die ganze Aufnahme ist eine Lücke.
+    assert coverage_gaps(np.array([]), fs, dauer) == ((0.0, 600.0),)
+
+    # Eine einzelne ausgelassene R-Zacke ist KEINE Lücke — sonst warnt die App bei jeder
+    # Extrasystole und wird ignoriert.
+    peaks = np.concatenate([np.arange(0, 300.0, 1.0), np.arange(302.0, dauer, 1.0)]) * fs
+    assert coverage_gaps(peaks, fs, dauer) == ()
+
+
+def test_hamilton_abbruch_wird_jetzt_als_luecke_gemeldet():
+    """Die Verbindung zwischen Befund und Gegenmaßnahme: derselbe Detektor, der still ein
+    Drittel verlor, meldet das jetzt über seine Abdeckung."""
+    import pytest
+    from analysis.ecg import validated_detectors_available, detect_r_peaks_validated_ex
+    if not validated_detectors_available():
+        pytest.skip("py-ecg-detectors nicht installiert (optionale Abhängigkeit)")
+    from core.shared import load_and_prepare
+    from analysis.ecg import detect_r_peaks_polarity_safe
+
+    m = _manifest()
+    edf = load_and_prepare(FIXTURE)
+    sig = edf["data"][edf["ch_idx"][m["format"]["ecg_channel"]]].astype(float)
+    corr, own, _ = detect_r_peaks_polarity_safe(sig, edf["sfreq"])
+
+    res = detect_r_peaks_validated_ex(corr, edf["sfreq"], method="hamilton")
+    assert res.has_coverage_gap, "der Abbruch bei 409 s wird nicht mehr gemeldet"
+    assert res.coverage_frac < 0.8, f"Abdeckung {res.coverage_frac:.2f} — zu optimistisch"
+
+    # Two-Average kommt durch und darf deshalb NICHT warnen — eine Prüfung, die immer
+    # anschlägt, wäre wertlos.
+    ok = detect_r_peaks_validated_ex(corr, edf["sfreq"], method="two_average")
+    assert not ok.has_coverage_gap, f"Fehlalarm: {ok.coverage_gaps}"
+    assert ok.coverage_frac > 0.99

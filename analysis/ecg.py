@@ -194,10 +194,25 @@ class DetectorResult:
     method: str        # tatsächlich gelaufen: "hamilton"/"pan_tompkins"/… oder "eigen"
     fell_back: bool    # True = der angeforderte validierte Detektor lief NICHT
     reason: str = ""   # nur bei fell_back gesetzt, für Anzeige/Diagnose
+    coverage_gaps: tuple = ()   # ((start_s, end_s), …) Abschnitte ohne einen einzigen Schlag
+    coverage_frac: float = 1.0  # Anteil der Aufnahme mit plausibler Schlagfolge
 
     @property
     def is_validated(self) -> bool:
         return not self.fell_back
+
+    @property
+    def has_coverage_gap(self) -> bool:
+        """True, wenn der Detektor über einen längeren Abschnitt gar nichts gefunden hat.
+
+        Das ist der gefährlichere Fehlerfall gegenüber `fell_back`: dort weiß man, dass
+        etwas anderes gerechnet wurde. Hier liefert der Detektor ein Ergebnis, das plausibel
+        AUSSIEHT und dem ein Drittel der Aufnahme fehlt (nachgewiesen für Hamilton und
+        Pan-Tompkins nach einem Amplitudensprung, siehe
+        tests/test_ecg_pipeline.py::test_hamilton_und_pan_tompkins_brechen_nach_dem_
+        amplitudensprung_ab). Eine HRV-Auswertung darauf wäre falsch, ohne dass es auffiele.
+        """
+        return bool(self.coverage_gaps)
 
 
 _VALIDATED_METHODS = ("hamilton", "pan_tompkins", "christov", "engzee", "two_average")
@@ -214,6 +229,42 @@ def validated_detectors_available() -> bool:
         return False
 
 
+#: Ab dieser Lücke ohne einen einzigen Schlag gilt ein Abschnitt als nicht abgedeckt.
+#: 10 s sind rund 10–15 Schläge — das ist keine Bradykardie mehr und keine einzelne
+#: verpasste R-Zacke, sondern ein ausgefallener Detektor. Bewusst großzügig: eine echte
+#: Asystolie dieser Länge wäre ebenfalls ein Befund, den man sehen will.
+COVERAGE_GAP_S = 10.0
+
+
+def coverage_gaps(peaks: np.ndarray, sfreq: float, duration_s: float,
+                  min_gap_s: float = COVERAGE_GAP_S):
+    """Abschnitte, in denen der Detektor über `min_gap_s` hinweg nichts gefunden hat.
+
+    Geprüft wird auch der Anfang und das Ende der Aufnahme, nicht nur die Abstände zwischen
+    Schlägen — genau dort trat der reale Fall auf: die Detektoren hörten bei 409 s auf und
+    die letzten 190 s blieben leer, ohne dass zwischen zwei Schlägen je eine Lücke stand.
+    """
+    if duration_s <= 0:
+        return ()
+    if len(peaks) == 0:
+        return ((0.0, float(duration_s)),)
+    t = np.asarray(peaks, dtype=float) / float(sfreq)
+    grenzen = np.concatenate(([0.0], t, [float(duration_s)]))
+    luecken = []
+    for a, b in zip(grenzen[:-1], grenzen[1:]):
+        if b - a >= min_gap_s:
+            luecken.append((round(float(a), 1), round(float(b), 1)))
+    return tuple(luecken)
+
+
+def _with_coverage(res: "DetectorResult", sfreq: float, duration_s: float) -> "DetectorResult":
+    luecken = coverage_gaps(res.peaks, sfreq, duration_s)
+    fehlend = sum(b - a for a, b in luecken)
+    return DetectorResult(res.peaks, res.method, res.fell_back, res.reason,
+                          luecken,
+                          round(max(0.0, 1.0 - fehlend / duration_s), 4) if duration_s else 1.0)
+
+
 def detect_r_peaks_validated_ex(signal: np.ndarray, sfreq: float,
                                 method: str = "hamilton") -> DetectorResult:
     """Wie :func:`detect_r_peaks_validated`, gibt aber zusätzlich zurück, welcher Detektor
@@ -223,8 +274,12 @@ def detect_r_peaks_validated_ex(signal: np.ndarray, sfreq: float,
     Methoden: 'hamilton' (Hamilton 2002, robust — Default), 'pan_tompkins' (Pan-Tompkins 1985),
     'christov' (Christov 2004), 'engzee' (Engelse-Zeelenberg), 'two_average' (Elgendi 2013).
     """
+    dauer_s = len(signal) / float(sfreq) if sfreq else 0.0
+
     def _fallback(reason: str) -> DetectorResult:
-        return DetectorResult(detect_r_peaks(signal, sfreq), "eigen", True, reason)
+        return _with_coverage(
+            DetectorResult(detect_r_peaks(signal, sfreq), "eigen", True, reason),
+            sfreq, dauer_s)
 
     try:
         from ecgdetectors import Detectors
@@ -246,7 +301,8 @@ def detect_r_peaks_validated_ex(signal: np.ndarray, sfreq: float,
         return _fallback(f"Detektor brach ab ({exc.__class__.__name__})")
     if len(raw) < 3:
         return _fallback(f"nur {len(raw)} R-Zacken erkannt (mind. 3 nötig)")
-    return DetectorResult(refine_peaks(signal, raw, sfreq), method, False)
+    return _with_coverage(
+        DetectorResult(refine_peaks(signal, raw, sfreq), method, False), sfreq, dauer_s)
 
 
 def detect_r_peaks_validated(signal: np.ndarray, sfreq: float,

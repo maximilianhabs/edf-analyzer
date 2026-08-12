@@ -535,6 +535,13 @@ STRINGS = {
         },
     "ecg_hrv": {
             "title": "EKG & HRV",
+            "coverage_gap_title": "In {min} min der Aufnahme wurde kein einziger Herzschlag erkannt",
+            "coverage_gap_body":
+                "Betroffene Abschnitte: {segments}. Alle HRV-Werte beziehen sich ausschließlich "
+                "auf die übrigen Abschnitte. Mögliche Ursachen: Elektrodenablösung, "
+                "Verstärkersättigung, ein Amplitudensprung, an dem sich die adaptive Schwelle "
+                "des Detektors nicht mehr erholt — oder tatsächlich fehlende Schläge. Bitte im "
+                "Rohsignal nachsehen, bevor die Werte verwendet werden.",
             "too_few_beats_segment": "Zu wenige Schläge in diesem Segment für HRV-Analyse.",
             "chart_explanation": "Diagramm-Erklärung",
             "diagnosis_no_channel": "Diagnose — warum wurde kein Kanal erkannt?",
@@ -1096,6 +1103,13 @@ STRINGS = {
         },
         "ecg_hrv": {
             "title": "ECG & HRV",
+            "coverage_gap_title": "No heartbeat at all was detected in {min} min of the recording",
+            "coverage_gap_body":
+                "Affected sections: {segments}. All HRV values refer to the remaining sections "
+                "only. Possible causes: a detached electrode, amplifier saturation, an "
+                "amplitude step from which the detector's adaptive threshold does not recover "
+                "— or genuinely absent beats. Please check the raw signal before using these "
+                "values.",
             "too_few_beats_segment": "Too few beats in this segment for HRV analysis.",
             "chart_explanation": "Chart explanation",
             "diagnosis_no_channel": "Diagnostics — why was no channel detected?",

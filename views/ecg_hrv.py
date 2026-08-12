@@ -52,7 +52,7 @@ def compute_rr(path, channel):
     Bestimmung als eine Betragssignal-Schwelle → korrektes RMSSD/pNN50.
     Danach 4-stufige robuste Artefakt-Bereinigung der RR-Reihe."""
     from core.loader import load_edf
-    from analysis.ecg import detect_r_peaks_polarity_safe
+    from analysis.ecg import detect_r_peaks_polarity_safe, coverage_gaps
     import warnings; warnings.filterwarnings("ignore")
     _raw = load_edf(path, preload=True)
     _data, _ = _raw[:]
@@ -143,6 +143,10 @@ def compute_rr(path, channel):
         "removed_mask": ~final_mask, "fs": fs,
         "threshold_mv": threshold * 1000, "peak_ref_mv": peak_ref * 1000,
         "n_peaks_total": len(peaks), "n_removed": n_removed, "was_flipped": was_flipped,
+        # Abdeckung: Abschnitte, in denen ÜBERHAUPT kein Schlag gefunden wurde. Das ist der
+        # gefährlichste Fehlerfall der ganzen HRV-Kette, weil das Ergebnis plausibel aussieht
+        # (siehe analysis/ecg.py::coverage_gaps).
+        "coverage_gaps": coverage_gaps(peaks, fs, len(sig) / fs),
     }
 
 
@@ -1144,6 +1148,23 @@ def render():
         "Vorhofflimmern oder andere Rhythmusstörungen bitte zuerst die **Rhythmus-Screening**-"
         "Seite (Seitenmenü) prüfen — dort inkl. Sicherheitsstufe und P-Wellen-Nachweis."
     )
+
+    # ── Abdeckungs-Warnung ────────────────────────────────────────────────────────────────
+    # Der gefährlichste Fehlerfall der HRV-Kette: der Detektor findet über einen längeren
+    # Abschnitt gar nichts, das Ergebnis sieht trotzdem plausibel aus. Nachgewiesen für
+    # Hamilton/Pan-Tompkins nach einem Amplitudensprung (462 statt 702 Schläge, ohne jede
+    # Fehlermeldung). Alle abgeleiteten HRV-Werte beziehen sich dann auf einen Ausschnitt,
+    # ohne dass irgendwo stünde, auf welchen.
+    _gaps = rr_data.get("coverage_gaps") or ()
+    if _gaps:
+        _fehlend = sum(b - a for a, b in _gaps)
+        _liste = ", ".join(f"{a:.0f}–{b:.0f} s" for a, b in _gaps[:5])
+        if len(_gaps) > 5:
+            _liste += f" (+{len(_gaps) - 5} weitere)"
+        render_banner(
+            "warning",
+            tr("ecg_hrv.coverage_gap_title", min=f"{_fehlend / 60:.1f}"),
+            tr("ecg_hrv.coverage_gap_body", segments=_liste))
 
     # ── Polaritäts-Hinweis (User-Anfrage 2026-08-08, PRÄZISIERT 2026-08-08 — gleiche Logik/UI
     # wie views/rhythm_screening.py, dort ausführlich hergeleitet + gegengeprüft mit

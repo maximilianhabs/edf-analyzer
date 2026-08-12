@@ -81,7 +81,12 @@ def _detect(edf_path: str, ch: str, method: str | None):
     # weil sie die klinische EEG-Konvention "Negativität nach oben" (DGKN/IFCN) auf ALLE Kanäle
     # anwenden, auch EKG — ein negativer QRS erscheint dort durch Zufall zweier sich aufhebender
     # Konventionen aufrecht, ist aber nach EKG-Standard-Konvention trotzdem invertiert.
-    return sig_v * 1e6, peaks, fs, was_flipped, fallback_reason
+    # Abdeckung: der gewählte Detektor kann fehlerfrei durchlaufen und trotzdem über einen
+    # längeren Abschnitt nichts finden. Diese Seite baut ALLES darauf auf (Artefakte, AFib,
+    # Ektopie, P-Welle) — die Lücke gehört deshalb bis in die Oberfläche durchgereicht.
+    from analysis.ecg import coverage_gaps
+    gaps = coverage_gaps(peaks, fs, len(sig_v) / fs)
+    return sig_v * 1e6, peaks, fs, was_flipped, fallback_reason, gaps
 
 
 @st.cache_data(show_spinner="Vergleiche mit/ohne Polaritäts-Korrektur…")
@@ -132,7 +137,7 @@ def render():
         cch2.caption(tr("rhythm.validated_unavailable"))
     det_method = DETECTOR_METHODS[det_label]
 
-    sig_uv, peaks_all, fs, was_flipped, det_fallback = _detect(edf_path, ch, det_method)
+    sig_uv, peaks_all, fs, was_flipped, det_fallback, det_gaps = _detect(edf_path, ch, det_method)
     if det_fallback:
         # Nicht die Auswahl bestätigen, die gar nicht wirksam wurde.
         st.warning(f"**{det_label}** konnte nicht verwendet werden ({det_fallback}). Diese "
@@ -142,6 +147,19 @@ def render():
     elif det_method is not None:
         st.caption(f"Aktiver Detektor: **{det_label}** (nicht Default) — Ergebnisse dieser "
                    "Seite basieren auf diesem Detektor, bis zurückgeschaltet wird.")
+
+    # Abdeckungslücke: alles auf dieser Seite (Artefakte, AFib-Verdacht, Ektopie, P-Welle)
+    # baut auf der Schlagfolge auf. Fehlt sie abschnittsweise, sind auch diese Aussagen nur
+    # für den Rest gültig — das muss hier stehen, nicht erst in der HRV.
+    if det_gaps:
+        _fehlt = sum(b - a for a, b in det_gaps)
+        st.warning(
+            f"**{_fehlt / 60:.1f} min ohne erkannten Herzschlag** "
+            f"({', '.join(f'{a:.0f}–{b:.0f} s' for a, b in det_gaps[:4])}"
+            f"{' …' if len(det_gaps) > 4 else ''}). Rhythmus-, Ektopie- und P-Wellen-Aussagen "
+            f"dieser Seite gelten nur für die übrigen Abschnitte. Bitte im Rohsignal prüfen, "
+            f"ob dort wirklich keine Schläge sind oder der Detektor ausgesetzt hat.",
+            icon=":material/warning:")
     dur_s = len(sig_uv) / fs
 
     # Polaritäts-Hinweis (User-Vorgabe 2026-08-08, PRÄZISIERT 2026-08-08 nach Gegenprüfung mit

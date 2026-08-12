@@ -166,8 +166,9 @@ METHODS: List[Method] = [
            "Hamilton 2002; Howell & Porr 2019", FULL,
            limitations="BEWUSST nicht implementierungsvalidiert. Auf der Fixture brechen "
                        "Hamilton und Pan-Tompkins nach dem Amplitudensprung bei 400–410 s "
-                       "vollständig ab (letzter Schlag 409 s, 462 statt 702) und melden dabei "
-                       "KEINEN Fehler; Engzee liefert ohne vorherige Polaritätskorrektur nur "
+                       "vollständig ab (letzter Schlag 409 s, 462 statt 702). Seit 2026-08-12 "
+                       "meldet die App das über die Abdeckungsprüfung — vorher lief es "
+                       "unbemerkt durch; Engzee liefert ohne vorherige Polaritätskorrektur nur "
                        "7 Schläge. Nachgewiesen ist die Schlagzahl nur für Christov und "
                        "Two-Average. Festgehalten in "
                        f"{T_ECG}::test_hamilton_und_pan_tompkins_brechen_nach_dem_"
