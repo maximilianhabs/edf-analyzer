@@ -29,6 +29,42 @@ and visual reports.
 The interface is available in **German and English** (switch in the sidebar). Clinical
 parameter names, units and reference values in tables remain in their established form.
 
+![EEG spectrum — posterior vs. anterior spectrogram and power spectrum](docs/img/eeg-spektrum.jpg)
+
+*EEG spectrum: posterior (O1+O2) against anterior (F3+F4). The alpha band at 9.2 Hz runs as a
+red stripe through the posterior spectrogram and breaks off wherever the eyes open — alpha
+reactivity, visible in the frequency image. The white column marks a gap in the recording.*
+
+<details>
+<summary><b>More screenshots</b> — EEG viewer, rhythm screening, HRV, visual report</summary>
+
+![EEG viewer with double-banana montage](docs/img/eeg-viewer.jpg)
+
+*Full recording with scrollable navigation, DGKN montages, per-channel calibration and the ECG
+lane fixed at the bottom.*
+
+![Rhythm screening — PQRST ensemble and P-wave coherence](docs/img/rhythmus-screening.jpg)
+
+*Beat summation across the window: every single beat aligned on the R peak, the median ensemble
+in blue. P-wave coherence is evidence independent of RR irregularity — a screening marker, not
+a diagnosis. Below it, the artifact gallery shows what was rejected and why.*
+
+![ECG and HRV — tachogram, Poincaré plot and histograms](docs/img/ekg-hrv.jpg)
+
+*Tachogram, Poincaré plot and the geometric HRV representation (Task Force 1996).*
+
+![Visual report, first page](docs/img/visual-report.jpg)
+
+*The visual report as a vector PDF — every page carries the liability notice and its
+provenance line: version, commit, Python and package versions, analysis fingerprint.*
+
+</details>
+
+All screenshots come from a **real routine EEG recording** (11 minutes, 23 EEG channels, 200 Hz),
+not from synthetic test data. Header fields were anonymised beforehand; nothing identifying is
+visible.
+
+
 ## Why it exists
 
 Commercial EEG/ECG systems often report quantitative measures as a black box — the underlying

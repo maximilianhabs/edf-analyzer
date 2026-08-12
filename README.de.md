@@ -17,6 +17,34 @@
 
 Man lädt eine EDF-Datei hoch; die App erkennt automatisch die Kanaltypen (EEG/EKG/EOG/…), berechnet quantitative Marker (EEG-Spektralanalyse, HRV-Zeit- und Frequenzdomäne, Aperiodik, Komplexität) und erlaubt eine artefaktbereinigte Gegenauswertung sowie tabellarische und visuelle Reports.
 
+![EEG-Spektrum — Spektrogramm posterior vs. anterior und Leistungsspektrum](docs/img/eeg-spektrum.jpg)
+
+*EEG-Spektrum: posterior (O1+O2) gegen anterior (F3+F4). Das Alpha-Band bei 9,2 Hz zieht sich als roter Streifen durch das posteriore Spektrogramm und bricht dort ab, wo die Augen geöffnet werden — Alpha-Reaktivität, im Frequenzbild sichtbar. Die weiße Säule markiert eine Aufnahmelücke.*
+
+<details>
+<summary><b>Weitere Screenshots</b> — EEG-Viewer, Rhythmus-Screening, HRV, visueller Report</summary>
+
+![EEG-Viewer mit Doppelbanane](docs/img/eeg-viewer.jpg)
+
+*Vollaufnahme mit scrollbarer Navigation, DGKN-Montagen, Eichung je Kanal und fest unten liegender EKG-Spur.*
+
+![Rhythmus-Screening — PQRST-Ensemble und P-Wellen-Kohärenz](docs/img/rhythmus-screening.jpg)
+
+*Schlag-Summation über das Fenster: jeder Einzelschlag auf die R-Zacke ausgerichtet, das Median-Ensemble in Blau. Die P-Wellen-Kohärenz ist eine von der RR-Unregelmäßigkeit unabhängige Evidenz — Screening-Marker, keine Diagnose. Darunter zeigt die Artefaktgalerie, was verworfen wurde und warum.*
+
+![EKG und HRV — Tachogramm, Poincaré und Histogramme](docs/img/ekg-hrv.jpg)
+
+*Tachogramm, Poincaré-Darstellung und die geometrische HRV-Darstellung (Task Force 1996).*
+
+![Visueller Report, erste Seite](docs/img/visual-report.jpg)
+
+*Der visuelle Report als Vektor-PDF — jede Seite trägt den Haftungshinweis und ihre Herkunftszeile: Version, Commit, Python- und Paketversionen, Analyse-Fingerabdruck.*
+
+</details>
+
+Alle Screenshots stammen aus einer **echten Routine-EEG-Aufnahme** (11 Minuten, 23 EEG-Kanäle, 200 Hz), nicht aus synthetischen Testdaten. Die Kopfdaten wurden vorher anonymisiert; nichts Identifizierendes ist sichtbar.
+
+
 ## Warum es existiert
 
 Kommerzielle EEG/EKG-Systeme geben quantitative Kennwerte oft als Blackbox aus — die zugrundeliegende Methodik ist selten transparent, herstellerabhängig und schwer nachzuvollziehen. Der EDF-Analyzer macht die Rechenwege **explizit und nachvollziehbar**: für jedes Verfahren ist dokumentiert, ob es einem publizierten Goldstandard folgt oder eine bewusste Vereinfachung ist (siehe [Wissenschaftliche Transparenz](#wissenschaftliche-transparenz)).
