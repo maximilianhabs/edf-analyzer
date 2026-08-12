@@ -5,7 +5,6 @@ bestehenden Analysen (EEG-Spektrum, EKG & HRV laufen weiter über die Gesamtaufn
 Nachgeschaltet nach der Kanal-Identifikation (nutzt deren Typ-Overrides).
 """
 
-import json
 import os
 from dataclasses import replace
 
@@ -320,7 +319,6 @@ def _build_traces(edf, montage, i0, i1):
             if traces:
                 groups.append((gname, traces))
     else:
-        ref_ok = montage == "Average-Referenz" or "Cz" in present
         for gname, elecs, col in _REF_GROUPS:
             traces = []
             for e in elecs:
@@ -414,7 +412,7 @@ def _render_review_viewer(edf, res, res_auto):
     g_eeg = (lane_h * 0.5) / g95 * sens
 
     traces, spacers, y = [], [], float(header_h)   # Header-Platz oben für den Klick-Hinweis
-    for gi, (gname, trs) in enumerate(groups):
+    for _gi, (_gname, trs) in enumerate(groups):
         for trc in trs:
             y += lane_h
             mins, maxs = _minmax_decimate(trc["sig"].astype(float), n_buckets)

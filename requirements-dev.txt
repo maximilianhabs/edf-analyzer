@@ -9,3 +9,7 @@ pytest>=7.0,<9
 # im Rohbytestrom findet die Herkunftsangaben nicht. Ohne pypdf könnten die Report-Tests
 # nur prüfen, DASS ein PDF entsteht — nicht, was darin steht.
 pypdf>=4.0,<7
+
+# Linter. Schmale Regelauswahl in ruff.toml — nur echte Fehler plus die Fallen aus
+# bugbear, keine Stildebatten. Läuft im schnellen CI-Job in Sekunden.
+ruff>=0.16,<1

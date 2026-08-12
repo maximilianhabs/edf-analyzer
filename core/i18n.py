@@ -347,6 +347,11 @@ STRINGS = {
             "download_excel": "Excel herunterladen",
             "download_visual": "Visual Report (PDF)",
             "visual_unavailable": "Visual Report nicht verfügbar: {err}",
+            "download_manifest": "Manifest (JSON) — maschinenlesbar",
+            "manifest_caption":
+                "Dieselben Werte wie im Report, zusätzlich Herkunft, Parameter und die "
+                "SHA-256-Prüfsumme der Aufnahme — zum Einlesen, Vergleichen und Nachrechnen. "
+                "Enthält keine Kopfdaten der Aufnahme.",
             "visual_caption": "**Visual Report** = grafischer Abstract (A4 quer, 6 Seiten): "
                                "Roh-EEG, Spektrogramm, Bandverteilung, A/P-Gradient, Asymmetrie, "
                                "EKG mit QRS-Erkennung, RR vor/nach Bereinigung, Poincaré & "
@@ -917,6 +922,11 @@ STRINGS = {
             "download_excel": "Download Excel",
             "download_visual": "Visual report (PDF)",
             "visual_unavailable": "Visual report unavailable: {err}",
+            "download_manifest": "Manifest (JSON) — machine-readable",
+            "manifest_caption":
+                "The same values as in the report, plus provenance, parameters and the "
+                "SHA-256 checksum of the recording — for parsing, comparing and recomputing. "
+                "Contains none of the recording's header data.",
             "visual_caption": "**Visual report** = graphical abstract (A4 landscape, 6 pages): "
                                "raw EEG, spectrogram, band distribution, A/P gradient, asymmetry, "
                                "ECG with QRS detection, RR before/after cleaning, Poincaré & HRV "

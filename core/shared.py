@@ -649,7 +649,7 @@ def load_and_prepare(path: str):
     ]
 
     # EOG and EMG channels
-    from core.channel_classifier import EOG, EMG, REF
+    from core.channel_classifier import EOG, EMG
     eog_channels = [ch for ch, r in classifications.items() if r.channel_type == EOG]
     emg_channels = [ch for ch, r in classifications.items() if r.channel_type == EMG]
 
@@ -1017,7 +1017,7 @@ def apply_channel_overrides(edf: dict) -> dict:
         return edf
 
     from core.channel_classifier import (ChannelResult, ECG, EEG, EOG, EMG,
-                                          REF, VITAL, UNKN, make_short_name)
+                                          make_short_name)
 
     edf = dict(edf)
     classifications = dict(edf.get("channel_classifications", {}))

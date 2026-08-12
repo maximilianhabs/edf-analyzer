@@ -58,6 +58,13 @@ PYPI_TO_NOTICE = {
 
 COPYLEFT = ("GPL", "AGPL", "LGPL", "MPL", "EUPL", "CDDL", "OSL", "CECILL")
 
+# Werkzeuge, die als KOMMANDO benutzt werden und nie importiert werden. Ohne diese Liste
+# meldete Prüfung 1 sie als „deklariert, aber ungenutzt" — formal richtig, praktisch falsch:
+# `ruff check .` braucht keinen Import. Bewusst eine kurze, explizite Liste statt einer
+# Heuristik, damit ein wirklich ungenutztes Paket weiterhin auffällt (genau so wurde
+# `neurokit2` gefunden, das über die gesamte Projekthistorie ungenutzt mitgeschleppt wurde).
+CLI_ONLY = {"ruff"}
+
 SKIP_DIRS = {".git", "tools", ".venv", "venv", "static", "build", "dist"}
 
 
@@ -160,7 +167,7 @@ def main():
     for pkg in sorted(used - declared):
         problems.append(f"[nicht deklariert] '{pkg}' wird importiert, steht aber in keiner "
                         f"requirements-Datei")
-    for pkg in sorted(declared - used):
+    for pkg in sorted(declared - used - CLI_ONLY):
         problems.append(f"[ungenutzt] '{pkg}' ist deklariert, wird aber nirgends importiert")
 
     # 3 — Copyleft gehört nicht in die Standard-Requirements

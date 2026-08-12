@@ -112,8 +112,8 @@ def main():
                             f"Etikett behauptete eine Prüfung, die nicht stattgefunden hat")
 
     print(f"Registry: {len(METHODS)} Verfahren")
-    print(f"  Belegstufe:  " + ", ".join(f"{k}={v}" for k, v in lvl.items()))
-    print(f"  Umsetzung:   " + ", ".join(f"{k}={v}" for k, v in fid.items()))
+    print("  Belegstufe:  " + ", ".join(f"{k}={v}" for k, v in lvl.items()))
+    print("  Umsetzung:   " + ", ".join(f"{k}={v}" for k, v in fid.items()))
     print()
     for p in problems:
         print("FEHLER: " + p)

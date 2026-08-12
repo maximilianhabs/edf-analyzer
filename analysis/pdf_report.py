@@ -11,7 +11,7 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, KeepTogether,
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
 # ── Farben (dezent, klinisch) ─────────────────────────────────────────────────
 _C_HEADER   = colors.HexColor("#1c2833")
@@ -258,7 +258,10 @@ def build_hrv_pdf(
         el.append(Paragraph(
             f"2  Frequenzbereich (Frequency Domain) — {fd_label}", ss["SectionHead"]))
 
-        def _fv(key, fmt=".1f"):
+        def _fv(key, fmt=".1f", fd=fd):   # fd explizit binden, nicht über die Closure:
+            # sonst zeigt die Funktion auf den Wert der LETZTEN Iteration, sobald sie einmal
+            # ausserhalb ihrer eigenen Iteration aufgerufen wird. Hier heute unkritisch, aber
+            # eine Umstellung weiter unten würde es still kaputtmachen.
             return _nan_str(fd.get(key), fmt)
 
         lf_hf = fd.get("lf_hf_ratio", float("nan"))

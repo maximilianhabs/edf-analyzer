@@ -28,7 +28,7 @@ from typing import Optional, TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from analysis.ecg import RRSeries
+    pass
 
 
 # ─── Annotations-Parser ──────────────────────────────────────────────────────

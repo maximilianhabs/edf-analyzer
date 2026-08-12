@@ -3,7 +3,6 @@
 import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from scipy.signal import spectrogram
 from scipy.signal import butter, filtfilt
 from scipy.signal.windows import dpss
@@ -186,7 +185,7 @@ def _active_settings_note(use_multitaper: bool, use_art_filter: bool) -> None:
     Multitaper/Artefaktfilter wirken seitenweit, nicht lokal; ohne diesen Hinweis muss man
     zum Nachschauen nach oben scrollen (User-Feedback 2026-08-03)."""
     _mt = "Multitaper" if use_multitaper else "Welch"
-    _af = f"an (≥150 µV)" if use_art_filter else "aus"
+    _af = "an (≥150 µV)" if use_art_filter else "aus"
     st.caption(f"⚙️ Aktive Einstellungen dieser Sektion: Methode **{_mt}** · "
                f"Extremartefakt-Filter **{_af}** — änderbar oben in den Analyse-Optionen.")
 

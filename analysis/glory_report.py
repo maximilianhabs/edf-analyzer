@@ -488,7 +488,7 @@ def _page_spectrum(pdf, d):
     im = ax.imshow(S, aspect="auto", origin="lower", cmap="turbo",
                    extent=[t[0], t[-1], 1, 30],
                    vmin=np.median(S) - 12, vmax=np.median(S) + 20)
-    for _, lo, hi, c in BANDS:
+    for _, _lo, hi, _c in BANDS:
         ax.axhline(hi, color="white", lw=0.6, ls=":", alpha=0.6)
     ax.set_ylabel("Frequenz (Hz)", fontsize=9, color=C_MUTED)
     ax.set_xlabel("Zeit (s)", fontsize=9, color=C_MUTED)

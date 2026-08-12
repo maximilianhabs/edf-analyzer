@@ -20,7 +20,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from core.i18n import tr
-from core.shared import get_edf_or_stop, section_header, safe_slider, render_banner, status_dot
+from core.shared import get_edf_or_stop, section_header, render_banner, status_dot
 from analysis.ecg_quality import sqi_segments
 from analysis.rhythm_screening import classify_afib_risk, combine_with_pwave
 from analysis.ectopy_detection import ectopy_summary
@@ -430,13 +430,13 @@ def render():
     ectopy_beat_times = {e["t_s"]: e["hint"] for e in (ectopy["events"] if ectopy else [])}
 
     fig = go.Figure()
-    for b0, b1, reason in bad_zones:
+    for b0, b1, _reason in bad_zones:
         if b1 <= t0 or b0 >= t1:
             continue
         fig.add_vrect(x0=max(b0, t0), x1=min(b1, t1), fillcolor="#c0392b", opacity=0.10,
                       line_width=0, annotation_text="Artefakt", annotation_font_size=9,
                       annotation_font_color="#c0392b")
-    for b0, b1, reason in notable_zones:
+    for b0, b1, _reason in notable_zones:
         if b1 <= t0 or b0 >= t1:
             continue
         fig.add_vrect(x0=max(b0, t0), x1=min(b1, t1), fillcolor="#e67e22", opacity=0.10,

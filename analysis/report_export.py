@@ -612,7 +612,6 @@ _ZONE_FONT = {"normal": "1E7B34", "grenzwertig": "9C6F00", "pathologisch": "B23A
 
 
 def build_excel(sections, edf, disp_name: str) -> bytes:
-    import pandas as pd
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
     wb = Workbook()
@@ -764,3 +763,80 @@ def build_pdf(sections, disp_name: str) -> bytes:
         story.append(tbl)
     doc.build(story)
     return buf.getvalue()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Maschinenlesbares Manifest
+# ──────────────────────────────────────────────────────────────────────────────
+def build_manifest(sections, edf: dict, edf_path: str, disp_name: str,
+                   age=None, sex=None, is_pediatric: bool = False) -> bytes:
+    """Dasselbe wie der Report, nur für Maschinen: JSON statt Tabelle.
+
+    PDF und Excel sind für Menschen gemacht. Wer zwei Aufnahmen vergleichen, über eine Serie
+    auswerten oder ein Ergebnis in einer anderen Umgebung nachrechnen will, muss sie derzeit
+    abtippen. Dieses Manifest enthält dieselben Werte samt vollständiger Herkunft in einer
+    Form, die sich einlesen und diffen lässt.
+
+    Bewusst OHNE Rohdaten und ohne Kopfdaten der Aufnahme: die Datei wird über ihren SHA-256
+    identifiziert, nicht über Namen oder Patientenfelder. Ein Manifest kann damit
+    weitergegeben werden, auch wenn die Aufnahme es nicht darf.
+    """
+    import json
+    from core.version import provenance
+
+    # Sektionen in eine flache, stabil benannte Struktur bringen. Die Reihenfolge der Zeilen
+    # bleibt erhalten, damit ein Diff zweier Manifeste lesbar bleibt.
+    inhalte = []
+    for sec in sections:
+        inhalte.append({
+            "section": sec["name"],
+            "columns": list(sec["columns"]),
+            "rows": [[_jsonfaehig(c) for c in row] for row in sec["rows"]],
+        })
+
+    prov = provenance(edf_path, {
+        "Alter": age, "Geschlecht": sex,
+        "pädiatrische Normwerte": bool(is_pediatric),
+        "Abtastrate_Hz": float(edf.get("sfreq", 0)),
+        "Dauer_s": round(float(edf.get("duration_s", 0)), 3),
+    })
+
+    manifest = {
+        # Versionierung des FORMATS, nicht der App — wer das Manifest einliest, muss wissen,
+        # ob sich die Struktur geändert hat, unabhängig von der Analyse-Version.
+        "manifest_schema": "1.0",
+        "tool": "EDF-Analyzer",
+        "created_utc": _jetzt_utc(),
+        "provenance": prov,
+        "recording": {
+            # Kein Dateiname, keine Patientenfelder — siehe Docstring.
+            "sha256": prov.get("file_sha256"),
+            "duration_s": round(float(edf.get("duration_s", 0)), 3),
+            "sfreq_hz": float(edf.get("sfreq", 0)),
+            "n_eeg_channels": len(edf.get("eeg_map", {})),
+            "ecg_channels": list(edf.get("ecg_channels") or []),
+        },
+        "results": inhalte,
+    }
+    return json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def _jetzt_utc() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _jsonfaehig(wert):
+    """NumPy-Typen und NaN in etwas verwandeln, das `json` schreiben kann.
+
+    `json.dumps` schreibt für NaN das Literal `NaN` — das ist **kein gültiges JSON** und
+    lässt jeden strengen Parser scheitern. Fehlende Werte werden deshalb zu `null`.
+    """
+    if isinstance(wert, (str, bool)) or wert is None:
+        return wert
+    if isinstance(wert, (int, float)):
+        return None if isinstance(wert, float) and math.isnan(wert) else wert
+    if isinstance(wert, np.generic):          # np.float64, np.int64 …
+        w = wert.item()
+        return None if isinstance(w, float) and math.isnan(w) else w
+    return str(wert)

@@ -23,7 +23,6 @@ Was bleibt:
 
 import re
 import os
-import sys
 import argparse
 import hashlib
 import json
@@ -307,14 +306,14 @@ Beispiele:
 
     anon_id = args.id or f"{args.prefix}_{input_path.stem[:8].upper()}"
 
-    print(f"\n🔒 EDF De-Identifikation")
+    print("\n🔒 EDF De-Identifikation")
     print(f"   Input:   {input_path}")
     print(f"   Output:  {output_path}")
     print(f"   ID:      {anon_id}")
 
     # Vorher-Zustand zeigen
     hdr_before = read_header(str(input_path))
-    print(f"\n   Vor Anonymisierung:")
+    print("\n   Vor Anonymisierung:")
     print(f"   Patient-ID:   '{hdr_before['patient_id']}'")
     print(f"   Recording-ID: '{hdr_before['recording_id'][:50]}'")
     print(f"   Datum:        '{hdr_before['startdate']}'")
@@ -328,7 +327,7 @@ Beispiele:
 
     # Nachher-Zustand prüfen
     hdr_after = read_header(str(output_path))
-    print(f"\n   Nach Anonymisierung:")
+    print("\n   Nach Anonymisierung:")
     print(f"   Patient-ID:   '{hdr_after['patient_id']}'")
     print(f"   Recording-ID: '{hdr_after['recording_id'][:50]}'")
     print(f"   Datum:        '{hdr_after['startdate']}'")
@@ -337,7 +336,7 @@ Beispiele:
     print(f"\n   Behalten: Sex={retained['sex']} | Alter={retained['age_decade']} | Jahr={retained['year']}")
     print(f"   SHA-256 Original: {entry['original_sha256'][:16]}…")
     print(f"   Audit-Log:        {args.log}")
-    print(f"\n✅ Fertig. Original unverändert.")
+    print("\n✅ Fertig. Original unverändert.")
 
 
 if __name__ == "__main__":

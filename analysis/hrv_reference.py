@@ -300,7 +300,16 @@ def classify_parameter(param: str, value: float, age: float, heart_rate: float,
         # Lösung: Gelbe Zone mindestens 5ms/ms²/% breit halten (je nach Einheit).
         _min_delta = {"sdnn": 5.0, "rmssd": 5.0,
                       "hf_power": 20.0, "lf_power": 20.0, "total_power": 50.0}.get(param, 0)
-        border_hi = max(p5 * 1.5, p5 + _min_delta)
+        # OFFENER BEFUND (2026-08-12, gefunden per ruff F841): dieser Wert wird berechnet,
+        # aber NIRGENDS verwendet — die Klassifikation unten rechnet weiterhin mit dem harten
+        # `p5 * 1.5`. Die im Kommentar oben beschriebene Verbreiterung der gelben Zone ist
+        # also nie wirksam geworden. Nachgemessen: bei einem 80-Jährigen läge die Grenze für
+        # HF-Power heute bei 1,0 ms² statt der beabsichtigten 20,7 ms² — Werte dazwischen
+        # erscheinen als „normal" statt „grenzwertig", ausgerechnet bei der Patientengruppe,
+        # für die die Regel gedacht war.
+        # BEWUSST NICHT nebenbei repariert: die Korrektur ändert angezeigte Bewertungen und
+        # ist damit eine fachliche Entscheidung, keine Aufräumarbeit. Siehe Backlog.
+        border_hi = max(p5 * 1.5, p5 + _min_delta)  # noqa: F841
         ref = POOLED_REFERENCE[param]
         ref_lo, ref_hi = ref["iqr"]
 

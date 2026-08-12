@@ -8,10 +8,9 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from scipy.signal import find_peaks as _fp
 
 from core.i18n import tr
-from core.shared import EPOCH_SEC, ecg_figure, epoch_nav, get_edf_or_stop, get_patient_info, section_header, safe_slider, render_banner, status_dot, kpi_tile
+from core.shared import EPOCH_SEC, ecg_figure, get_edf_or_stop, get_patient_info, section_header, safe_slider, render_banner, status_dot, kpi_tile
 
 
 def _section(title: str, subtitle: str = "") -> None:
@@ -162,9 +161,8 @@ def render():
     # ── Imports & Konstanten (für Closures) ───────────────────────────────────
     from analysis.hrv_reference import (
         classify_parameter, classify_parameter_pediatric,
-        compute_autonomic_balance, MARKER_TYPE, LF_HF_MEAN, LF_HF_SD,
-        BADGE_PARA, BADGE_SYMP, BADGE_NONE, PEDIATRIC_AGE_GROUPS,
-        pnn50_expected_from_rmssd, POOLED_REFERENCE, _iqr_sigma,
+        MARKER_TYPE, LF_HF_MEAN, LF_HF_SD,
+        BADGE_PARA, BADGE_SYMP, BADGE_NONE, POOLED_REFERENCE, _iqr_sigma,
     )
     import math as _math
     from analysis.hrv_freq import compute_frequency_domain as _cfd
@@ -441,7 +439,11 @@ def render():
         # → kein Spektrum zeichenbar. Aufrufer zeigt stattdessen einen Hinweis.
         if not fd_x:
             return None
-        from analysis.hrv_freq import VLF_BAND, LF_BAND, HF_BAND
+        # Zur Unterdrückung unten: Ruff meldet hier F811 (Redefinition), weil dieselben Namen weiter
+        # unten in der äusseren Funktion importiert werden. Das ist KEIN Duplikat — diese
+        # verschachtelte Funktion wird aufgerufen, bevor der äussere Import ausgeführt ist.
+        # Ruffs Auto-Fix würde die Zeile entfernen und einen NameError erzeugen.
+        from analysis.hrv_freq import VLF_BAND, LF_BAND, HF_BAND  # noqa: F811
         fig = go.Figure()
         for band, color, blabel in [
             (VLF_BAND, "rgba(149,165,166,0.28)", "VLF"),
@@ -1121,7 +1123,7 @@ def render():
 
     # ── Phasen & RR-Berechnung ────────────────────────────────────────────────
     from analysis.hv_segmentation import (detect_hv_phases, hrv_for_segment,
-        assess_vagal_rebound, add_phase_bands, PHASE_COLORS)
+        assess_vagal_rebound, add_phase_bands)
 
     phases  = detect_hv_phases(edf["annotations"])
     has_hv  = phases["has_hv"]
@@ -1293,7 +1295,7 @@ def render():
                             if _window_active is not None else tr("ecg_hrv.window_full"))
 
     # ── Frequenzdomäne (Berechnung) ───────────────────────────────────────────
-    from analysis.hrv_freq import compute_frequency_domain, VLF_BAND, LF_BAND, HF_BAND
+    from analysis.hrv_freq import compute_frequency_domain
 
     BURG_ORDER_DEFAULT = 16
     fd_welch = compute_frequency_domain(rr_ms_analysis, r_times_analysis, method="welch")

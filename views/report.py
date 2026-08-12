@@ -408,10 +408,13 @@ def render():
 
     @st.cache_data(show_spinner=False)  # Spinner an der Aufrufstelle, s. core/shared.py
     def _export_bytes(_path, _disp, _age, _sex, _pediatric):
-        from analysis.report_export import collect_sections, build_excel, build_pdf
+        from analysis.report_export import (collect_sections, build_excel, build_pdf,
+                                            build_manifest)
         e = apply_channel_overrides(load_and_prepare(_path))
         secs = collect_sections(e, _path, age=_age, sex=_sex, is_pediatric=_pediatric)
-        return build_pdf(secs, _disp), build_excel(secs, e, _disp)
+        return (build_pdf(secs, _disp), build_excel(secs, e, _disp),
+                build_manifest(secs, e, _path, _disp, age=_age, sex=_sex,
+                               is_pediatric=_pediatric))
 
     _disp = st.session_state.get("edf_display_name", "report")
     _base = _disp.rsplit(".", 1)[0] if _disp else "report"
@@ -425,7 +428,8 @@ def render():
 
     try:
         with st.spinner(tr("report.creating_reports")):
-            pdf_bytes, xlsx_bytes = _export_bytes(edf_path, _disp, _rep_age, _rep_sex, _rep_pediatric)
+            pdf_bytes, xlsx_bytes, manifest_bytes = _export_bytes(
+                edf_path, _disp, _rep_age, _rep_sex, _rep_pediatric)
         ec1, ec2, ec3 = st.columns(3)
         ec1.download_button(tr("report.download_pdf"), pdf_bytes, icon=":material/description:", file_name=f"{_base}_report.pdf",
                             mime="application/pdf", use_container_width=True)
@@ -443,5 +447,15 @@ def render():
             except Exception as ex:
                 st.caption(tr("report.visual_unavailable", err=ex))
         st.caption(tr("report.visual_caption"))
+
+        # Maschinenlesbar, bewusst als vierter Knopf unter den drei Report-Formaten: PDF,
+        # Excel und Visual sind für Menschen. Wer eine Serie auswertet oder ein Ergebnis
+        # anderswo nachrechnet, braucht dieselben Werte in einlesbarer Form — samt Herkunft
+        # und Datei-Prüfsumme. Enthält KEINE Kopfdaten der Aufnahme (siehe build_manifest).
+        st.download_button(
+            tr("report.download_manifest"), manifest_bytes,
+            icon=":material/data_object:", file_name=f"{_base}_manifest.json",
+            mime="application/json", use_container_width=True)
+        st.caption(tr("report.manifest_caption"))
     except Exception as e:
         st.error(tr("report.export_failed", err=e))

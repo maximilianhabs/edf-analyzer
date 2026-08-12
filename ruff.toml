@@ -1,0 +1,41 @@
+# Linter-Konfiguration.
+#
+# Bewusst schmal gehalten. Ein Linter, der bei jedem Lauf hunderte Stilfragen meldet, wird
+# nach zwei Wochen ignoriert — und dann meldet er auch die drei echten Fehler umsonst.
+# Aktiviert sind deshalb nur Regeln, die auf ECHTE Fehler zeigen.
+#
+# Die Importordnung (`I`) ist bewusst NICHT dabei, obwohl sie 111 der ursprünglich 167 Funde
+# ausmachte und automatisch behebbar wäre. Grund: `analysis/glory_report.py` setzt
+# `matplotlib.use("Agg")` zwischen zwei Importe — das MUSS vor `import matplotlib.pyplot`
+# stehen, sonst wählt matplotlib beim ersten pyplot-Import ein GUI-Backend, das im Container
+# nicht existiert. Eine automatische Umsortierung kann das zerstören, und der Fehler zeigt
+# sich erst zur Laufzeit beim Erzeugen des visuellen Reports. 111 kosmetische Funde sind
+# dieses Risiko nicht wert.
+
+target-version = "py39"   # Zielversion ist die des Docker-Images, nicht die der Entwicklung
+line-length = 100
+
+exclude = ["tests/fixtures", ".venv", "venv", "build", "dist"]
+
+[lint]
+select = [
+    "F",     # Pyflakes: undefinierte Namen, ungenutzte Importe/Variablen — echte Fehler
+    "E9",    # Syntax- und IO-Fehler
+    "B",     # flake8-bugbear: typische Fallen (Mutable Defaults, Schleifenvariablen in
+             # Closures — genau die Sorte Fehler, die zur Laufzeit auffällt und im Review nicht)
+    "UP032", # f-String statt .format() — sonst nichts aus pyupgrade
+]
+
+ignore = [
+    # Der App-Code lädt bewusst spät: Streamlit-Seiten importieren schwere Bibliotheken
+    # (MNE, SciPy, FOOOF) erst in der Funktion, in der sie gebraucht werden. Ohne diese
+    # Ausnahme würde jeder dieser bewussten Imports als Verstoß gemeldet.
+    "E402",
+    # `except Exception` ist an vielen Stellen Absicht: eine fehlgeschlagene Nebenrechnung
+    # darf keine ganze Report-Erzeugung abbrechen. Die Stellen sind kommentiert.
+    "BLE001",
+]
+
+[lint.per-file-ignores]
+# Tests dürfen ungenutzte Importe haben (Fixtures) und lange Zeilen in Erwartungswerten.
+"tests/*" = ["F401", "E501"]

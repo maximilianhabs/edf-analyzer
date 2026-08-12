@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 
 from core.design_tokens import ICON_FONT_CSS
 from core.i18n import tr
-from core.shared import get_edf_or_stop, section_header, apply_global_style, status_dot
+from core.shared import section_header, apply_global_style, status_dot
 from core.channel_classifier import ECG, EEG, EOG, EMG, REF, VITAL, UNKN
 
 
@@ -210,18 +210,13 @@ def render():
     for ch, result, override_type in items:
         eff_type = override_type or result.channel_type
         meta      = _TYPE_META.get(eff_type, _TYPE_META[UNKN])
-        orig_meta = _TYPE_META.get(result.channel_type, _TYPE_META[UNKN])
         tier      = _conf_tier(result.confidence)
         c_conf    = _CONFIDENCE_COLOR[tier]
         f         = result.features
 
-        # Badge: show override indicator
-        override_badge = (
-            f" <span style='font-size:10px;background:#e67e22;color:white;"
-            f"padding:1px 6px;border-radius:10px;vertical-align:middle'>"
-            + tr("channel_report.corrected_badge") + "</span>"
-            if override_type else ""
-        )
+        # Eine manuelle Korrektur wird über das Stift-Icon weiter unten angezeigt
+        # (`:material/edit:`). Ein hier früher gebautes Text-Badge war seit einem Redesign
+        # unbenutzt und ist 2026-08-12 entfernt worden.
 
         # ── Kopfleiste nach Konfidenz einfärben + Typ-Icon farblich absetzen ──
         # Ganze Klickleiste des Expanders nach Konfidenz tönen (Hintergrund/Randfarbe) UND
@@ -276,7 +271,7 @@ def render():
                         f"<div style='text-align:center;font-size:10px;color:#e67e22;margin-top:4px'>"
                         + tr("channel_report.manual_was", orig=_type_label(result.channel_type))
                         + "</div>"
-                        f"</div>",
+                        "</div>",
                         unsafe_allow_html=True,
                     )
                 else:
@@ -291,8 +286,8 @@ def render():
                         f"{result.confidence:.0f}%</span>"
                         f"<span style='font-size:0.75rem;color:#888;margin-left:4px'>"
                         + tr("channel_report.confidence_label") + "</span>"
-                        f"</div>"
-                        f"</div>",
+                        "</div>"
+                        "</div>",
                         unsafe_allow_html=True,
                     )
 
@@ -456,11 +451,11 @@ def render():
         hc = st.columns(3)
         for col, label, icon, channels, color in (
             (hc[0], "EKG", "<span class='material-symbol' "
-                          f"style='font-size:1.1rem;color:#c0392b'>ecg_heart</span>", ecg, "#c0392b"),
+                          "style='font-size:1.1rem;color:#c0392b'>ecg_heart</span>", ecg, "#c0392b"),
             (hc[1], "EOG", "<span class='material-symbol' "
-                          f"style='font-size:1.1rem;color:#8e44ad'>visibility</span>", eog, "#8e44ad"),
+                          "style='font-size:1.1rem;color:#8e44ad'>visibility</span>", eog, "#8e44ad"),
             (hc[2], "EMG", "<span class='material-symbol' "
-                          f"style='font-size:1.1rem;color:#e67e22'>fitness_center</span>", emg, "#e67e22"),
+                          "style='font-size:1.1rem;color:#e67e22'>fitness_center</span>", emg, "#e67e22"),
         ):
             with col:
                 st.markdown(

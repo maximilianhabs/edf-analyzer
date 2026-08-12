@@ -156,7 +156,9 @@ def _int(raw: bytes, span, feld: str) -> int:
     try:
         return int(float(text))
     except ValueError:
-        raise ValueError(f"Feld '{feld}' im EDF-Header ist keine Zahl: {text!r}")
+        # `from None`: die ursprüngliche Meldung ("invalid literal for float") erklärt
+        # niemandem etwas — unsere nennt Feld und tatsächlichen Inhalt.
+        raise ValueError(f"Feld '{feld}' im EDF-Header ist keine Zahl: {text!r}") from None
 
 
 def validate_edf(path: str, lang: str = "de") -> ValidationResult:

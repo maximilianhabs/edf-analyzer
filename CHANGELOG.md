@@ -32,6 +32,43 @@ kein Quick Win. Der alte Parameter funktioniert weiterhin. Ebenso die Pillow-War
 stammt aus matplotlib, nicht aus diesem Projekt, und die Obergrenze `matplotlib<4` lässt eine
 korrigierte Version automatisch nachrücken.
 
+### Hinzugefügt — maschinenlesbares Manifest und ein Linter
+
+- **`{Datei}_manifest.json`** als vierter Export neben PDF, Excel und visuellem Report. PDF
+  und Excel sind für Menschen; wer eine Serie auswertet, zwei Aufnahmen vergleicht oder ein
+  Ergebnis anderswo nachrechnet, musste die Werte bisher abtippen. Das Manifest enthält
+  dieselben Zahlen samt vollständiger Herkunft (Version, Commit, Umgebung, Parameter,
+  Fingerabdruck) und der SHA-256-Prüfsumme der Aufnahme — aber **keine Kopfdaten**: die Datei
+  wird über ihren Hash identifiziert, nicht über Namen oder Patientenfelder. Ein Manifest darf
+  damit weitergegeben werden, auch wenn die Aufnahme es nicht darf.
+  `tests/test_manifest.py` prüft zuerst, dass es **strikt gültiges JSON** ist — `json.dumps`
+  schreibt für fehlende Werte sonst das Literal `NaN`, das jeder strenge Parser ablehnt.
+- **`ruff`** eingerichtet (`ruff.toml`, im schnellen CI-Job). Bewusst schmale Regelauswahl:
+  echte Fehler plus die typischen Fallen aus bugbear, keine Stildebatten. Ein Linter, der
+  hundert Stilfragen meldet, wird nach zwei Wochen ignoriert — und dann meldet er die drei
+  echten Fehler umsonst. 167 Funde auf 0 gebracht.
+
+**Zwei Fallen, die dabei sichtbar wurden — beide gegen einen blinden `--fix` gesprochen:**
+
+- **Ruffs Auto-Fix hätte einen Laufzeitfehler eingebaut.** `views/ecg_hrv.py` importiert
+  `VLF_BAND` u. a. in einer verschachtelten Funktion, die *vor* dem äusseren Import derselben
+  Namen läuft. Ruff meldet das als Redefinition und hätte die Zeile entfernt — Ergebnis wäre
+  ein `NameError` beim Öffnen des HRV-Spektrums gewesen.
+- **Die Importsortierung ist deshalb gar nicht aktiviert**, obwohl sie 111 der 167 Funde
+  ausmachte: `analysis/glory_report.py` setzt `matplotlib.use("Agg")` zwischen zwei Importen.
+  Das muss vor dem ersten `pyplot`-Import stehen, sonst wählt matplotlib im Container ein
+  GUI-Backend, das dort nicht existiert. 111 kosmetische Funde sind dieses Risiko nicht wert.
+
+**Dabei gefunden — eine Regel, die nie wirksam wurde.** `analysis/hrv_reference.py` berechnet
+`border_hi = max(p5*1.5, p5 + Mindest-Delta)`, benutzt den Wert aber **nirgends**; die
+Klassifikation rechnet weiter mit dem harten `p5 * 1.5`. Der Kommentar darüber beschreibt die
+Absicht ausdrücklich: bei sehr alten oder kranken Patienten wird die gelbe Zone sonst
+biologisch zu schmal. Nachgemessen — 80 Jahre, HF-Power: die Grenze liegt heute bei 1,0 ms²
+statt der beabsichtigten 20,7 ms²; RMSSD 8,0 ms bei 70 Jahren erscheint als „normal", wo
+„grenzwertig" gemeint war. **Bewusst nicht nebenbei behoben:** die Korrektur ändert angezeigte
+Bewertungen und ist damit eine fachliche Entscheidung, keine Aufräumarbeit. Die Variable bleibt
+mit Begründung im Code stehen, der Punkt steht im Backlog.
+
 ### Hinzugefügt — Abdeckungsprüfung: ein Detektor kann nicht mehr still aussetzen
 
 Der gefährlichste Fehlerfall der HRV-Kette war nicht der Absturz, sondern der stille

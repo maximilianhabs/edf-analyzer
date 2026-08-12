@@ -180,7 +180,7 @@ def classify_channels(
             return eff_tmpl * 1000.0 + min(p2p, 3.0)
 
         ecg_list.sort(key=lambda x: -_ecg_quality(x))
-        for ch, r in ecg_list[1:]:
+        for _ch, r in ecg_list[1:]:
             p2p = r.features.get("p2p_mv", 0)
             if r.confidence < 75 or p2p < 0.5:
                 r.reasons.append("zurückgestuft: kein dedizierter EKG-Kanal (p2p oder Confidence zu niedrig)")
@@ -188,7 +188,7 @@ def classify_channels(
         # Hard cap at 2
         still_ecg = [(ch, r) for ch, r in ecg_list if r.channel_type == ECG]
         if len(still_ecg) > 2:
-            for ch, r in still_ecg[2:]:
+            for _ch, r in still_ecg[2:]:
                 r.reasons.append("zurückgestuft: maximal 2 EKG-Kanäle")
                 r.channel_type = UNKN
 
@@ -200,7 +200,7 @@ def classify_channels(
     eog_list = [(ch, r) for ch, r in results.items() if r.channel_type == EOG]
     if len(eog_list) > 4:
         eog_list.sort(key=lambda x: -x[1].confidence)
-        for ch, r in eog_list[4:]:
+        for _ch, r in eog_list[4:]:
             if r.confidence < 80:
                 r.reasons.append("zurückgestuft: zu viele EOG-Kandidaten (max. 4)")
                 r.channel_type = EEG
@@ -263,9 +263,9 @@ def _compute_features(sig: np.ndarray, sfreq: float) -> dict:
     f["rms_mv"]  = float(np.sqrt(np.mean(sig_mv ** 2)))
 
     # ── Flat / dead channel ───────────────────────────────────────────────────
-    # Use std as primary criterion — n_unique can be low for synthetic/integer signals
-    # Real ADC output always has many unique values, but we don't rely on that.
-    n_unique = len(np.unique(np.round(sig * 1e7)))
+    # Use std as primary criterion — a unique-value count can be low for synthetic/integer
+    # signals. Real ADC output always has many unique values, but we deliberately do not rely
+    # on that, so it is not computed at all (was dead code until 2026-08-12).
     f["is_flat"] = bool(f["std_mv"] < 5e-5)  # < 50 nV std → dead channel
     if f["is_flat"]:
         for k in ("kurtosis","dom_freq","spectral_entropy",

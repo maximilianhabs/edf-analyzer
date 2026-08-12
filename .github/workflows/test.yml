@@ -23,6 +23,12 @@ jobs:
         run: python3 tools/check_fonts.py
       - name: Methoden-Registry, Belege und READMEs konsistent
         run: python3 tools/check_methods.py
+      # Linter am Ende des schnellen Jobs: bewusst schmale Regelauswahl (siehe ruff.toml),
+      # damit die Meldungen etwas bedeuten und nicht pauschal weggeklickt werden.
+      - name: Linter (ruff)
+        run: |
+          pip install ruff
+          ruff check .
 
   test:
     runs-on: ubuntu-latest
