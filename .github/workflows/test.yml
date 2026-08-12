@@ -23,6 +23,10 @@ jobs:
         run: python3 tools/check_fonts.py
       - name: Methoden-Registry, Belege und READMEs konsistent
         run: python3 tools/check_methods.py
+      # Ratsche gegen strukturellen Rückfall: bekannte Schichtverletzungen sind namentlich
+      # geduldet, neue nicht. Die Liste kann nur kürzer werden.
+      - name: Schichten (analysis/ ohne UI-Abhängigkeit)
+        run: python3 tools/check_layering.py
       # Linter am Ende des schnellen Jobs: bewusst schmale Regelauswahl (siehe ruff.toml),
       # damit die Meldungen etwas bedeuten und nicht pauschal weggeklickt werden.
       - name: Linter (ruff)

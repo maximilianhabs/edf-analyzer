@@ -3,6 +3,46 @@
 Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
+## [Unreleased]
+
+### Geändert — die Analyseschicht kennt die Oberfläche nicht mehr
+
+Ein drittes Review, diesmal rein auf Architektur, hat den strukturell wichtigsten Punkt
+benannt: `analysis/` importierte aus `views/`. Nachgezählt waren es **10 Stellen** — die
+Fachlogik hing an der Oberfläche, und ein Lauf ohne Streamlit (CLI, Batch, fremdes Notebook,
+Reproduktion durch Dritte) war damit unmöglich.
+
+Beim Nachmessen zeigte sich, wie oberflächlich die Verflechtung war: **sechs der sieben
+betroffenen Funktionen benutzen Streamlit überhaupt nicht.** Es war reine Signalverarbeitung
+in der falschen Datei. Entsprechend ist nichts umgeschrieben worden, nur verschoben:
+`_compute_psd`, `_band_power`, `_peak_freq`, `_peak_freq_cog`, `_spectral_edge`, `_highpass`
+und `_epoch_starts` liegen jetzt in **`analysis/spectral.py`** — einem Modul, das sich in
+einem frischen Interpreter importieren lässt, ohne dass Streamlit mitgeladen wird (Test).
+`views/eeg_spectrum.py` holt die Namen von dort, damit der Seitencode unverändert bleibt.
+
+Gegengeprüft wie beim Registry-Umbau: die Sektionswerte des Reports sind vor und nach der
+Verschiebung **bitidentisch** (SHA-256 über alle Werte ausser der Herkunft, die naturgemäss
+den Commit enthält).
+
+**`tools/check_layering.py` (neu, im schnellen CI-Job) hält den Zustand als Ratsche.** Die
+verbleibenden sieben Verstösse hängen an Funktionen, die tatsächlich mit Streamlit verwoben
+sind (`@st.cache_data`, Session-State); sie sind namentlich geduldet, neue nicht. Wird einer
+behoben, verlangt der Prüfer, ihn aus der Liste zu streichen — die Liste kann nur kürzer
+werden. Ein Prüfer, der ab Tag eins null Verstösse fordert, wäre sofort rot und würde
+abgeschaltet; dann schützt er gar nichts. Gegen alle drei Fälle getestet: neuer
+views-Import, neuer streamlit-Import, behobene Altlast.
+
+### Behoben — die App verschluckte alle Warnungen
+
+`app.py` hatte ein pauschales `warnings.filterwarnings("ignore")`. Gemessen an einem
+vollständigen Durchlauf (Laden, alle Analysen, alle drei Reports) unterdrückte das **genau
+eine** Warnung — die bekannte fooof-Deprecation — und verdeckte dafür alles, was
+Abhängigkeiten oder eigener Code künftig melden. Die Pillow-Deprecation im visuellen Report
+fiel nur deshalb auf, weil sie zufällig in einem Skript ausserhalb der App sichtbar wurde.
+Jetzt wird gezielt diese eine Meldung stummgeschaltet. Warnungen landen im Server-Log, nicht
+in der Oberfläche — sie stören niemanden, der die App benutzt, erreichen aber den, der sie
+beheben kann.
+
 ## [0.3.0] — 2026-08-12
 
 Eine Fassung, die vor allem **korrigiert und benennt**. Zwei Dinge darin ändern, was die App

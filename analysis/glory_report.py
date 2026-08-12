@@ -100,7 +100,7 @@ def _best_alpha_window(post, sf, dur, segments, win=60.0):
     Grundrhythmus (entspannte Wachheit, Augen zu) — statt blind über die ganze Aufnahme zu
     mitteln, wo Augen-auf-/Wachheitswechsel den Peak verwaschen. Gibt den PSD-Segment-Ausschnitt
     zurück (bereits gewählt), plus Startzeit."""
-    from views.eeg_spectrum import _compute_psd, _band_power
+    from analysis.spectral import _compute_psd, _band_power
     win = min(win, dur)
     gaps = _clean_gaps(dur, segments, min(20.0, win))
     best_t, best_score = None, -1.0
@@ -160,7 +160,7 @@ def _quiet_window(edf, dur, segments, win=10.0):
 
 def _collect(edf, edf_path, age=None, is_pediatric=False):
     """Alle Daten für die Panels einmal einsammeln."""
-    from views.eeg_spectrum import _compute_psd, _band_power, _peak_freq
+    from analysis.spectral import _compute_psd, _band_power, _peak_freq
     d = {"sf": edf["sfreq"], "dur": edf["duration_s"], "em": edf.get("eeg_map", {})}
     sf, dur, em = d["sf"], d["dur"], d["em"]
 

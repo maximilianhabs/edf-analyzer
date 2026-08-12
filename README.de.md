@@ -175,6 +175,7 @@ python3 tools/check_licenses.py  # deklariert == importiert, kein Copyleft in de
 python3 tools/check_fonts.py     # jede angeforderte Schrift auflösbar, kein CDN-Verweis
 python3 tools/check_methods.py   # Methoden-Registry: keine Belegstufe ohne Nachweis,
                                  # beide READMEs stimmen mit der Registry überein
+python3 tools/check_layering.py  # analysis/ bleibt frei von UI- und Streamlit-Importen
 ```
 
 Das alles läuft bei jedem Push in der CI. Die Test-Suite braucht bewusst **keine** echte

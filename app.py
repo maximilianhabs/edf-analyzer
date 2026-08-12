@@ -1,10 +1,28 @@
 """EDF Analyzer — lokale Streamlit-App. Multi-Page mit linker Navigation."""
 
 import sys, os, warnings
+
 import streamlit as st
 
+# Projektwurzel auf den Importpfad: Streamlit startet `app.py` als Skript, nicht als Paket —
+# ohne das findet `import core...` in den Seiten nichts.
 sys.path.insert(0, os.path.dirname(__file__))
-warnings.filterwarnings("ignore")
+
+# Nur die EINE bekannte Warnung stummschalten, nicht alle.
+#
+# Hier stand bis 2026-08-12 ein pauschales `warnings.filterwarnings("ignore")`. Gemessen an
+# einem vollständigen Durchlauf (Laden, alle Analysen, alle drei Reports) unterdrückte das
+# genau eine Warnung — die fooof-Deprecation — und verdeckte dafür alles, was Abhängigkeiten
+# oder eigener Code künftig melden. Die Pillow-Deprecation im visuellen Report fiel uns nur
+# deshalb auf, weil wir sie zufällig in einem Skript ausserhalb der App sahen.
+#
+# Warnungen landen im Server-Log, nicht in der Oberfläche — sie stören also niemanden, der
+# die App benutzt, aber sie erreichen den, der sie beheben kann.
+warnings.filterwarnings(
+    "ignore",
+    message=r"The `fooof` package is being deprecated.*",
+    category=DeprecationWarning,
+)
 
 st.set_page_config(page_title="EDF Analyzer", layout="wide", page_icon=":material/neurology:")
 

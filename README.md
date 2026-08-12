@@ -230,6 +230,7 @@ python3 tools/check_licenses.py  # declared == imported, no copyleft in the defa
 python3 tools/check_fonts.py     # every requested font resolves, no CDN reference
 python3 tools/check_methods.py   # method registry: no evidence level without proof,
                                  # and both READMEs match the registry
+python3 tools/check_layering.py  # analysis/ stays free of UI and Streamlit imports
 ```
 
 All of this runs in CI on every push. The test suite deliberately needs **no** real recording:

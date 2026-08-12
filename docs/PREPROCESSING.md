@@ -28,7 +28,7 @@ aber es muss man wissen.
 |---|---|---|---|
 | **Anzeige** EEG | `core.shared.get_filtered_eeg` | Butterworth 4. Ordnung, Bandpass, **vom Nutzer wählbar** | nur die Viewer-Kurve |
 | **Anzeige** EKG | `core.shared.load_and_prepare` → `ecg_filtered` | Butterworth 4. Ordnung, 0,5–40 Hz | nur die dargestellte EKG-Kurve |
-| **Analyse** EEG | `views.eeg_spectrum._highpass` | Butterworth 4. Ordnung, Hochpass 1 Hz | alle EEG-Kennwerte |
+| **Analyse** EEG | `analysis.spectral._highpass` | Butterworth 4. Ordnung, Hochpass 1 Hz | alle EEG-Kennwerte |
 | **Analyse** EKG | `analysis.ecg.detect_r_peaks` | Butterworth 2. Ordnung, 5–15 Hz (nur intern) | R-Zacken → alles HRV |
 
 Alle Filter laufen als **`filtfilt`**, also vorwärts und rückwärts. Das verdoppelt die
@@ -69,12 +69,12 @@ ausschließlich der Erkennung und wird nicht weitergereicht.
 ### 2. Hochpass 1 Hz
 
 ```
-views/eeg_spectrum.py::_highpass    butter(4, 1.0 Hz, "high") + filtfilt
+analysis/spectral.py::_highpass    butter(4, 1.0 Hz, "high") + filtfilt
 ```
 
 Entfernt Grundlinienschwankungen (Schwitzen, Elektrodendrift, langsame Bewegung). Dieselbe
 Vorschrift, an drei Stellen unabhängig implementiert, aber mit identischen Parametern:
-`views/eeg_spectrum.py`, `analysis/glory_report.py::_hp`, `analysis/artifacts.py::_highpass`
+`analysis/spectral.py`, `analysis/glory_report.py::_hp`, `analysis/artifacts.py::_highpass`
 (dort über `ArtifactParams.hp_hz`, Default 1,0).
 
 **Folge für die Auslegung:** Aktivität unter 1 Hz wird gedämpft. Delta wird ab 1 Hz
@@ -100,7 +100,7 @@ Findet sich kein sauberes Fenster, fällt die Wahl auf die mittleren 5 Minuten.
 ### 4. Leistungsspektrum
 
 ```
-views/eeg_spectrum.py::_compute_psd
+analysis/spectral.py::_compute_psd
   Epochen 4 s (nperseg = min(4·fs, len/2, 1024)), 50 % Überlapp
   Fenster Hann · Mittelwertabzug je Epoche (detrend constant)
   Skalierung Density (einseitig, ×2 außer DC und Nyquist)

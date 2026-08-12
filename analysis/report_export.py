@@ -51,7 +51,7 @@ def _eeg_metrics(edf, edf_path, segments=None, window_hint_segments=None):
     """Alle EEG-Spektral-Kennzahlen als flaches Dict — einmal Gesamt (segments=None),
     einmal artefaktkorrigiert (segments=Liste, Signale sample-bereinigt)."""
     from views.report import _compute_bandpower
-    from views.eeg_spectrum import _highpass, _spectral_edge, _peak_freq_cog
+    from analysis.spectral import _highpass, _spectral_edge, _peak_freq_cog
     corrected = bool(segments)
     sf, dur, em = edf["sfreq"], edf["duration_s"], edf["eeg_map"]
 
@@ -365,7 +365,7 @@ def _add_provenance(sections, edf, edf_path, corr_segments, age, is_pediatric):
     from core.version import provenance, provenance_lines
     # Die Parameter, die das Ergebnis tatsächlich verschieben — nicht jede Einstellung der
     # Oberfläche, sondern das, was in die Zahlen eingeht.
-    from views.eeg_spectrum import FREQ_MAX
+    from analysis.spectral import FREQ_MAX
     params = {
         "Artefaktmaske": (f"{len(corr_segments)} Segment(e)" if corr_segments
                           else "keine"),
@@ -567,7 +567,7 @@ def _add_validated(sections, edf, edf_path, has_ecg, em):
     # Aperiodik: eigen vs FOOOF; Alpha-Peak CoG vs FOOOF
     if em:
         try:
-            from views.eeg_spectrum import _highpass, _peak_freq_cog
+            from analysis.spectral import _highpass, _peak_freq_cog
             from analysis.aperiodic import welch_psd, fit_aperiodic
             from analysis.aperiodic_fooof import fit_fooof
             sf, dur = edf["sfreq"], edf["duration_s"]

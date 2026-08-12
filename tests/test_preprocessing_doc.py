@@ -83,14 +83,17 @@ def test_filterparameter_stehen_so_im_code():
     """Grobe, aber wirksame Sicherung: die im Dokument genannten Filter müssen als
     `butter(...)`-Aufruf mit genau diesen Werten auffindbar sein."""
     quellen = {}
-    for rel in ("views/eeg_spectrum.py", "analysis/ecg.py", "core/shared.py",
+    # `analysis/spectral.py` statt `views/eeg_spectrum.py`: die spektralen Grundrechnungen
+    # sind am 2026-08-12 in die Analyseschicht gewandert (Schichtentrennung). Dieser Test hat
+    # den Umzug bemerkt — genau dafür ist er da.
+    for rel in ("analysis/spectral.py", "analysis/ecg.py", "core/shared.py",
                 "analysis/p_wave_analysis.py", "analysis/artifacts.py"):
         with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
             quellen[rel] = fh.read()
 
     # EEG-Analyse: Hochpass 1 Hz, Ordnung 4
     assert re.search(r"butter\(4,\s*cutoff\s*/\s*nyq,\s*btype=\"high\"\)",
-                     quellen["views/eeg_spectrum.py"]), "EEG-Hochpass nicht mehr butter(4, …)"
+                     quellen["analysis/spectral.py"]), "EEG-Hochpass nicht mehr butter(4, …)"
     # QRS-Detektion: 5–15 Hz, Ordnung 2 — und KEIN 0,5–40-Hz-Vorfilter davor
     assert re.search(r"butter\(2,\s*\[5\s*/\s*nyq,\s*15\s*/\s*nyq\]", quellen["analysis/ecg.py"]), \
         "QRS-Bandpass ist nicht mehr 5–15 Hz / Ordnung 2"
@@ -137,3 +140,31 @@ def test_der_dokumentierte_ekg_pfad_ist_der_tatsaechliche():
         f"run_ecg_analysis wird jetzt aufgerufen ({aufrufer}) — dann ist der EKG-Pfad ein "
         f"anderer als dokumentiert (dort: KEIN 0,5–40-Hz-Vorfilter vor der QRS-Detektion). "
         f"docs/PREPROCESSING.md anpassen.")
+
+
+def test_spektrale_grundrechnungen_brauchen_kein_streamlit():
+    """`analysis/spectral.py` ist der erste Baustein einer Analyseschicht, die ohne
+    Oberfläche läuft. Ein versehentlicher Streamlit-Import dort würde das sofort wieder
+    zunichtemachen — und zwar unbemerkt, weil in der App ohnehin Streamlit geladen ist.
+
+    Deshalb hier ein Import in einem frischen Interpreter ohne Streamlit im Speicher.
+    """
+    import subprocess
+    code = ("import sys; sys.path.insert(0, %r);"
+            "import analysis.spectral as s;"
+            "assert 'streamlit' not in sys.modules, 'streamlit wurde mitgeladen';"
+            "assert callable(s._compute_psd) and callable(s._spectral_edge);"
+            "print('ok')" % ROOT)
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert r.returncode == 0, f"Import ohne Streamlit gescheitert:\n{r.stderr[-1500:]}"
+
+
+def test_analyseschicht_haelt_die_ratsche_ein():
+    """Spiegelt `tools/check_layering.py` in die Test-Suite, damit ein lokales `pytest` den
+    Rückfall genauso findet wie die CI."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "check_layering", os.path.join(ROOT, "tools", "check_layering.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.main() == 0, "siehe Ausgabe oben — neue Schichtverletzung oder veralteter Eintrag"
