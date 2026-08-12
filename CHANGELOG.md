@@ -32,6 +32,35 @@ kein Quick Win. Der alte Parameter funktioniert weiterhin. Ebenso die Pillow-War
 stammt aus matplotlib, nicht aus diesem Projekt, und die Obergrenze `matplotlib<4` lässt eine
 korrigierte Version automatisch nachrücken.
 
+### Dokumentiert — warum Delta bei 1 Hz beginnt und nicht bei 0,5 Hz
+
+Nach Recherche und Messung **bewusst nicht umgestellt**, aber ausdrücklich benannt. Die
+verbreitetste Delta-Definition ist 0,5–4 Hz; diese Anwendung rechnet ab 1 Hz. Das war bisher
+eine stillschweigende Folge des Hochpasses und stand an keiner für Anwender sichtbaren Stelle.
+
+**Begründung:** Unterhalb 1 Hz liegt der spektrale Gipfel der langsamen Störungen, die man in
+einem Routine-EEG nicht loswird — Schwitzartefakte, Elektrodendrift, Wackeln, langsame
+Bewegung. Sie kontaminieren genau Delta und Theta. Der 1-Hz-Hochpass hält sie draußen; der
+Preis ist bewusst gewählt: eine Verlangsamung, die nur aus Schweiß besteht, ist schlimmer als
+eine, die etwas zu schwach gemessen wird.
+
+**Was der Preis ist** (gemessen an simuliertem 1/f^1,8-EEG mit Alpha): 0,5–1 Hz trägt 47 % der
+wahren Delta-Leistung; erfasst werden heute 37 % des Bandes 0,5–4 Hz. Eine Umstellung würde
+Delta und die Delta/Alpha-Ratio um je 121 % anheben.
+
+Der Hinweis steht jetzt dort, wo die Bandwerte gezeigt werden (EEG-Spektrum, zweisprachig), in
+der Methoden-Registry unter `limitations` und ausführlich mit allen Zahlen in
+[docs/PREPROCESSING.md](docs/PREPROCESSING.md) — samt der drei Punkte, die eine spätere
+Umstellung erfordern würde: drei Codestellen statt einer (nur das Band zu ändern ist
+nachweislich wirkungslos), der Artefaktdetektor müsste mitgezogen werden (er filtert selbst
+bei 1 Hz und sähe die neu eintretende Drift nicht), und sämtliche Delta-abhängigen
+Normschwellen wären neu abzuleiten.
+
+Nebenbei festgehalten: auch heute dämpft der Hochpass die untere Delta-Flanke — bei 1,0 Hz
+kommen 50 % der Amplitude durch, vom Band 1–4 Hz werden rund 82 % erfasst. Und
+`core/channel_classifier.py` nutzt für die KANALERKENNUNG bereits 0,5–4 Hz; das bleibt
+bewusst so, dort ist es unkritisch und eher von Vorteil.
+
 ### Behoben — die HRV-Normgrenze fiel im Alter ins Bodenlose
 
 Aufgefallen über den toten `border_hi`-Wert (siehe unten), die Ursache lag aber tiefer. Das

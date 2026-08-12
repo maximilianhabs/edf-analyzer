@@ -565,6 +565,11 @@ def _fft_figure(signals: dict, t_start, t_end, fs, panel_id,
 
 
 def _render_bandpower_and_ratios(bp_all, panel_id):
+    # Die Bandgrenze, die am ehesten überrascht, steht direkt bei den Bandwerten: Delta ab
+    # 1 Hz statt der literaturüblichen 0,5 Hz. Wer die Werte mit einem Fremdsystem vergleicht,
+    # muss das wissen — sonst hält er einen Definitionsunterschied für einen Befund.
+    st.caption(tr("spectrum.delta_from_1hz"))
+
     for label, bp in bp_all.items():
         total = sum(bp.values()) or 1.0
         bp_pct = {k: v / total * 100 for k, v in bp.items()}

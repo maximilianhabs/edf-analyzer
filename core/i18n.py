@@ -449,6 +449,12 @@ STRINGS = {
         },
     "spectrum": {
             "title": "EEG-Spektrum",
+            "delta_from_1hz":
+                "Delta wird ab **1 Hz** gerechnet, nicht ab den literaturüblichen 0,5 Hz. "
+                "Das ist Absicht: unterhalb 1 Hz liegt der Schwerpunkt von Schwitzartefakten, "
+                "Elektrodendrift und langsamer Bewegung, die sonst als Verlangsamung "
+                "erschienen. Der Preis ist, dass sehr langsames Delta zu schwach gemessen "
+                "wird — beim Vergleich mit Fremdsystemen zu bedenken.",
             "load_file_first": "Bitte zuerst auf **Datei & Patient** eine EDF-Datei laden.",
             "no_eeg": "Keine EEG-Kanäle (10-20) erkannt.",
             "window_start": "Fenster-Start (s)",
@@ -1024,6 +1030,12 @@ STRINGS = {
         },
         "spectrum": {
             "title": "EEG Spectrum",
+            "delta_from_1hz":
+                "Delta is computed from **1 Hz**, not from the 0.5 Hz common in the "
+                "literature. That is deliberate: below 1 Hz sits the bulk of sweat artifacts, "
+                "electrode drift and slow movement, which would otherwise appear as slowing. "
+                "The price is that very slow delta is under-measured — worth keeping in mind "
+                "when comparing with other systems.",
             "load_file_first": "Please load an EDF file on **File & Patient** first.",
             "no_eeg": "No EEG channels (10-20) detected.",
             "window_start": "Window start (s)",

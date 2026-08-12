@@ -230,7 +230,12 @@ METHODS: List[Method] = [
                     f"{T_EEG}::test_asymmetrie_index_trifft_den_eingebauten_wert"),
            limitations="Belegt sind Bandintegral und Bandverhältnisse. Die ABSOLUTE "
                        "Kalibrierung in µV²/Hz ist damit nicht geprüft — der Nachweis läuft "
-                       "über ein Verhältnis, in dem ein gemeinsamer Skalenfehler herausfiele."),
+                       "über ein Verhältnis, in dem ein gemeinsamer Skalenfehler herausfiele. "
+                       "**Delta beginnt bei 1 Hz, nicht bei den literaturüblichen 0,5 Hz** — "
+                       "bewusste Entscheidung: unter 1 Hz liegt der Gipfel von Schwitz- und "
+                       "Driftartefakten. Preis: rund 47 % der wahren 0,5–4-Hz-Delta-Leistung "
+                       "werden nicht erfasst, eine Umstellung würde Delta um 121 % anheben. "
+                       "Begründung und Messung in docs/PREPROCESSING.md."),
     Method("EEG Spektrum", "Alpha-Peak (CoG, Default)",
            "Schwerpunkt im 8–13-Hz-Band nach linearer 1/f-Baseline", "Klimesch 1999",
            SIMPLIFIED, IMPLEMENTATION,

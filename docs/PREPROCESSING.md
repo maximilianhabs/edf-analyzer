@@ -260,15 +260,54 @@ Frage nicht ein zweites Mal untersucht werden muss.
 Ein echter Unterschied bleibt: nur `_compute_psd` kann Artefaktepochen verwerfen. Bei
 aktiver Amplitudenschwelle liefern die beiden Wege daher zu Recht verschiedene Werte.
 
-### 3. Delta beginnt bei 1 Hz, nicht bei 0,5 Hz
+### 3. Delta beginnt bei 1 Hz, nicht bei 0,5 Hz — bewusst
 
-Ergibt sich zwingend aus dem 1-Hz-Hochpass und dem Ausgabeband ab 1 Hz, stand aber an
-keiner für Anwender sichtbaren Stelle. Für die Zielgruppe der App — Enzephalopathie,
-Vigilanzminderung — ist gerade der Bereich unter 1 Hz relevant.
+Die verbreitetste Delta-Definition in der Literatur ist 0,5–4 Hz, und klinische Hochpässe
+liegen üblicherweise zwischen 0,5 und 1,0 Hz. Diese Anwendung nutzt bewusst die obere
+Variante. **Entscheidung getroffen am 2026-08-12 nach Recherche und Messung — nicht offen.**
 
-→ Offener Punkt: prüfen, ob der Hochpass für die Bandpower auf 0,5 Hz gesenkt werden kann,
-ohne die Driftunterdrückung zu verlieren. **Nicht nebenbei ändern**: es verschiebt alle
-Delta-Werte und damit jeden abgeleiteten Quotienten.
+**Warum nicht 0,5 Hz:** Unterhalb 1 Hz liegt der spektrale Gipfel der langsamen Störungen,
+die man in einem Routine-EEG nicht loswird — Schwitzartefakte, Elektrodendrift, langsame
+Bewegung, Wackeln am Kabel. Sie kontaminieren genau Delta und Theta. Der 1-Hz-Hochpass hält
+sie draußen. Das kostet echtes langsames Delta, und dieser Preis wird hier absichtlich
+gezahlt: eine Verlangsamung, die nur aus Schweiß besteht, ist schlimmer als eine, die man
+etwas zu schwach misst.
+
+**Was es kostet (gemessen an einem simulierten 1/f^1,8-EEG mit Alpha):**
+
+| | |
+|---|---|
+| Anteil von 0,5–1 Hz an der wahren Delta-Leistung | 47 % |
+| heute erfasster Anteil des wahren 0,5–4-Hz-Bandes | 37 % |
+| Delta bei Umstellung auf 0,5 Hz | +121 % |
+| Delta/Alpha-Ratio bei Umstellung | +121 % |
+
+Delta würde sich also mehr als verdoppeln — bei einem 1/f-Spektrum sitzt der Großteil der
+Leistung unten, die halbe Oktave 0,5–1 Hz trägt fast so viel wie die zwei Oktaven darüber.
+
+**Was eine Umstellung zusätzlich erfordern würde** (dokumentiert, damit niemand sie für einen
+Einzeiler hält):
+
+1. **Drei Codestellen, nicht eine**: die Hochpass-Grenzfrequenz, die Ausgabemaske in
+   `_compute_psd` (`freqs >= 1.0`) und die `BANDS`-Definition. Nur das Band zu ändern ist
+   exakt wirkungslos — nachgemessen: +0,0 %.
+2. **Der Artefaktdetektor müsste mit**: er filtert selbst bei 1 Hz
+   (`ArtifactParams.hp_hz`) und sähe die Drift gar nicht, die neu in Delta fiele. Die
+   Spektralanalyse zählte sie dann als Verlangsamung, während der Detektor das Segment für
+   sauber hielte.
+3. **Alle Delta-abhängigen Normschwellen wären ungültig** (DAR, DTABR, „Verlangsamung") —
+   sie wurden gegen die heutige Definition gesetzt und müssten neu abgeleitet werden.
+
+**Was man dabei wissen sollte:** Auch im heutigen Zustand dämpft der Hochpass die untere
+Delta-Flanke — bei 1,0 Hz kommen nur 50 % der Amplitude durch (Butterworth 4. Ordnung,
+durch `filtfilt` effektiv 8.). Vom Band 1–4 Hz werden dadurch rund 82 % erfasst. Das ist bei
+einem Vergleich mit Fremdsystemen zu bedenken, die anders filtern.
+
+**Eine verbliebene Inkonsistenz, bewusst nicht angeglichen:** `core/channel_classifier.py`
+nutzt für sein Merkmal `delta_rel` bereits 0,5–4 Hz. Das ist dort unkritisch — es dient der
+KANALERKENNUNG (EEG oder nicht), nicht der klinischen Bandpower, und profitiert eher davon,
+tiefe Frequenzen zu sehen. Eine Angleichung würde die Kanalerkennung ändern, ohne einen
+Vorteil zu bringen.
 
 ---
 
