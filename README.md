@@ -119,6 +119,41 @@ either way.
 Then open [http://localhost:8501](http://localhost:8501). The upload expects an EDF file
 (max. 200 MB).
 
+### Try it without your own recording
+
+The repository ships a **synthetic** EDF file. It contains no patient data — every signal is
+generated mathematically — but it is a complete 10-minute recording with 19 EEG channels and
+an ECG lead:
+
+```
+tests/fixtures/test_edf_datei.edf
+```
+
+Upload it on the **File & Patient** page. Because the file was generated from known values,
+you are not only trying the app out, you are checking whether it computes correctly. The
+targets are documented in the manifest next to it, and this is what you should see:
+
+| Page | What to look for | Expected |
+|---|---|---|
+| EEG Spectrum | alpha peak, posterior | **10.0 Hz** on all 19 channels |
+| EEG Spectrum | hemispheric asymmetry O1/O2 | **+18 %** (built in as 33.0 vs 27.5 µV) |
+| Aperiodic (1/f) | exponent | **2.2** on every channel |
+| Artifact correction | burst | **240–245 s**, six frontal/temporal channels |
+| ECG & HRV | heart rate | **70.1 bpm** |
+| ECG & HRV | beats detected | **685** of the 702 in the file — see below |
+| ECG & HRV | HF peak (respiration) | **0.25 Hz** |
+
+The 17 missing beats are not an error: the file contains a deliberate weak-signal window at
+330–345 s where the ECG drops to 5 % amplitude. That the detector loses beats there, and only
+there, is the intended behaviour — and it is worth looking at, because it is the kind of
+signal quality problem that a real recording produces too.
+
+If any other value is off, that is a finding — and the same checks run automatically in CI
+(`tests/test_eeg_groundtruth.py`, `tests/test_ecg_pipeline.py`).
+
+A second file, `test_edf_afib.edf`, covers an irregular rhythm for the rhythm screening page.
+
+
 ## Features
 
 - **Channel identification** — signal-based classifier (EEG/ECG/EOG/EMG/reference/vital) with

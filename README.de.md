@@ -95,6 +95,33 @@ Detektor ist ohnehin in beiden Fällen der Standard.
 
 Danach [http://localhost:8501](http://localhost:8501) öffnen. Der Upload erwartet eine EDF-Datei (max. 200 MB).
 
+### Ausprobieren ohne eigene Aufnahme
+
+Im Repository liegt eine **synthetische** EDF-Datei. Sie enthält keine Patientendaten — jedes Signal ist rechnerisch erzeugt — ist aber eine vollständige 10-Minuten-Aufnahme mit 19 EEG-Kanälen und einer EKG-Ableitung:
+
+```
+tests/fixtures/test_edf_datei.edf
+```
+
+Auf der Seite **Datei & Patient** hochladen. Weil die Datei aus bekannten Werten erzeugt wurde, probiert man die App damit nicht nur aus, sondern prüft, ob sie richtig rechnet. Die Sollwerte stehen im Manifest daneben, und das sollte zu sehen sein:
+
+| Seite | Worauf achten | Sollwert |
+|---|---|---|
+| EEG-Spektrum | Alpha-Peak, posterior | **10,0 Hz** auf allen 19 Kanälen |
+| EEG-Spektrum | Hemisphärische Asymmetrie O1/O2 | **+18 %** (eingebaut als 33,0 gegen 27,5 µV) |
+| Aperiodisch (1/f) | Exponent | **2,2** auf jedem Kanal |
+| Artefaktkorrektur | Burst | **240–245 s**, sechs frontale/temporale Kanäle |
+| EKG & HRV | Herzfrequenz | **70,1 bpm** |
+| EKG & HRV | erkannte Schläge | **685** von 702 in der Datei — siehe unten |
+| EKG & HRV | HF-Gipfel (Atmung) | **0,25 Hz** |
+
+Die 17 fehlenden Schläge sind kein Fehler: die Datei enthält bei 330–345 s ein absichtlich eingebautes Schwachsignal-Fenster, in dem das EKG auf 5 % Amplitude fällt. Dass der Detektor dort — und nur dort — Schläge verliert, ist das gewollte Verhalten. Und es lohnt sich anzusehen, denn es ist genau die Art von Signalqualitätsproblem, die eine echte Aufnahme ebenfalls erzeugt.
+
+Weicht ein anderer Wert ab, ist das ein Befund — dieselben Prüfungen laufen automatisch in der CI (`tests/test_eeg_groundtruth.py`, `tests/test_ecg_pipeline.py`).
+
+Eine zweite Datei, `test_edf_afib.edf`, deckt für die Rhythmus-Screening-Seite einen unregelmässigen Rhythmus ab.
+
+
 ## Funktionen
 
 - **Kanal-Identifikation** — signalbasierter Classifier (EEG/EKG/EOG/EMG/Referenz/Vital) mit Konfidenz und manueller Korrektur.
