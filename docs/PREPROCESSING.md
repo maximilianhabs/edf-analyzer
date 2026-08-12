@@ -37,6 +37,21 @@ Lage der R-Zacken und die Zuordnung von Artefaktzeiten entscheidend ist.
 
 ---
 
+## Vor allem anderen: Strukturprüfung der Datei
+
+Bevor irgendetwas geladen wird, prüft `core/edf_validation.py` allein die Header — ohne die
+Datei zu lesen. Abgelehnt wird, was nicht analysierbar ist: keine EDF (umbenannte Fremddatei,
+BDF), beschädigter oder in sich widersprüchlicher Header, **weniger Daten als der Header
+ankündigt** und Aufnahmen unter 10 s.
+
+Der dritte Fall ist der wichtigste, weil er als einziger vorher gar nicht auffiel: eine
+abgeschnitten übertragene Datei lädt MNE klaglos als kürzere Aufnahme (nachgemessen: eine
+halbierte 600-s-Datei wird zu 299 s), und die Analyse rechnet auf dem Bruchstück weiter.
+
+Nur gewarnt — nicht abgelehnt — wird bei Aufnahmen unter 5 Minuten (HRV-Frequenzdomäne bleibt
+möglicherweise leer) und bei Abtastraten unter 100 Hz. Die App ist ein Forschungswerkzeug,
+kein Torwächter: ungewöhnlich ist nicht unbrauchbar.
+
 ## EEG — der Weg zu einem Spektralwert
 
 ### 1. Laden und Kanalzuordnung

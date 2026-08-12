@@ -122,6 +122,21 @@ def render():
                     with open(dest_path, "wb") as f:
                         f.write(uploaded.getbuffer())
 
+                    # Strukturprüfung VOR allem anderen. Vorher fiel eine unbrauchbare Datei
+                    # erst beim Laden auf — als Stacktrace. Der schlimmste Fall lief sogar
+                    # ganz durch: eine abgeschnitten übertragene Datei lädt MNE klaglos als
+                    # kürzere Aufnahme, und die Analyse rechnet auf dem Bruchstück weiter,
+                    # ohne dass es jemandem auffällt.
+                    from core.edf_validation import validate_edf
+                    from core.i18n import current_lang
+                    check = validate_edf(dest_path, current_lang())
+                    if not check.ok:
+                        st.error(check.message())
+                        os.remove(dest_path)      # nichts Unbrauchbares im Upload-Verzeichnis
+                        st.stop()
+                    for hinweis in check.warnings:
+                        st.warning(hinweis)
+
                     privacy = check_privacy(dest_path)
                     if privacy["has_patient_id"] or privacy["has_recording_id"]:
                         # Nicht sofort blockieren — Disclaimer-Flow

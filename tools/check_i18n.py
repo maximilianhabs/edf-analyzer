@@ -101,6 +101,51 @@ def shadowed_tr():
     return hits
 
 
+def validation_messages():
+    """Prüfung 6 — der ZWEITE Übersetzungsort: `core/edf_validation.py::_MSG`.
+
+    Dieses Modul hält seine Meldungen selbst, weil es ohne Streamlit importierbar bleiben
+    soll (Tests, perspektivisch ein CLI). Der Preis dafür ist ein zweiter Ort, an dem eine
+    Übersetzung fehlen kann — also wird er hier mitgeprüft, statt sich darauf zu verlassen,
+    dass jemand daran denkt. Es sind genau die Meldungen, die ein Nutzer sieht, wenn sein
+    Upload abgelehnt wird; fehlt dort das Englische, bleibt er ohne Erklärung stehen.
+    """
+    import ast
+    probleme = []
+    pfad = ROOT / "core" / "edf_validation.py"
+    if not pfad.exists():
+        return ["[edf_validation] Modul fehlt — Prüfung 6 kann nicht laufen"]
+    baum = ast.parse(pfad.read_text(encoding="utf-8"))
+    katalog = None
+    for knoten in ast.walk(baum):
+        if isinstance(knoten, ast.Assign) and any(
+                isinstance(z, ast.Name) and z.id == "_MSG" for z in knoten.targets):
+            katalog = knoten.value
+    if katalog is None or not isinstance(katalog, ast.Dict):
+        return ["[edf_validation] _MSG nicht gefunden oder kein Dict"]
+
+    for schluessel, wert in zip(katalog.keys, katalog.values):
+        name = getattr(schluessel, "value", "?")
+        if not isinstance(wert, ast.Tuple) or len(wert.elts) != 2:
+            probleme.append(f"[edf_validation] '{name}' ist kein (deutsch, englisch)-Paar")
+            continue
+        try:
+            de, en = (ast.literal_eval(e) for e in wert.elts)
+        except ValueError:
+            probleme.append(f"[edf_validation] '{name}' enthält keine reinen Zeichenketten")
+            continue
+        if not de.strip() or not en.strip():
+            probleme.append(f"[edf_validation] '{name}': eine Fassung ist leer")
+        if de.strip() == en.strip():
+            probleme.append(f"[edf_validation] '{name}': englische Fassung ist die deutsche")
+        pd = set(re.findall(r"\{(\w+)", de))
+        pe = set(re.findall(r"\{(\w+)", en))
+        if pd != pe:
+            probleme.append(f"[edf_validation] '{name}': Platzhalter DE {sorted(pd)} != "
+                            f"EN {sorted(pe)} — `.format()` würde zur Laufzeit scheitern")
+    return probleme
+
+
 def main():
     strings = load_strings()
     langs = sorted(strings)
@@ -149,6 +194,8 @@ def main():
         problems.append(f"[tr überschrieben] {path}::{fname}() bindet 'tr' lokal in Zeile(n) "
                         f"{binds} — die tr()-Aufrufe in Zeile(n) {calls} laufen dadurch in "
                         f"UnboundLocalError. Laufvariable umbenennen (z. B. 'trc').")
+
+    problems.extend(validation_messages())
 
     for p in problems:
         print("FEHLER: " + p)

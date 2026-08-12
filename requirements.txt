@@ -1,12 +1,32 @@
-mne>=1.8.0
-scipy>=1.11.0
-numpy>=1.24.0
-pandas>=2.0.0
-matplotlib>=3.7.0
-plotly>=5.18.0
-streamlit>=1.36.0
-pyedflib>=0.1.28
-reportlab>=4.0.0
-openpyxl>=3.1.0
-extra-streamlit-components>=0.1.60
-fooof>=1.1.0
+# Laufzeit-Abhängigkeiten.
+#
+# Untergrenze UND Obergrenze, bewusst keine exakten Pins (`==`).
+#
+# Exakte Pins wären für eine Anwendung sonst das Richtige — gerade weil die Reports jetzt die
+# Paketversionen mitschreiben. Hier gehen sie aber nicht: das Docker-Image läuft auf Python
+# 3.9 (wegen MNE), Entwicklung und CI zusätzlich auf 3.12, und für mehrere dieser Pakete gibt
+# es keine Version, die auf beiden installierbar ist (numpy 2.0.2 ist die letzte mit
+# 3.9-Rädern, aktuelle Umgebungen haben 2.1+). Ein exakter Pin würde also entweder das Image
+# oder die CI unbrauchbar machen.
+#
+# Die Obergrenzen schließen jeweils den nächsten MAJOR-Sprung aus. Sie verhindern das
+# realistische Problem — eine Neuinstallation zieht über Nacht eine Version mit geänderter
+# API oder geändertem Verhalten —, ohne Reproduzierbarkeit zu behaupten, die es über zwei
+# Python-Versionen hinweg nicht geben kann. Welche Versionen ein konkretes Ergebnis erzeugt
+# haben, steht im Report (siehe core/version.py); das ist die belastbare Angabe.
+#
+# Aktualisierungen kommen über Dependabot (.github/dependabot.yml) als PR, laufen also durch
+# die Tests, bevor sie irgendwo ankommen.
+
+mne>=1.8.0,<2
+scipy>=1.11.0,<2
+numpy>=1.24.0,<3
+pandas>=2.0.0,<3
+matplotlib>=3.7.0,<4
+plotly>=5.18.0,<7
+streamlit>=1.36.0,<2
+pyedflib>=0.1.28,<1
+reportlab>=4.0.0,<6
+openpyxl>=3.1.0,<4
+extra-streamlit-components>=0.1.60,<1
+fooof>=1.1.0,<2

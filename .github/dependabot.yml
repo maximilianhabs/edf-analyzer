@@ -1,0 +1,34 @@
+# Abhängigkeits-Aktualisierungen als Pull Request, nicht als Überraschung.
+#
+# Warum überhaupt: Die Requirements haben Ober- und Untergrenzen (siehe requirements.txt),
+# eine Neuinstallation zieht also immer die neueste passende Version. Ohne Automatik merkt
+# man Sicherheits- oder Verhaltensänderungen erst beim nächsten Rebuild — und dann ohne
+# Zuordnung, welche Änderung es war.
+#
+# Monatlich statt wöchentlich: Bei einem Ein-Personen-Projekt sind wöchentliche PRs Lärm, der
+# irgendwann pauschal weggeklickt wird. Sicherheits-Advisories meldet GitHub davon unabhängig
+# und sofort.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      # Ein PR statt fünf: die wissenschaftlichen Pakete hängen voneinander ab (numpy/scipy/
+      # pandas/matplotlib) — einzeln aktualisiert scheitert die Installation oder es entsteht
+      # eine Kombination, die niemand zusammen getestet hat.
+      scientific-stack:
+        patterns: ["numpy", "scipy", "pandas", "matplotlib", "mne", "pyedflib", "fooof"]
+    commit-message:
+      prefix: "deps"
+
+  # Auch die Actions selbst: eine veraltete checkout-Action ist der häufigste Grund, warum
+  # eine CI Monate später ohne Codeänderung rot wird.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"

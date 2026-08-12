@@ -36,6 +36,49 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
   Überspitzung stand also nur in der Doku und ist dort jetzt korrigiert (im Deutschen
   ebenso), genauso wie „literatur-validierte Zusatzverfahren" im Vorspann.
 
+### Hinzugefügt — Betriebshärtung
+
+**Upload-Prüfung (`core/edf_validation.py`).** Bisher prüfte der Upload nur Dateiendung und
+Größe; alles andere fiel erst beim Laden auf — als Stacktrace. Ein Fall fiel **gar nicht**
+auf: eine abgeschnitten übertragene Datei lädt MNE klaglos als kürzere Aufnahme
+(nachgemessen: eine halbierte 600-s-Datei wird zu 299 s), und die Analyse rechnet auf dem
+Bruchstück weiter, ohne dass es jemandem auffällt. Geprüft wird jetzt allein anhand der
+Header, in Millisekunden und ohne die Datei zu laden: ist es überhaupt eine EDF (umbenannte
+Fremddatei, BDF), ist der Header in sich schlüssig, passt die Dateigröße zu den
+angekündigten Datenblöcken, ist die Aufnahme lang genug.
+
+Abgelehnt wird nur, was nicht analysierbar ist. Kurze Aufnahmen (< 5 min, HRV-Frequenzdomäne)
+und niedrige Abtastraten (< 100 Hz) erzeugen eine **Warnung** — die App ist ein
+Forschungswerkzeug, kein Torwächter; ungewöhnlich ist nicht unbrauchbar. Jede Meldung sagt,
+was nicht stimmt und was zu tun ist, statt „ungültige Datei", und liegt **zweisprachig** vor:
+eine abgelehnte Datei ist genau die Stelle, an der ein anderssprachiger Nutzer sonst ohne
+Erklärung stehen bliebe. `tools/check_i18n.py` prüft diesen zweiten Übersetzungsort mit
+(fehlende Fassung, unübersetzt gebliebener Text, abweichende Platzhalter — letztere würden
+zur Laufzeit in `.format()` scheitern).
+
+**Container.** Läuft nicht mehr als root, sondern als eigener Nutzer (`uid 10001`) — der
+Container verarbeitet hochgeladene Fremddateien mit einem umfangreichen Parser-Stack, es gibt
+keinen Grund für root-Rechte. Ressourcengrenzen gehören an den Start und stehen als
+Betriebshinweis im Dockerfile; eine 200-MB-EDF wird von MNE vollständig als float64 in den
+Speicher geladen, und ohne Grenze zieht eine einzelne große Aufnahme den Host in den Swap.
+Das ist der realistische Fall — nicht ein Angreifer, sondern eine lange Aufnahme.
+
+Nachgeprüft statt angenommen: das Image wurde gebaut und mit `--read-only --memory=2g
+--cpus=2` plus tmpfs gestartet, und darin die **komplette Kette** durchlaufen —
+Validierung, Laden, alle 15 Report-Sektionen, Tabellen-PDF, Excel und visueller Report. Alles
+grün als Nicht-root auf einem schreibgeschützten Dateisystem.
+
+**Abhängigkeiten.** Ober- **und** Untergrenzen statt nur `>=`. Exakte Pins wären für eine
+Anwendung das Naheliegende — gerade weil die Reports jetzt die Paketversionen mitschreiben —
+gehen hier aber nicht: das Image läuft auf Python 3.9 (wegen MNE), CI und Entwicklung
+zusätzlich auf 3.12, und für mehrere Pakete gibt es keine auf beiden installierbare Version
+(numpy 2.0.2 ist die letzte mit 3.9-Rädern). Die Obergrenzen schließen den nächsten
+Major-Sprung aus; welche Versionen ein konkretes Ergebnis erzeugt haben, steht ohnehin im
+Report. Dazu `.github/dependabot.yml`: monatlich, die wissenschaftlichen Pakete als **eine**
+Gruppe, weil numpy/scipy/pandas/matplotlib einzeln aktualisiert entweder nicht installieren
+oder eine Kombination ergeben, die niemand zusammen getestet hat.
+
+
 ### Hinzugefügt — `docs/PREPROCESSING.md`
 
 Zwischen der EDF-Datei und einem ausgegebenen Kennwert liegen Filter, Fensterwahl,

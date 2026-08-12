@@ -43,6 +43,16 @@ COPY . .
 ARG EDF_BUILD_COMMIT=""
 ENV EDF_BUILD_COMMIT=$EDF_BUILD_COMMIT
 
+# Nicht als root laufen. Der Container verarbeitet hochgeladene Fremddateien mit einem
+# umfangreichen Parser-Stack (MNE, pyedflib, ReportLab) — es gibt keinen Grund, dem
+# root-Rechte zu geben. Streamlit braucht ein beschreibbares HOME (Konfiguration, Cache) und
+# ein beschreibbares Temp-Verzeichnis (dort liegen die Sitzungs-Uploads, siehe
+# core/cleanup.py, das sie nach spätestens ~4 h löscht).
+RUN useradd --create-home --uid 10001 edf \
+    && chown -R edf:edf /app
+USER edf
+ENV HOME=/home/edf
+
 EXPOSE 8501
 
 # Healthcheck über Python (curl ist im slim-Image nicht vorhanden).
@@ -50,6 +60,14 @@ EXPOSE 8501
 # auf; Streamlit lauscht nur auf IPv4 → localhost kann je nach Client fehlschlagen.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health').read()==b'ok' else 1)" || exit 1
+
+# Betriebshinweis — Ressourcengrenzen gehören an den Start, nicht ins Image:
+#     docker run --memory=2g --cpus=2 --read-only \
+#                --tmpfs /tmp:rw,size=1g --tmpfs /home/edf:rw,size=64m \
+#                -e EDF_PASSWORD=… edf-analyzer
+# Eine 200-MB-EDF wird von MNE vollständig in den Speicher geladen und als float64 gehalten;
+# ohne Grenze kann eine einzelne große Datei den Host in den Swap ziehen. Das ist der
+# realistische Fall — nicht ein Angreifer, sondern eine legitime lange Aufnahme.
 
 CMD ["streamlit", "run", "app.py", \
      "--server.port=8501", \

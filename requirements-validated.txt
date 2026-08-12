@@ -13,4 +13,4 @@
 # Wichtig: Die App rechnet dann NICHT still etwas anderes — Oberfläche und Report weisen
 # ausdrücklich aus, wenn ein validierter Detektor nicht verfügbar war
 # (analysis/ecg.py::detect_r_peaks_validated_ex).
-py-ecg-detectors>=1.3.0
+py-ecg-detectors>=1.3.0,<2
