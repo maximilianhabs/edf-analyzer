@@ -3,6 +3,32 @@
 Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
+## [Unreleased]
+
+### Hinzugefügt — Haftungshinweis dort, wo er gelesen wird
+
+„Kein Medizinprodukt, keine Diagnosesoftware" stand bisher **ausschließlich in den beiden
+READMEs**. Im laufenden Programm kam der Satz an keiner Stelle vor, und in keinem
+exportierten Report — gegen den Code geprüft, kein einziger Treffer. Wer die App benutzt,
+liest kein README; wer einen ausgedruckten Report in der Hand hält, erst recht nicht.
+
+Der Hinweis steht jetzt an allen vier Stellen, an denen jemand mit dem Werkzeug in Berührung
+kommt:
+
+- **Login-Seite**, über dem Passwortfeld — also vor der ersten Nutzung.
+- **Sidebar auf jeder Seite.** Der Login-Cookie hält 30 Tage; wer täglich damit arbeitet,
+  sieht die Login-Seite praktisch nie wieder. Deshalb dauerhaft, dezent, nicht ausblendbar.
+- **Tabellen-Report** als erste Sektion (PDF und Excel).
+- **Beide PDF-Reports** — im visuellen Report auf jeder Seite, auf dem Deckblatt zusätzlich
+  als deutlich sichtbarer Kasten statt als 6,5-pt-Fußzeile.
+
+`tests/test_disclaimer.py` prüft alle vier Orte, den visuellen Report seitenweise.
+
+**Beim Ansehen der erzeugten PDFs gefunden und behoben:** der neue Deckblatt-Kasten und die
+Fußzeile überlagerten sich sichtbar. Auf dem Deckblatt entfällt die Fußzeilen-Fassung jetzt.
+Wieder ein Fehler, den kein Test gefunden hätte — beide Elemente waren einzeln korrekt.
+
+
 ## [0.2.0] — 2026-08-12
 
 Diese Fassung fügt keine einzige neue Analysemethode hinzu. Sie beantwortet stattdessen für

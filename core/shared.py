@@ -88,6 +88,11 @@ def render_sidebar_status():
     validated = st.session_state.get("phi_validated", False)
 
     with st.sidebar:
+        # Haftungshinweis auf JEDER Seite, nicht nur beim Login. Der Login geschieht einmal
+        # und der Cookie hält 30 Tage — wer täglich damit arbeitet, sieht die Login-Seite
+        # praktisch nie wieder. Deshalb dauerhaft hier, dezent, aber nicht ausblendbar.
+        st.caption("⚠️ " + tr("auth.disclaimer_short"))
+
         if not edf_path or not file_name:
             st.markdown(
                 "<div style='"

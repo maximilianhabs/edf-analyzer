@@ -129,6 +129,14 @@ def _render_login():
     """.replace("{sub}", tr("auth.subtitle"))
          .replace("{iconfont}", ICON_FONT_CSS), unsafe_allow_html=True)
 
+    # Haftungshinweis auf der Login-Seite — also VOR der ersten Nutzung und nicht erst
+    # irgendwo im Programm. Er stand bisher ausschließlich in den READMEs; wer die App
+    # benutzt, liest die nicht. Bewusst über dem Passwortfeld: was danach kommt, ist die
+    # Anwendung selbst.
+    _, dis_col, _ = st.columns([1, 2.2, 1])
+    with dis_col:
+        st.caption("⚠️ " + tr("auth.disclaimer_short"))
+
     # Sprachumschalter VOR dem Login sichtbar (kein Sidebar zu diesem Zeitpunkt, siehe
     # CSS oben) — mittig unter der Karte, dezent.
     from core.i18n import render_lang_switch

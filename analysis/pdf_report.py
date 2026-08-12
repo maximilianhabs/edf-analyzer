@@ -131,6 +131,13 @@ def build_hrv_pdf(
 
     # ── Kopfzeile ─────────────────────────────────────────────────────────────
     el.append(Paragraph("Herzratenvariabilität — Befundbericht", ss["ReportTitle"]))
+    # Haftungshinweis direkt unter den Titel — ein ausgedruckter Bericht wird
+    # weitergereicht und gelesen, ohne dass jemand die App daneben hat.
+    el.append(Paragraph(
+        "<b>Kein Medizinprodukt, keine Diagnosesoftware.</b> Forschung, methodische "
+        "Exploration und Lehre. Alle Werte sind Orientierung, keine Diagnosekriterien, "
+        "und ersetzen keine ärztliche Befundung.", ss["Small8"]))
+    el.append(Spacer(1, 4))
     el.append(Spacer(1, 3))
     el.append(_rule())
     el.append(Spacer(1, 4))

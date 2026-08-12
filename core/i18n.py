@@ -40,6 +40,12 @@ STRINGS = {
             "login_button": "Anmelden",
             "wrong_password": "Falsches Passwort. Bitte erneut versuchen.",
             "empty_password": "Bitte Passwort eingeben.",
+            "disclaimer_short": "Kein Medizinprodukt · Forschung und Lehre · keine Diagnose",
+            "disclaimer_long":
+                "**Kein Medizinprodukt, keine Diagnosesoftware.** Dieses Werkzeug dient "
+                "Forschung, methodischer Exploration und Lehre. Alle ausgegebenen Werte sind "
+                "**Orientierung**, keine Diagnosekriterien, und ersetzen keine ärztliche "
+                "Befundung.",
             "config_error": "Konfigurationsfehler: Umgebungsvariable `EDF_PASSWORD` ist nicht "
                              "gesetzt. Die App startet aus Sicherheitsgründen ohne "
                              "Default-Passwort nicht.",
@@ -598,6 +604,12 @@ STRINGS = {
             "login_button": "Sign in",
             "wrong_password": "Wrong password. Please try again.",
             "empty_password": "Please enter a password.",
+            "disclaimer_short": "Not a medical device · research and teaching · not for diagnosis",
+            "disclaimer_long":
+                "**Not a medical device, not diagnostic software.** This tool is for research, "
+                "methodological exploration and teaching. All reported values are "
+                "**orientation**, not diagnostic criteria, and do not replace clinical "
+                "assessment by a physician.",
             "config_error": "Configuration error: the `EDF_PASSWORD` environment variable is "
                              "not set. For security reasons the app will not start without it "
                              "using a default password.",

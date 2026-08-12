@@ -229,7 +229,19 @@ def collect_sections(edf: dict, edf_path: str, corr_segments=None,
     Laborwert-Bewertung (Hansen 2024 / Gąsior 2018, siehe `analysis/report_metadata.py`).
     Fehlt `age`, fällt die Bewertung auf den Erwachsenen-Default (50 J.) zurück — wie
     `core.shared.get_patient_info()` es bei fehlender Eingabe ebenfalls tut."""
-    sections = []
+    # Haftungshinweis als ERSTE Sektion: ein Report wird ausgedruckt, weitergereicht und
+    # in eine Akte gelegt — losgelöst von der App, die ihn erzeugt hat. Was dort nicht
+    # draufsteht, steht für den Leser nicht zur Verfügung.
+    sections = [{
+        "name": "Hinweis",
+        "columns": ["Angabe", "Wert"],
+        "rows": [["Status", "Kein Medizinprodukt, keine Diagnosesoftware"],
+                 ["Zweck", "Forschung, methodische Exploration und Lehre"],
+                 ["Werte", "Orientierung — keine Diagnosekriterien, kein Ersatz für die "
+                           "ärztliche Befundung"]],
+        "wrap": True,
+        "col_widths_mm": [30, 156],
+    }]
     sf, dur, em = edf["sfreq"], edf["duration_s"], edf.get("eeg_map", {})
     has_ecg = bool(edf.get("ecg_channels"))
     age = age if age is not None else 50

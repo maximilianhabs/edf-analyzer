@@ -45,14 +45,23 @@ def _page(title, subtitle, color):
     return fig
 
 
-def _footer(fig, prov_line):
-    """Herkunftszeile ganz unten auf JEDER Seite.
+DISCLAIMER = ("Kein Medizinprodukt · Forschung und Lehre · Werte sind Orientierung, keine "
+              "Diagnosekriterien")
+
+
+def _footer(fig, prov_line, with_disclaimer=True):
+    """Haftungs- und Herkunftszeile ganz unten auf JEDER Seite.
 
     Auf jeder Seite, nicht nur auf dem Deckblatt: aus diesem Report werden einzelne Seiten
     ausgedruckt und weitergereicht. Eine Seite, die ihre Herkunft nicht mitbringt, verliert
     sie genau dann, wenn es darauf ankommt.
     """
-    fig.text(0.035, 0.018, prov_line, fontsize=6.5, color=C_MUTED, va="center")
+    # `with_disclaimer=False` auf dem Deckblatt: dort steht der Hinweis bereits gross im
+    # Kasten. Beides zusammen überlappte sich sichtbar (beim Ansehen des erzeugten PDFs
+    # aufgefallen, nicht in einem Test).
+    if with_disclaimer:
+        fig.text(0.035, 0.030, DISCLAIMER, fontsize=6.5, color="#b03a2e", va="center")
+    fig.text(0.035, 0.014, prov_line, fontsize=6.5, color=C_MUTED, va="center")
 
 
 def _cap(fig, y, text):
@@ -401,9 +410,19 @@ def _page_cover(pdf, d, disp):
     ax.tick_params(labelsize=8, colors=C_MUTED)
     _cap(fig, 0.135, "Aufnahme-Zeitleiste — rot = automatisch erkannte Bewegungs-/Globalartefakte. "
                      "Alle folgenden Beispiel-Ausschnitte stammen aus einem sauberen Abschnitt.")
-    fig.text(0.035, 0.06, "Nur robuste, verlässliche Marker · erzeugt vom EDF-Analyzer",
+    fig.text(0.035, 0.075, "Nur robuste, verlässliche Marker · erzeugt vom EDF-Analyzer",
              fontsize=8, color=C_MUTED, style="italic")
-    _footer(fig, d.get("prov_line", ""))
+    # Auf dem Deckblatt deutlich sichtbar, nicht nur als 6,5-pt-Fußzeile wie auf den
+    # Folgeseiten: das Deckblatt ist die Seite, die jemand als Erstes ansieht und die bei
+    # einem weitergereichten Ausdruck obenauf liegt.
+    fig.patches.append(Rectangle((0.035, 0.035), 0.93, 0.032, transform=fig.transFigure,
+                                 facecolor="#fbe1de", edgecolor="#b03a2e", linewidth=0.6,
+                                 zorder=1))
+    fig.text(0.05, 0.051, "Kein Medizinprodukt, keine Diagnosesoftware — Forschung, "
+                          "methodische Exploration und Lehre. Alle Werte sind Orientierung, "
+                          "keine Diagnosekriterien, und ersetzen keine ärztliche Befundung.",
+             fontsize=7.5, color="#b03a2e", va="center", zorder=2)
+    _footer(fig, d.get("prov_line", ""), with_disclaimer=False)
     pdf.savefig(fig); plt.close(fig)
 
 
