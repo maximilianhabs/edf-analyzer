@@ -31,6 +31,25 @@ PACED = [102, 104, 107, 217]
 #: Die 44 Aufnahmen, über die ausgewertet wird.
 BEWERTET = [r for r in ALLE if r not in PACED]
 
+# ── Schichtung nach der Auswahlmethode der Datenbank ────────────────────────────────────────
+# Die 48 Aufnahmen sind NICHT repräsentativ zusammengestellt. Aus der Datenbankbeschreibung:
+#
+#   „Twenty-three recordings were chosen at random from a set of 4000 24-hour ambulatory ECG
+#    recordings … The remaining 25 recordings were selected from the same set to include less
+#    common but clinically significant arrhythmias that would not be well-represented in a
+#    small random sample."
+#
+# Die Trennung verläuft entlang der Nummerierung: 100er = Zufallsauswahl, 200er = gezielt
+# ausgewählte, seltene Arrhythmien. Ein Gesamtwert über beide Gruppen beschreibt deshalb
+# weder eine Normalpopulation noch etwas anderes Klarumrissenes — er ist die übliche
+# Berichtsgröße und wird auch berichtet, aber allein wäre er irreführend.
+#
+# Für ein Werkzeug, dessen EKG nebenbei in einem Routine-EEG mitläuft, ist die ZUFALLSGRUPPE
+# die nähere Zahl. Die Schichtung stammt von den Autoren der Datenbank und stand vor unserer
+# Messung fest — sie ist damit keine nachträgliche Auswahl günstiger Fälle.
+ZUFALLSAUSWAHL = [r for r in BEWERTET if r < 200]
+SELEKTIERT = [r for r in BEWERTET if r >= 200]
+
 #: Signal, Kopfdaten, Annotationen — alle drei werden gebraucht.
 ENDUNGEN = (".dat", ".hea", ".atr")
 

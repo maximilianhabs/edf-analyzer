@@ -243,3 +243,73 @@ zu empfehlen; die Fensterung allein ist der klare Gewinn.
 **Bewusst nicht umgesetzt.** Eine Änderung am Detektor verändert jede HRV-Ausgabe der
 Anwendung — das ist eine fachliche Entscheidung und keine Aufräumarbeit. Die Messung liegt
 vor, die Entscheidung nicht.
+
+---
+
+## Chunk 5 — alle 44 Aufnahmen
+
+    python3 benchmarks/fetch_mitdb.py --all
+    python3 benchmarks/run_qrs.py --all --csv benchmarks/results/chunk5_alle44_eigen.csv
+
+**Ergebnis über 100.932 Schläge: Sensitivität 94,55 %, positiver Vorhersagewert 99,93 %.**
+
+Damit war die Auswahl der fünf Aufnahmen aus Chunk 4 unbeabsichtigt pessimistisch — der
+Gesamtwert liegt acht Punkte über dem, was die schwierige Stichprobe nahelegte.
+
+### Die vorab gebildete Schichtung erklärt nichts
+
+Vor der Messung war die Erwartung, dass die 20 zufällig gezogenen Aufnahmen (100–124)
+deutlich besser abschneiden als die 24 gezielt nach seltenen Arrhythmien ausgewählten
+(200–234), weil das Einsatzfeld der Anwendung — EKG neben einem Routine-EEG — der
+Zufallsgruppe näher liegt.
+
+| Gruppe | Aufnahmen | Schläge | Se % | +P % |
+|---|---|---|---|---|
+| Zufallsauswahl | 20 | 40.983 | 94,73 | 99,87 |
+| gezielt selektiert | 24 | 59.949 | 94,43 | 99,97 |
+| **gesamt** | **44** | **100.932** | **94,55** | **99,93** |
+
+**Der Unterschied beträgt 0,3 Punkte — die Hypothese ist widerlegt.** Sie wird hier stehen
+gelassen, weil eine vorab formulierte und dann verworfene Erwartung mehr wert ist als eine
+nachträglich passende Erzählung. Wer nicht Arrhythmie, sondern Signalqualität als Ursache
+vermutet, liegt richtig, und die Datenbank trennt danach nicht.
+
+### Was tatsächlich trennt
+
+Die Verteilung ist zweigipflig, nicht breit gestreut: **27 der 44 Aufnahmen liegen bei 99 %
+oder darüber**, 34 über 95 %. Der Ausfall konzentriert sich auf zehn Aufnahmen, und **zwei
+davon — 228 (45,4 %) und 114 (47,4 %) — stellen allein 2.104 der 5.501 verpassten Schläge.**
+
+Geprüfte Erklärungsgrössen (Korrelation über alle 44):
+
+| Grösse | r zur Sensitivität |
+|---|---|
+| Amplitudenschwankung über die Aufnahme (90./10. Perzentil der 10-s-Blöcke) | −0,40 |
+| Anteil RR-Intervalle unter 300 ms | −0,22 |
+
+Beides wirkt, keines allein erklärt den Befund: Aufnahme 208 schwankt kaum (1,25×) und liegt
+dennoch bei 87 %. Aufnahme 114 ist die **einzige, bei der die Anwendung nicht MLII, sondern
+V5 wählt** — dort ist die R-Zacke klein und die Wahl selbst könnte der Fehler sein. Das ist
+noch nicht geklärt.
+
+### Gemessener Nutzen einer blockweisen Schwelle (nicht umgesetzt)
+
+Dieselbe Verarbeitungskette, nur die Schwelle je 10-s-Block statt einmal über die ganze
+Aufnahme — offline gerechnet, ohne die Anwendung anzufassen:
+
+| | Se % | +P % |
+|---|---|---|
+| heute (globale Schwelle) | 94,55 | 99,93 |
+| blockweise Schwelle | **97,41** | 99,84 |
+
+**+2,9 Punkte Sensitivität, 0,09 Punkte Vorhersagewert dafür.** Der Gewinn entsteht fast
+vollständig bei den schwachen Aufnahmen: 106 +15,6, 116 +16,3, 108 +14,3, 228 +27,7,
+114 +35,0 Punkte. Bei den bereits guten Aufnahmen ändert sich nichts.
+
+**Eine Verschlechterung gibt es**: Aufnahme 215 fällt von 99,76 auf 95,71 %. Sie ist nicht
+verstanden und wäre vor einer Umsetzung zu klären — genau die Art Nebenwirkung, die ein
+Einzelfall-Test nicht gefunden hätte.
+
+**Weiterhin bewusst nicht umgesetzt.** Die Entscheidung berührt jede HRV-Ausgabe der
+Anwendung und liegt beim Betreiber, nicht beim Benchmark.
+

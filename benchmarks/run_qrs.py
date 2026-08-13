@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 warnings.filterwarnings("ignore")
 
-from fetch_mitdb import BEWERTET  # noqa: E402
+from fetch_mitdb import BEWERTET, SELEKTIERT, ZUFALLSAUSWAHL  # noqa: E402
 from matching import match  # noqa: E402
 from mitdb import DATA, SKIP_START_S, lade  # noqa: E402
 
@@ -123,11 +123,27 @@ def main() -> int:
               f"{z['f1_pct']:>7.2f} {z['offset_mean_ms']:>7.1f} {z['offset_abs_mean_ms']:>8.1f}")
 
     if len(zeilen) > 1:
-        g = gesamt(zeilen)
         print("-" * len(kopf))
-        print(f"{'GESAMT':>5s} {'':<6s} {g['beats']:>8d} {g['tp']:>6d} {g['fp']:>5d} "
-              f"{g['fn']:>5d} {g['se_pct']:>7.2f} {g['ppv_pct']:>7.2f} {g['f1_pct']:>7.2f}")
-        zeilen.append(g)
+        # Geschichtet berichten: die Datenbank ist nicht repräsentativ zusammengestellt
+        # (siehe fetch_mitdb.ZUFALLSAUSWAHL). Ein Gesamtwert allein wäre irreführend.
+        gruppen = [
+            ("Zufallsauswahl", [z for z in zeilen if z["record"] in ZUFALLSAUSWAHL]),
+            ("selektiert", [z for z in zeilen if z["record"] in SELEKTIERT]),
+        ]
+        zusammen = []
+        for name, teil in gruppen:
+            if not teil:
+                continue
+            g = gesamt(teil)
+            g["record"] = name
+            zusammen.append(g)
+            print(f"{name:>14s} {g['beats']:>8d} {g['tp']:>6d} {g['fp']:>5d} {g['fn']:>5d} "
+                  f"{g['se_pct']:>7.2f} {g['ppv_pct']:>7.2f} {g['f1_pct']:>7.2f}")
+        g = gesamt([z for z in zeilen])
+        zusammen.append(g)
+        print(f"{'GESAMT':>14s} {g['beats']:>8d} {g['tp']:>6d} {g['fp']:>5d} {g['fn']:>5d} "
+              f"{g['se_pct']:>7.2f} {g['ppv_pct']:>7.2f} {g['f1_pct']:>7.2f}")
+        zeilen.extend(zusammen)
 
     if args.csv:
         args.csv.parent.mkdir(parents=True, exist_ok=True)
