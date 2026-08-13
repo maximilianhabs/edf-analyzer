@@ -128,3 +128,42 @@ nach `benchmarks/data/` (in `.gitignore`). Im Repository liegen das Auswertungss
 
 Das Benchmark-Werkzeug (`wfdb`) steht in `requirements-benchmark.txt` und ist **keine**
 Laufzeitabhängigkeit der Anwendung.
+
+---
+
+## Ergebnisse
+
+### Chunk 3 — Aufnahme 100, eigener Detektor (2026-08-12)
+
+| Aufnahme | Schläge | TP | FP | FN | Se | +P | F1 | Zeitfehler |
+|---|---|---|---|---|---|---|---|---|
+| 100 (MLII) | 2267 | 2267 | 0 | 0 | **100,00 %** | **100,00 %** | **100,00 %** | +1,4 ms, SD 2,5 ms |
+
+Rohdaten: `benchmarks/results/chunk3_record100_eigen.csv`.
+
+2267 statt 2273 Schläge, weil die ersten fünf Sekunden verworfen werden — sechs Schläge
+liegen darin.
+
+**Ein fehlerfreies Ergebnis ist verdächtig, deshalb geprüft.** Aufnahme 100 ist die leichteste
+der Datenbank (Sinusrhythmus, sauberes Signal, 33 supraventrikuläre Extrasystolen), und
+publizierte Detektoren erreichen dort ebenfalls nahezu 100 %. Trotzdem wurde die Kette
+absichtlich gestört, um auszuschliessen, dass der Abgleich einfach alles durchwinkt:
+
+| Störung | Erwartung | Gemessen |
+|---|---|---|
+| jede zehnte Detektion entfernt | Se ≈ 90 % | 89,99 % |
+| 200 Detektionen erfunden | +P ≈ 91,9 % | 91,89 % |
+| alle Detektionen um 200 ms verschoben | Se ≈ 0 % | 0,04 % |
+
+Die letzten 0,04 % sind **ein** Schlag von 2267 und kein Fehler: Aufnahme 100 enthält
+supraventrikuläre Extrasystolen mit kurzem Kopplungsintervall; eine um 200 ms verschobene
+Detektion kann dort in das Fenster des *nächsten* Schlags fallen. Genau so soll sich der
+Abgleich verhalten.
+
+**Der Zeitfehler ist die für uns wichtigere Zahl.** Mittelwert +1,4 ms bei einer Streuung von
+2,5 ms — die Detektion liegt also systematisch minimal nach der Annotation und streut kaum.
+Für die HRV heisst das: der Detektor erzeugt keine nennenswerte künstliche RMSSD. Ein einzelner
+Ausreisser bei −94 ms zeigt, dass es Einzelfälle gibt, aber der Median liegt bei +2,8 ms.
+
+**Was das noch nicht bedeutet:** eine einzige, leichte Aufnahme. Aussagekraft bekommt der
+Benchmark erst über alle 44 — insbesondere über die schwierigen (108, 203, 207, 222).

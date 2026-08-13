@@ -161,3 +161,24 @@ def test_zeitfehler_streuung_wird_berichtet():
     assert abs(r.offset_mean_ms) < 5, "Mittelwert sollte nahe null sein"
     assert 15 < r.offset_sd_ms < 25, f"Streuung {r.offset_sd_ms:.1f} ms, erwartet ~20"
     assert r.offset_abs_mean_ms > 10, "der Betrag darf sich nicht wegmitteln"
+
+
+def test_kennzahlen_reagieren_auf_gestoerte_eingaben():
+    """Kette-durch-Test: Ein Benchmark, der immer 100 % meldet, ist kein Benchmark.
+
+    Auf Aufnahme 100 liefert der eigene Detektor tatsächlich 100,00 % — was zunächst nach
+    einem zu großzügigen Abgleich aussieht. Diese Prüfung schliesst das aus, indem sie die
+    Detektionen gezielt verschlechtert und nachsieht, ob die Kennzahlen mitgehen.
+    """
+    a = schlaege(1000, rr_ms=800.0)
+
+    # jede zehnte Detektion entfernen → Sensitivität muss auf ~90 % fallen
+    r = match(a, np.delete(a, np.arange(0, a.size, 10)), FS)
+    assert 89 < r.sensitivity * 100 < 91, f"Se {r.sensitivity*100:.1f} % statt ~90"
+    assert r.ppv == 1.0
+
+    # 200 erfundene Detektionen dazwischen → Vorhersagewert muss fallen, Sensitivität nicht
+    erfunden = a[:200] + ms(350)
+    r2 = match(a, np.sort(np.concatenate([a, erfunden])), FS)
+    assert r2.sensitivity == 1.0, "echte Schläge dürfen darunter nicht leiden"
+    assert 82 < r2.ppv * 100 < 84, f"+P {r2.ppv*100:.1f} % statt ~83"
