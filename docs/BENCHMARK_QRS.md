@@ -313,3 +313,65 @@ Einzelfall-Test nicht gefunden hätte.
 **Weiterhin bewusst nicht umgesetzt.** Die Entscheidung berührt jede HRV-Ausgabe der
 Anwendung und liegt beim Betreiber, nicht beim Benchmark.
 
+---
+
+## Chunk 6 — die Kanalwahl der Anwendung
+
+Aufnahme 114 fiel in Chunk 5 mit 47,4 % auf. Die Ursache war **nicht der Detektor**: 114 ist
+die einzige Aufnahme, deren erster Kanal nicht MLII ist, sondern V5. Derselbe Detektor auf
+demselben Signalabschnitt liefert
+
+| Kanal | QRS-Amplitude | Se % |
+|---|---|---|
+| V5 (erster Kanal) | 0,77 mV | 47,36 |
+| MLII (zweiter Kanal) | 2,23 mV | **99,89** |
+
+Ein Kanalproblem, kein Detektorproblem. Und die Anwendung entscheidet hier **richtig**: ihr
+Klassifizierer gibt beiden Kanälen 97 % Konfidenz, der Gleichstand wird über die
+amplituden-abgeschmolzene QRS-Formkonsistenz gelöst, und die spricht für MLII (0,982 gegen
+0,918). Der schlechte Wert entstand allein durch die Benchmark-Regel „erster Kanal".
+
+Damit der Benchmark nicht länger etwas misst, das kein Anwender bekommt, ruft
+`mitdb.lade(..., kanal="app")` jetzt denselben Klassifizierer und dieselbe Rangfolge auf wie
+`core/shared.py` für `ecg_channels[0]` — importiert, nicht nachgebaut.
+
+    python3 benchmarks/run_qrs.py --all --kanal app --csv benchmarks/results/chunk6_alle44_eigen_appkanal.csv
+
+### Das Ergebnis war nicht das erwartete
+
+| Kanalwahl | Se % | +P % |
+|---|---|---|
+| erster Kanal | 94,55 | 99,93 |
+| wie die Anwendung | 94,75 | 99,78 |
+
+**Zwei Zehntel Unterschied — und darunter verbergen sich 19 abweichende Kanalwahlen mit
+Ausschlägen in beide Richtungen:**
+
+| gewinnt | | verliert | |
+|---|---|---|---|
+| 228 | +53,8 | 208 | −40,1 |
+| 114 | +52,5 | 212 | −33,6 |
+| 116 | +16,7 | 105 | −19,5 |
+| 222 | +13,4 | 233 | −4,1 |
+| 223 | +4,4 | 214 | −3,2 |
+
+**Der Befund:** Die QRS-Formkonsistenz, die den Gleichstand entscheidet, trägt **keine
+Information über die Detektionsgüte**. Sie wählt die für die Detektion bessere Ableitung
+ungefähr so oft wie die schlechtere; im Mittel hebt sich das auf.
+
+Das ist kein Versagen des Klassifizierers in seiner eigentlichen Aufgabe. Die besteht darin,
+den EKG-Kanal unter EEG-, EOG- und Artefaktkanälen zu **finden** — und das tut er hier
+fehlerfrei, beide Ableitungen bekommen 97 %. Zwischen zwei echten EKG-Ableitungen nach
+Detektionsgüte zu **entscheiden** ist eine andere Aufgabe, für die das Kriterium 2026-08-08 nie
+gedacht war (es entstand, um hochamplitudige Crosstalk-Kanäle von der echten Ableitung zu
+trennen — dort funktioniert es nachweislich).
+
+Praktisch relevant wird das nur bei Aufnahmen mit **zwei gleichwertigen EKG-Ableitungen**
+(z. B. NeuroFax X + T). Dort entscheidet heute ein Kriterium, das für diese Frage nachweislich
+blind ist. Ob sich ein besseres lohnt, ist offen — es müsste erst gefunden und gemessen
+werden, und der Nutzen im Mittel wäre gering.
+
+**Berichtet wird weiterhin die Zahl aus Chunk 5** (erster Kanal, 94,55 %), weil nur sie mit
+veröffentlichten Ergebnissen vergleichbar ist. Die App-Zahl steht daneben, nicht an ihrer
+Stelle.
+

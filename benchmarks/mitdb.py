@@ -53,12 +53,44 @@ class Record:
         return len(self.signal) / self.fs
 
 
-def lade(record: int | str, data_dir: Path = DATA) -> Record:
+def _kanal_wie_die_app(rec) -> int:
+    """Index des Kanals, den die Anwendung selbst wählen würde.
+
+    Ruft denselben Klassifizierer und dieselbe Rangfolge auf wie `core/shared.py` für
+    `ecg_channels[0]` — Konfidenz zuerst, bei Gleichstand die amplituden-abgeschmolzene
+    QRS-Formkonsistenz. Nicht nachgebaut, sondern importiert: eine zweite Fassung dieser
+    Regel würde irgendwann von der echten abweichen, ohne dass es jemand merkt.
+    """
+    from core.channel_classifier import ECG, classify_channels
+
+    daten = np.asarray(rec.p_signal, dtype=float).T / 1000.0   # mV → Volt wie in der App
+    res = classify_channels(daten, list(rec.sig_name), float(rec.fs))
+
+    def rang(name):
+        r = res[name]
+        p2p = r.features.get("p2p_mv", 0.0)
+        tmpl = r.features.get("qrs_template_corr", 0.0)
+        return (-r.confidence, -(tmpl * min(1.0, p2p / 0.3)))
+
+    kandidaten = [c for c in rec.sig_name
+                  if res[c].channel_type == ECG and res[c].confidence >= 60.0]
+    if not kandidaten:                      # kein Kanal als EKG erkannt → Regel greift nicht
+        return 0
+    return list(rec.sig_name).index(min(kandidaten, key=rang))
+
+
+def lade(record: int | str, data_dir: Path = DATA, kanal: str = "erster") -> Record:
     """Liest eine Aufnahme nach den Regeln aus docs/BENCHMARK_QRS.md.
 
-    Kanalwahl: **erster Kanal** der Aufnahme. Nicht der beste, nicht der mit den schönsten
-    Zahlen — der erste. Bei den meisten MIT-BIH-Aufnahmen ist das MLII; wo nicht, gibt
-    `Record.channel` es aus und die Auswertung protokolliert es mit.
+    `kanal="erster"` (Vorgabe): **erster Kanal** der Aufnahme. Nicht der beste, nicht der mit
+    den schönsten Zahlen — der erste. Das ist die Regel, unter der die veröffentlichten
+    MIT-BIH-Zahlen zustande kommen, und sie schliesst nachträgliche Rosinenpickerei aus.
+
+    `kanal="app"`: der Kanal, den die **Anwendung selbst** wählen würde. Das weicht bei
+    **19 der 44 Aufnahmen** vom ersten Kanal ab — deutlich mehr als die eine Aufnahme, bei der
+    MLII gar nicht an erster Stelle steht. Beide Betriebsarten werden berichtet: die erste ist
+    mit der Literatur vergleichbar, die zweite beschreibt, was Anwender tatsächlich bekommen.
+    Die Ergebnisse stehen in docs/BENCHMARK_QRS.md.
     """
     import wfdb
 
@@ -66,7 +98,11 @@ def lade(record: int | str, data_dir: Path = DATA) -> Record:
     rec = wfdb.rdrecord(pfad)
     ann = wfdb.rdann(pfad, "atr")
 
-    signal = np.asarray(rec.p_signal[:, 0], dtype=float)
+    if kanal not in ("erster", "app"):
+        raise ValueError(f"kanal muss 'erster' oder 'app' sein, nicht {kanal!r}")
+    idx = 0 if kanal == "erster" else _kanal_wie_die_app(rec)
+
+    signal = np.asarray(rec.p_signal[:, idx], dtype=float)
     fs = float(rec.fs)
 
     ist_schlag = np.array([s in BEAT_SYMBOLS for s in ann.symbol], dtype=bool)
@@ -76,4 +112,4 @@ def lade(record: int | str, data_dir: Path = DATA) -> Record:
     beats = beats_alle[beats_alle >= ab]
 
     return Record(name=str(record), signal=signal, fs=fs, beats=beats,
-                  channel=rec.sig_name[0], n_beats_total=int(beats_alle.size))
+                  channel=rec.sig_name[idx], n_beats_total=int(beats_alle.size))

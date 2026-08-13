@@ -51,8 +51,8 @@ def detektiere(signal: np.ndarray, fs: float, verfahren: str) -> np.ndarray:
     return np.asarray(res.peaks, dtype=np.int64)
 
 
-def eine_aufnahme(nr: int, verfahren: str) -> dict:
-    r = lade(nr)
+def eine_aufnahme(nr: int, verfahren: str, kanal: str = "erster") -> dict:
+    r = lade(nr, kanal=kanal)
     det = detektiere(r.signal, r.fs, verfahren)
 
     # Dieselbe Anfangsregel wie für die Annotationen — sonst zählte man Schläge als verpasst,
@@ -94,6 +94,8 @@ def main() -> int:
     p.add_argument("--all", action="store_true", help="alle 44 bewerteten Aufnahmen")
     p.add_argument("--detector", default="eigen",
                    help="eigen (Standard) | hamilton | pan_tompkins | christov | engzee | two_average")
+    p.add_argument("--kanal", default="erster", choices=("erster", "app"),
+                   help="erster (Vorgabe, vergleichbar) | app (Kanalwahl der Anwendung)")
     p.add_argument("--csv", type=Path, help="Ergebnis zusätzlich als CSV schreiben")
     args = p.parse_args()
 
@@ -110,13 +112,13 @@ def main() -> int:
 
     kopf = f"{'Rec':>5s} {'Kanal':<6s} {'Schläge':>8s} {'TP':>6s} {'FP':>5s} {'FN':>5s} " \
            f"{'Se %':>7s} {'+P %':>7s} {'F1 %':>7s} {'Δt ms':>7s} {'|Δt| ms':>8s}"
-    print(f"Detektor: {args.detector}")
+    print(f"Detektor: {args.detector}   Kanalwahl: {args.kanal}")
     print(kopf)
     print("-" * len(kopf))
 
     zeilen = []
     for nr in records:
-        z = eine_aufnahme(nr, args.detector)
+        z = eine_aufnahme(nr, args.detector, args.kanal)
         zeilen.append(z)
         print(f"{z['record']:>5} {z['channel']:<6s} {z['beats']:>8d} {z['tp']:>6d} "
               f"{z['fp']:>5d} {z['fn']:>5d} {z['se_pct']:>7.2f} {z['ppv_pct']:>7.2f} "
