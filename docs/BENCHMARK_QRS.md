@@ -72,6 +72,26 @@ Ergebnis eingegangen.
 * **Die ersten 5 Sekunden** jeder Aufnahme werden verworfen (Einschwingen adaptiver
   Schwellen); dieselbe Regel gilt für Annotationen und Detektionen.
 
+Umgesetzt in `benchmarks/matching.py`. Alle Paare innerhalb der Toleranz werden nach Abstand
+aufsteigend abgearbeitet, das nächstliegende freie Paar gewinnt. Eine Zuordnung in blosser
+Zeitreihenfolge wäre einfacher, würde aber bei zwei eng benachbarten Annotationen die falsche
+bedienen — bei Kammerflattern (Aufnahme 207, RR teils unter 250 ms) überlappen sich die
+±150-ms-Fenster benachbarter Schläge tatsächlich.
+
+**Der Abgleich wird gegen konstruierte Fälle geprüft, nicht gegen echte Aufnahmen**
+(`benchmarks/test_matching.py`, 12 Fälle): identische Reihen, Verschiebung innerhalb und
+ausserhalb der Toleranz, die Toleranzgrenze selbst, jeder zweite Schlag fehlend, doppelt so
+viele Detektionen, eine zweimal detektierte R-Zacke, zwei konkurrierende Kandidaten, leere
+Reihen, unsortierte Eingabe, Zeitfehler-Streuung. Bei einer echten Aufnahme kennt man die
+richtige Antwort nicht und kann deshalb auch nicht prüfen, ob der Abgleich stimmt.
+
+Zusätzlich wurde der Abgleich **absichtlich beschädigt**, um zu sehen, ob die Prüfungen das
+merken: Eindeutigkeit entfernt, Toleranzgrenze exklusiv statt inklusiv, Zuordnung nach
+Reihenfolge statt nach Nähe. Die dritte Mutation blieb zunächst **unentdeckt** — der
+zugehörige Test war so gebaut, dass die nähere Detektion zufällig auch die erste war. Er ist
+daraufhin umgebaut worden (nähere Detektion liegt jetzt hinten); seither schlagen alle drei
+Mutationen fehl.
+
 ## Kennzahlen
 
 | Kennzahl | Definition |
