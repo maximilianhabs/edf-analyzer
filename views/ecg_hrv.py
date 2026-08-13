@@ -2339,25 +2339,20 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
         ]
         df_summary = pd.DataFrame(summary_rows)
 
-        xlsx_buf = io.BytesIO()
-        with pd.ExcelWriter(xlsx_buf, engine="openpyxl") as writer:
-            df_summary.to_excel(writer, sheet_name="HRV_Kennwerte", index=False)
-            df_rr.to_excel(writer, sheet_name="RR_Intervalle", index=False)
-        xlsx_buf.seek(0)
-
-        col_dl1, col_dl2 = st.columns(2)
-        with col_dl1:
-            st.download_button(
-                tr("ecg_hrv.export_excel"), icon=":material/download:",
-                data=xlsx_buf,
-                file_name=f"hrv_export_{os.path.splitext(os.path.basename(edf_path))[0]}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-        with col_dl2:
-            if st.button(tr("ecg_hrv.create_pdf"), icon=":material/description:"):
-                from analysis.pdf_report import build_hrv_pdf
-                with st.spinner(tr("ecg_hrv.creating_pdf")):
-                    pdf_bytes = build_hrv_pdf(
+        # Beides erst auf Knopfdruck. Die Excel-Datei wurde bis 2026-08-13 bei JEDEM Rendern
+        # gebaut — unabhängig vom Knopf daneben. Das ist derselbe Fehler wie auf der
+        # Report-Seite, nur billiger, und er machte den Knopf-Mechanismus hier unvollständig.
+        if st.button(tr("ecg_hrv.build_button"), icon=":material/description:",
+                     key="hrv_build", type="primary"):
+            from analysis.pdf_report import build_hrv_pdf
+            with st.spinner(tr("ecg_hrv.creating_pdf")):
+                _xlsx = io.BytesIO()
+                with pd.ExcelWriter(_xlsx, engine="openpyxl") as writer:
+                    df_summary.to_excel(writer, sheet_name="HRV_Kennwerte", index=False)
+                    df_rr.to_excel(writer, sheet_name="RR_Intervalle", index=False)
+                _xlsx.seek(0)
+                st.session_state["hrv_export"] = {
+                    "pdf": build_hrv_pdf(
                         patient_age=patient_age, patient_sex=patient_sex,
                         file_label=os.path.basename(edf_path),
                         duration_min=edf["duration_s"] / 60,
@@ -2367,14 +2362,28 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                         lab_rows=pdf_lab_rows, method_used=freq_method,
                         fd_welch=fd_welch, fd_burg=fd_burg, is_pediatric=is_pediatric,
                         edf_path=edf_path,
-                    )
-                st.session_state["pdf_bytes"] = pdf_bytes
-            if "pdf_bytes" in st.session_state:
+                    ),
+                    "xlsx": _xlsx.getvalue(),
+                }
+
+        _hrv_fertig = st.session_state.get("hrv_export")
+        if not _hrv_fertig:
+            st.caption(tr("ecg_hrv.build_hint"))
+        else:
+            _stem = os.path.splitext(os.path.basename(edf_path))[0]
+            col_dl1, col_dl2 = st.columns(2)
+            with col_dl1:
+                st.download_button(
+                    tr("ecg_hrv.export_excel"), icon=":material/download:",
+                    data=_hrv_fertig["xlsx"], file_name=f"hrv_export_{_stem}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+            with col_dl2:
                 st.download_button(
                     tr("ecg_hrv.download_pdf"), icon=":material/download:",
-                    data=st.session_state["pdf_bytes"],
-                    file_name=f"hrv_report_{os.path.splitext(os.path.basename(edf_path))[0]}.pdf",
-                    mime="application/pdf",
+                    data=_hrv_fertig["pdf"], file_name=f"hrv_report_{_stem}.pdf",
+                    mime="application/pdf", use_container_width=True,
                 )
 
     # ── Tab 4: Hyperventilation ───────────────────────────────────────────────

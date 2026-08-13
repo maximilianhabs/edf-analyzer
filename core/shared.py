@@ -1023,7 +1023,9 @@ div[data-testid="stHorizontalBlock"]:has(> div > div > button[kind="secondary"])
 #: Neue Schlüssel gehören geprüft: `tools/check_session_state.py` erzwingt eine Entscheidung.
 ABGELEITETE_KEYS = (
     # Rechenergebnisse
-    "_edf_cache_meta", "hrv_summary", "hrv_summary_report", "eeg_summary", "pdf_bytes",
+    "_edf_cache_meta", "hrv_summary", "hrv_summary_report", "eeg_summary",
+    # fertig gebaute Report-Dateien — gehören zur Datei, aus der sie entstanden sind
+    "hrv_export", "report_export", "visual_export", "art_export",
     # manuelle Korrekturen — beziehen sich auf die Kanäle GENAU DIESER Aufnahme
     "channel_overrides", "artifact_overrides",
     # Positionen in der Aufnahme (eine Epoche aus Datei A bedeutet in Datei B nichts)

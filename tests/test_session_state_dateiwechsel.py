@@ -46,7 +46,8 @@ def test_ergebnisse_der_vorherigen_datei_werden_verworfen(shared):
     state["hrv_summary"] = {"sdnn": 41.0}
     state["eeg_summary"] = {"dominant": 9.5}
     state["_edf_cache_meta"] = {"duration_s": 1200}
-    state["pdf_bytes"] = b"REPORT-A"
+    state["hrv_export"] = {"pdf": b"REPORT-A"}
+    state["report_export"] = (b"PDF-A", b"XLSX-A", b"MANIFEST-A")
     state["channel_overrides"] = {"POL X1": "ECG"}
     state["patient_age"] = 81
     state["ep_ecg"] = 47
@@ -56,7 +57,8 @@ def test_ergebnisse_der_vorherigen_datei_werden_verworfen(shared):
     sh.get_edf_path()
 
     for schluessel in ("hrv_summary_report", "hrv_summary", "eeg_summary", "_edf_cache_meta",
-                       "pdf_bytes", "channel_overrides", "patient_age", "ep_ecg"):
+                       "hrv_export", "report_export", "channel_overrides",
+                       "patient_age", "ep_ecg"):
         assert schluessel not in state, (
             f"{schluessel!r} hat den Dateiwechsel überlebt — der Report zeigt Werte von "
             f"Aufnahme A unter dem Namen von Aufnahme B")

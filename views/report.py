@@ -426,10 +426,27 @@ def render():
         e = apply_channel_overrides(load_and_prepare(_path))
         return build_glory_pdf(e, _path, _disp, age=_age, is_pediatric=_pediatric)
 
-    try:
-        with st.spinner(tr("report.creating_reports")):
-            pdf_bytes, xlsx_bytes, manifest_bytes = _export_bytes(
-                edf_path, _disp, _rep_age, _rep_sex, _rep_pediatric)
+    # Erzeugen NUR auf Knopfdruck (User-Entscheidung 2026-08-13). Vorher genügte das Öffnen
+    # dieser Seite, um PDF, Excel, Manifest UND den visuellen Report zu bauen — auf einer
+    # 10-Minuten-Aufnahme rund 7 Sekunden, davon 5,7 in collect_sections. Die Arbeit steckt
+    # also nicht im Schreiben der Dateien, sondern im Rechnen davor; ein Knopf spart sie fast
+    # vollständig. Und häufig will man den Report gar nicht, sondern nur die Tabellen oben.
+    st.caption(tr("report.build_caption"))
+    if st.button(tr("report.build_button"), icon=":material/description:",
+                 key="report_build", type="primary"):
+        try:
+            with st.spinner(tr("report.creating_reports")):
+                st.session_state["report_export"] = _export_bytes(
+                    edf_path, _disp, _rep_age, _rep_sex, _rep_pediatric)
+        except Exception as e:
+            st.session_state.pop("report_export", None)
+            st.error(tr("report.export_failed", err=e))
+
+    _fertig = st.session_state.get("report_export")
+    if not _fertig:
+        st.info(tr("report.build_hint"), icon=":material/hourglass_empty:")
+    else:
+        pdf_bytes, xlsx_bytes, manifest_bytes = _fertig
         ec1, ec2, ec3 = st.columns(3)
         ec1.download_button(tr("report.download_pdf"), pdf_bytes, icon=":material/description:", file_name=f"{_base}_report.pdf",
                             mime="application/pdf", use_container_width=True)
@@ -437,15 +454,24 @@ def render():
             tr("report.download_excel"), xlsx_bytes, icon=":material/bar_chart:", file_name=f"{_base}_report.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True)
+        # Eigener Knopf: der visuelle Report kostet noch einmal gut eine Sekunde und wird
+        # seltener gebraucht als PDF und Excel.
         with ec3:
-            try:
-                with st.spinner(tr("report.creating_visual")):
-                    _gb = _glory_bytes(edf_path, _disp, _rep_age, _rep_pediatric)
-                ec3.download_button(tr("report.download_visual"), _gb,
+            if st.session_state.get("visual_export") is None:
+                if st.button(tr("report.build_visual_button"), icon=":material/palette:",
+                             key="visual_build", use_container_width=True):
+                    try:
+                        with st.spinner(tr("report.creating_visual")):
+                            st.session_state["visual_export"] = _glory_bytes(
+                                edf_path, _disp, _rep_age, _rep_pediatric)
+                    except Exception as ex:
+                        st.caption(tr("report.visual_unavailable", err=ex))
+            if st.session_state.get("visual_export") is not None:
+                ec3.download_button(tr("report.download_visual"),
+                                    st.session_state["visual_export"],
                                     icon=":material/palette:", file_name=f"{_base}_visual.pdf", mime="application/pdf",
                                     type="primary", use_container_width=True)
-            except Exception as ex:
-                st.caption(tr("report.visual_unavailable", err=ex))
+        st.caption(tr("report.build_visual_caption"))
         st.caption(tr("report.visual_caption"))
 
         # Maschinenlesbar, bewusst als vierter Knopf unter den drei Report-Formaten: PDF,
@@ -457,5 +483,3 @@ def render():
             icon=":material/data_object:", file_name=f"{_base}_manifest.json",
             mime="application/json", use_container_width=True)
         st.caption(tr("report.manifest_caption"))
-    except Exception as e:
-        st.error(tr("report.export_failed", err=e))

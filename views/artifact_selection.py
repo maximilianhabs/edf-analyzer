@@ -790,12 +790,10 @@ def render():
 
     # ── Export: artefaktkorrigierter Report als PDF / Excel ──────────────────
     st.divider()
-    st.subheader("⬇️ Artefaktkorrigierten Report exportieren")
-    st.caption("Alle Parameter (HRV · EEG-Spektrum · Aperiodik · Asymmetrie) berechnet auf den "
-               "**sauberen** Segmenten deiner aktuellen Maske — kompakt, mit Einheit und kurzer Norm. "
-               "PDF und Excel, analog zum Report, aber artefaktkorrigiert.")
+    st.subheader("⬇️ " + tr("artifact.export_header"))
+    st.caption(tr("artifact.export_caption"))
 
-    @st.cache_data(show_spinner="Erstelle artefaktkorrigierten Report …")
+    @st.cache_data(show_spinner=False)   # Spinner an der Aufrufstelle, hinter dem Knopf
     def _export_corrected(_path, _seg_tuple, _disp, _age, _sex, _pediatric):
         from analysis.report_export import collect_sections, build_pdf, build_excel
         e = apply_channel_overrides(load_and_prepare(_path))
@@ -809,18 +807,40 @@ def render():
     _art_age, _art_sex = get_patient_info()
     _art_pediatric = st.session_state.get("is_pediatric", False)
     if not res.segments:
-        st.info("Noch keine Artefakt-Segmente markiert → der korrigierte Report entspräche der "
-                "Gesamtauswertung. Markiere/erzeuge oben Segmente oder nutze den Export auf der "
-                "**Report**-Seite.")
+        st.info(tr("artifact.export_no_segments"))
     else:
-        try:
-            pdf_bytes, xlsx_bytes = _export_corrected(edf_path, _seg_tuple, _disp, _art_age, _art_sex, _art_pediatric)
+        # Erzeugen NUR auf Knopfdruck. Vorher lief `_export_corrected` bei jedem Rendern, und
+        # weil die Maske im Cache-Schlüssel steckt, bedeutete JEDE Änderung an der Maske einen
+        # vollständigen Neuaufbau (~6 s, davon 5,7 s in collect_sections) — mitten in der
+        # Arbeit, für ein PDF, das in dem Moment niemand angefordert hatte.
+        st.caption(tr("artifact.export_build_caption"))
+        if st.button(tr("artifact.export_build_button"), icon=":material/description:",
+                     key="art_export_build"):
+            try:
+                with st.spinner(tr("artifact.export_creating")):
+                    st.session_state["art_export"] = {
+                        "segs": _seg_tuple,
+                        "bytes": _export_corrected(edf_path, _seg_tuple, _disp,
+                                                   _art_age, _art_sex, _art_pediatric),
+                    }
+            except Exception as e:
+                st.session_state.pop("art_export", None)
+                st.error(tr("artifact.export_failed", err=e))
+
+        _fertig = st.session_state.get("art_export")
+        if _fertig:
+            pdf_bytes, xlsx_bytes = _fertig["bytes"]
+            # Die Maske kann sich seit dem Erzeugen geändert haben. Stillschweigend die alte
+            # Fassung zum Download anzubieten wäre genau der Fehler, den wir gerade beim
+            # Session-State behoben haben — deshalb sichtbar auszeichnen statt neu rechnen.
+            if _fertig["segs"] != _seg_tuple:
+                st.warning(tr("artifact.export_stale"), icon=":material/update:")
             ec1, ec2 = st.columns(2)
-            ec1.download_button("PDF (korrigiert)", pdf_bytes, icon=":material/description:", file_name=f"{_base}.pdf",
+            ec1.download_button(tr("artifact.export_pdf"), pdf_bytes,
+                                icon=":material/description:", file_name=f"{_base}.pdf",
                                 mime="application/pdf", use_container_width=True)
             ec2.download_button(
-                "Excel (korrigiert)", xlsx_bytes, icon=":material/bar_chart:", file_name=f"{_base}.xlsx",
+                tr("artifact.export_excel"), xlsx_bytes, icon=":material/bar_chart:",
+                file_name=f"{_base}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True)
-        except Exception as e:
-            st.error(f"Export fehlgeschlagen: {e}")

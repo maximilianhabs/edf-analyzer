@@ -341,6 +341,14 @@ STRINGS = {
             "export_caption": "Alle Werte kompakt und sortiert (Aufnahme · HRV · EEG-Spektrum · "
                                "Aperiodik · Asymmetrie) — je Zeile Wert, Einheit und kurze Norm. "
                                "Ohne Kommentar.",
+            # Erzeugen NUR auf Knopfdruck (User-Entscheidung 2026-08-13): das Rechnen
+            # davor kostet auf einer 10-Minuten-Aufnahme rund 7 Sekunden, und häufig
+            # will man den Report gar nicht.
+            "build_button": "Reports erzeugen",
+            "build_caption": "PDF, Excel und Manifest werden erst auf Knopfdruck berechnet.",
+            "build_hint": "Noch nicht erzeugt — der Knopf oben startet die Berechnung.",
+            "build_visual_button": "Visuellen Report erzeugen",
+            "build_visual_caption": "Eigener Knopf: kostet noch einmal gut eine Sekunde extra.",
             "creating_reports": "Erstelle Report-Dateien …",
             "creating_visual": "Erstelle Visual Report …",
             "download_pdf": "PDF herunterladen",
@@ -506,6 +514,27 @@ STRINGS = {
         },
         "artifact": {
             "title": "Artefaktkorrektur & EEG/EKG-Selektion",
+            # Export-Abschnitt. Bis 2026-08-13 wurde der korrigierte Report bei JEDER
+            # Maskenänderung neu gerechnet (~6 s), weil die Maske im Cache-Schlüssel steckt —
+            # mitten in der Arbeit, für ein PDF, das in dem Moment niemand wollte.
+            "export_header": "Artefaktkorrigierten Report exportieren",
+            "export_caption": "Alle Parameter (HRV · EEG-Spektrum · Aperiodik · Asymmetrie) "
+                              "berechnet auf den **sauberen** Segmenten deiner aktuellen "
+                              "Maske — kompakt, mit Einheit und kurzer Norm. PDF und Excel, "
+                              "analog zum Report, aber artefaktkorrigiert.",
+            "export_build_button": "Korrigierten Report erzeugen",
+            "export_build_caption": "Wird erst auf Knopfdruck berechnet — sonst liefe die "
+                                    "Berechnung bei jeder Änderung an der Maske neu.",
+            "export_stale": "Die Maske hat sich seit dem Erzeugen geändert — Knopf erneut "
+                            "drücken für den aktuellen Stand.",
+            "export_creating": "Erstelle artefaktkorrigierten Report …",
+            "export_pdf": "PDF (korrigiert)",
+            "export_excel": "Excel (korrigiert)",
+            "export_no_segments": "Noch keine Artefakt-Segmente markiert → der korrigierte "
+                                  "Report entspräche der Gesamtauswertung. Markiere/erzeuge "
+                                  "oben Segmente oder nutze den Export auf der "
+                                  "**Report**-Seite.",
+            "export_failed": "Export fehlgeschlagen: {err}",
             "spectral_comparison": "Spektralanalyse — Gesamt vs. artefaktkorrigiert",
             "no_artifacts_marked": "Keine Artefakt-Segmente markiert → korrigiert = Gesamt "
                                     "(nichts zu entfernen).",
@@ -586,6 +615,11 @@ STRINGS = {
             "parameter_explanations": "Parameter-Erklärungen, Synonyme & Quellen",
             "rr_table": "RR-Tabelle (alle Schläge)",
             "export_excel": "HRV-Ergebnisse als Excel exportieren",
+            # Ein Knopf für BEIDE Formate (2026-08-13): die Excel-Datei wurde vorher bei
+            # jedem Rendern gebaut, unabhängig vom Knopf — derselbe Fehler wie auf der
+            # Report-Seite, nur billiger.
+            "build_button": "Report erzeugen (PDF + Excel)",
+            "build_hint": "Noch nicht erzeugt — der Knopf startet die Berechnung.",
             "create_pdf": "PDF-Report erzeugen",
             "creating_pdf": "Erzeuge PDF…",
             "download_pdf": "PDF herunterladen",
@@ -922,6 +956,11 @@ STRINGS = {
             "export_caption": "All values compact and sorted (recording · HRV · EEG spectrum · "
                                "aperiodic · asymmetry) — value, unit and a short norm per row. "
                                "No commentary.",
+            "build_button": "Create reports",
+            "build_caption": "PDF, Excel and manifest are computed only when you ask for them.",
+            "build_hint": "Not created yet — the button above starts the computation.",
+            "build_visual_button": "Create visual report",
+            "build_visual_caption": "Its own button: costs another second or so on top.",
             "creating_reports": "Creating report files …",
             "creating_visual": "Creating visual report …",
             "download_pdf": "Download PDF",
@@ -1084,6 +1123,23 @@ STRINGS = {
         },
         "artifact": {
             "title": "Artifact Correction & EEG/ECG Selection",
+            "export_header": "Export artifact-corrected report",
+            "export_caption": "All parameters (HRV · EEG spectrum · aperiodic · asymmetry) "
+                              "computed on the **clean** segments of your current mask — "
+                              "compact, with unit and a short reference. PDF and Excel, like "
+                              "the report but artifact-corrected.",
+            "export_build_button": "Create corrected report",
+            "export_build_caption": "Computed only when you ask — otherwise it would be "
+                                    "recomputed on every change to the mask.",
+            "export_stale": "The mask has changed since this was created — press the button "
+                            "again for the current state.",
+            "export_creating": "Creating artifact-corrected report …",
+            "export_pdf": "PDF (corrected)",
+            "export_excel": "Excel (corrected)",
+            "export_no_segments": "No artifact segments marked yet → the corrected report "
+                                  "would equal the overall analysis. Mark or generate "
+                                  "segments above, or use the export on the **Report** page.",
+            "export_failed": "Export failed: {err}",
             "spectral_comparison": "Spectral analysis — total vs. artifact-corrected",
             "no_artifacts_marked": "No artifact segments marked → corrected = total (nothing "
                                     "to remove).",
@@ -1166,6 +1222,8 @@ STRINGS = {
             "parameter_explanations": "Parameter explanations, synonyms & sources",
             "rr_table": "RR table (all beats)",
             "export_excel": "Export HRV results as Excel",
+            "build_button": "Create report (PDF + Excel)",
+            "build_hint": "Not created yet — the button starts the computation.",
             "create_pdf": "Create PDF report",
             "creating_pdf": "Creating PDF…",
             "download_pdf": "Download PDF",
