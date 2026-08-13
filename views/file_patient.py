@@ -180,7 +180,8 @@ def render():
         return _DEFAULT_AGE_ID
 
     if "patient_age" not in st.session_state:
-        st.session_state.patient_age = 52
+        from core.shared import STANDARD_ALTER
+        st.session_state.patient_age = STANDARD_ALTER
     if "patient_age_label" not in st.session_state:
         st.session_state.patient_age_label = _age_id_for(st.session_state.patient_age)
     if "patient_sex" not in st.session_state:

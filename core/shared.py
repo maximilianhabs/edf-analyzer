@@ -77,10 +77,16 @@ ELECTRODE_POS = {
 
 EPOCH_SEC = 10  # Standard-Epochenlänge (EKG-Tab, Fallback)
 
+#: Vorbelegung des Patientenalters — an EINER Stelle, siehe get_patient_info().
+STANDARD_ALTER = 52
+
 
 def render_sidebar_status():
     """Persistente Patientenkontext-Karte in der Sidebar — sichtbar auf jeder Seite."""
-    edf_path  = st.session_state.get("edf_path", "")
+    # Über get_edf_path(), nicht direkt aus dem Session-State: die Sidebar rendert VOR dem
+    # Seiteninhalt und zeigte sonst nach einem Dateiwechsel für einen Durchlauf noch Dauer
+    # und Kanalzahl der alten Aufnahme (aus `_edf_cache_meta`).
+    edf_path  = get_edf_path()
     # html.escape: file_name stammt vom hochgeladenen Dateinamen (uploaded.name) und
     # landet unten via unsafe_allow_html direkt im DOM — ohne Escaping wäre ein
     # präparierter Dateiname ein Stored-XSS-Vektor gegen den eigenen Browser.
@@ -998,11 +1004,66 @@ div[data-testid="stHorizontalBlock"]:has(> div > div > button[kind="secondary"])
     return st.session_state[key]
 
 
+#: Session-State-Schlüssel, die aus dem INHALT der geladenen Datei abgeleitet sind und beim
+#: Dateiwechsel deshalb ungültig werden. Ohne diese Liste überlebten Ergebnisse der vorherigen
+#: Datei den Wechsel — der Report zeigte dann Werte der alten Aufnahme unter dem Namen der
+#: neuen (User-Fund 2026-08-13). Das ist die gefährliche Fehlerklasse dieses Projekts:
+#: nichts stürzt ab, die Zahlen sehen plausibel aus, und nur der Zufall deckt es auf.
+#:
+#: NICHT enthalten sind bewusst:
+#:   * **Einstellungen** — Artefakt-Parameter (`art_*`), Fensterwahl, Rechenintensiv-Schalter.
+#:     Sie beschreiben, WIE gerechnet wird, nicht WAS gemessen wurde, und gelten weiter.
+#:     Sie hängen ausserdem an Widgets; sie zu löschen, während das Widget gerendert wird,
+#:     quittiert Streamlit mit einem Fehler.
+#:   * **Sitzungsebene** — Anmeldung, Sprache, Upload-Token, der Pfad selbst.
+#:   * `phi_validated` / `phi_has_patient_data` — werden an JEDEM Einstiegspunkt in
+#:     views/file_patient.py ausdrücklich gesetzt (geprüft 2026-08-13); ein Löschen hier
+#:     würde die Freigabe nur verzögert wiederherstellen, nicht sicherer machen.
+#:
+#: Neue Schlüssel gehören geprüft: `tools/check_session_state.py` erzwingt eine Entscheidung.
+ABGELEITETE_KEYS = (
+    # Rechenergebnisse
+    "_edf_cache_meta", "hrv_summary", "hrv_summary_report", "eeg_summary", "pdf_bytes",
+    # manuelle Korrekturen — beziehen sich auf die Kanäle GENAU DIESER Aufnahme
+    "channel_overrides", "artifact_overrides",
+    # Positionen in der Aufnahme (eine Epoche aus Datei A bedeutet in Datei B nichts)
+    "ecg_sens_idx", "ep_ecg", "rhythm_win_idx", "artifact_screen_idx", "_art_last_evt",
+    # Patientendaten — gehören zur Aufnahme, nicht zur Sitzung. Sie fliessen in die
+    # Normwert-Einordnung ein (Hansen-Perzentile, pädiatrische Grenzen); das Alter des
+    # vorherigen Patienten still weiterzuverwenden wäre der schlimmste Fall dieses Bugs.
+    "patient_age", "patient_age_label", "patient_sex", "patient_data_from_header",
+    "pediatric_age_group", "is_pediatric",
+)
+
+#: Merker, für welchen Pfad der abgeleitete Zustand gilt.
+_ZUSTAND_FUER = "_state_for_path"
+
+
+def invalidate_file_state(pfad: str) -> int:
+    """Verwirft abgeleiteten Zustand, sobald eine ANDERE Datei aktiv ist.
+
+    Bewusst als Wächter am gemeinsamen Zugriffspunkt statt als Aufräumen an jeder Ladestelle:
+    Ladestellen kommen dazu (Upload, PHI-Freigabe, Demodatei), und die eine, die man vergisst,
+    fällt nicht auf. Gibt die Zahl der verworfenen Schlüssel zurück (für Tests).
+    """
+    if st.session_state.get(_ZUSTAND_FUER) == pfad:
+        return 0
+    n = sum(st.session_state.pop(k, _ZUSTAND_FUER) is not _ZUSTAND_FUER
+            for k in ABGELEITETE_KEYS)
+    st.session_state[_ZUSTAND_FUER] = pfad
+    return n
+
+
 def get_edf_path():
     """Liest den aktuell gewählten EDF-Pfad aus dem Session-State (gesetzt auf 'Datei & Patient').
     Liegt unter dem Plain-Key 'edf_path' (nicht 'edf_path_widget') — siehe Kommentar in
-    views/file_patient.py zur Widget-State-GC-Problematik bei Multi-Page-Apps."""
-    return st.session_state.get("edf_path", "")
+    views/file_patient.py zur Widget-State-GC-Problematik bei Multi-Page-Apps.
+
+    Verwirft nebenbei den abgeleiteten Zustand der vorherigen Datei; siehe
+    `invalidate_file_state`."""
+    pfad = st.session_state.get("edf_path", "")
+    invalidate_file_state(pfad)
+    return pfad
 
 
 def apply_channel_overrides(edf: dict) -> dict:
@@ -1092,6 +1153,10 @@ def get_edf_or_stop():
 
 def get_patient_info():
     """Liest Patientenalter/-geschlecht aus dem Session-State (gesetzt auf 'Datei & Patient')."""
-    age = st.session_state.get("patient_age", 50)
+    # STANDARD_ALTER statt einer hier eingesetzten Zahl: bis 2026-08-13 stand hier 50,
+    # während views/file_patient.py mit 52 vorbelegte — je nachdem, ob die Seite „Datei &
+    # Patient" schon besucht war, ging dieselbe Aufnahme mit unterschiedlichem Alter in die
+    # Normwert-Einordnung.
+    age = st.session_state.get("patient_age", STANDARD_ALTER)
     sex = st.session_state.get("patient_sex", "X")
     return age, sex

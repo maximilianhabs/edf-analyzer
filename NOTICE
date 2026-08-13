@@ -75,6 +75,25 @@ OPTIONALE ABHÄNGIGKEIT (requirements-validated.txt) — COPYLEFT
   wird nichts stillschweigend durch ein anderes Verfahren ersetzt.
 
 
+wfdb  —  BSD-3-Clause
+---------------------
+
+  MIT Laboratory for Computational Physiology.  https://github.com/MIT-LCP/wfdb-python
+
+  Liest das PhysioNet-WFDB-Format (.dat/.hea/.atr) und wird ausschliesslich vom
+  QRS-Benchmark gegen die MIT-BIH Arrhythmia Database benutzt
+  (`benchmarks/`, siehe docs/BENCHMARK_QRS.md).
+
+  Weder die Anwendung noch der normale Testlauf importieren sie; sie steht deshalb in einer
+  eigenen `requirements-benchmark.txt` und wird von der CI nicht installiert. Der Benchmark
+  läuft von Hand, seine Ergebnisse liegen als CSV im Repository.
+
+  Die Datenbank selbst liegt NICHT im Repository (rund 500 MB, öffentlich und dauerhaft bei
+  PhysioNet verfügbar, Open Data Commons Attribution License):
+  Moody GB, Mark RG. The impact of the MIT-BIH Arrhythmia Database.
+  IEEE Eng in Med and Biol 20(3):45-50 (2001).
+
+
 HINWEIS ZUR VOLLSTÄNDIGKEIT
 ---------------------------
 

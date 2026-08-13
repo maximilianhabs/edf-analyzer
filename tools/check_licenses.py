@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 STD_REQ = ROOT / "requirements.txt"
 OPT_REQ = ROOT / "requirements-validated.txt"
 DEV_REQ = ROOT / "requirements-dev.txt"   # nur Entwicklung/CI, nicht für den Betrieb
+BENCH_REQ = ROOT / "requirements-benchmark.txt"  # nur der MIT-BIH-Benchmark, von Hand
 NOTICE = ROOT / "NOTICE"
 
 # Import-Name ≠ PyPI-Name
@@ -129,6 +130,10 @@ def imported_modules():
                 mods.add(node.module.split(".")[0])
     local = {p.name for p in ROOT.iterdir() if p.is_dir() and (p / "__init__.py").exists()}
     local |= {"tests", "app", "analysis", "core", "views"}
+    # benchmarks/ ist bewusst kein Paket (kein __init__.py) — die Skripte legen ihr eigenes
+    # Verzeichnis auf sys.path und importieren sich flach untereinander. Ohne diese Zeile
+    # hielte der Prüfer `mitdb`, `matching` und `fetch_mitdb` für fehlende Fremdpakete.
+    local |= {f.stem for f in (ROOT / "benchmarks").glob("*.py")}
     std = stdlib_names()
     return {IMPORT_TO_PYPI.get(m, m) for m in mods
             if m not in std and m not in local}
@@ -159,7 +164,8 @@ def is_copyleft(text):
 def main():
     std, opt = read_requirements(STD_REQ), read_requirements(OPT_REQ)
     dev = read_requirements(DEV_REQ)
-    declared = set(std) | set(opt) | set(dev)
+    bench = read_requirements(BENCH_REQ)
+    declared = set(std) | set(opt) | set(dev) | set(bench)
     used = imported_modules()
     problems, notes = [], []
 
