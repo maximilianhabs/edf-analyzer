@@ -45,3 +45,6 @@ anonymization_log.json
 # IDE
 .vscode/
 .idea/
+
+# Benchmark-Daten (MIT-BIH, ~500 MB) — per benchmarks/fetch_mitdb.py holen
+benchmarks/data/

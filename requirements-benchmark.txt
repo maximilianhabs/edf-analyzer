@@ -1,0 +1,13 @@
+# Nur für den QRS-Benchmark gegen MIT-BIH (docs/BENCHMARK_QRS.md).
+#
+# Bewusst eine EIGENE Datei, nicht requirements-dev.txt: Benchmark-Werkzeug gehört weder in
+# die Laufzeit noch in den normalen Testlauf. Die CI installiert es nicht — der Benchmark
+# läuft von Hand, seine Ergebnisse liegen als CSV im Repository.
+#
+#     pip install -r requirements-benchmark.txt
+#     python3 benchmarks/fetch_mitdb.py 100
+#     python3 benchmarks/qrs_benchmark.py
+
+# Liest das PhysioNet-WFDB-Format samt Schlag-Annotationen (.dat/.hea/.atr).
+# BSD-3-Clause — verträgt sich mit Apache-2.0.
+wfdb>=4.1,<5
