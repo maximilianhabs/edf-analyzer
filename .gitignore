@@ -48,3 +48,6 @@ anonymization_log.json
 
 # Benchmark-Daten (MIT-BIH, ~500 MB) — per benchmarks/fetch_mitdb.py holen
 benchmarks/data/
+
+# MIT-BIH AFib-Datenbank — 640 MB, öffentlich bei PhysioNet, siehe benchmarks/fetch_afdb.py
+benchmarks/data_afdb/
