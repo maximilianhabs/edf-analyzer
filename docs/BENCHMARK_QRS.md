@@ -167,3 +167,79 @@ Ausreisser bei −94 ms zeigt, dass es Einzelfälle gibt, aber der Median liegt 
 
 **Was das noch nicht bedeutet:** eine einzige, leichte Aufnahme. Aussagekraft bekommt der
 Benchmark erst über alle 44 — insbesondere über die schwierigen (108, 203, 207, 222).
+
+### Chunk 4 — vier schwierige Aufnahmen (2026-08-12)
+
+Nicht die nächsten vier, sondern gezielt die schweren: 108 (Grundlinienrauschen), 203
+(Rauschen und Ektopie), 207 (Kammerflattern), 222 (Vorhofflimmern mit Übergängen).
+
+| Aufnahme | Schläge | eigen Se | eigen +P | Hamilton Se | Hamilton +P |
+|---|---|---|---|---|---|
+| 100 | 2267 | 100,00 % | 100,00 % | 99,91 % | 100,00 % |
+| 108 | 1758 | 85,04 % | **100,00 %** | 70,76 % | **60,71 %** |
+| 203 | 2972 | 84,83 % | 99,64 % | **98,08 %** | 99,59 % |
+| 207 | 2327 | 76,84 % | 99,83 % | **85,69 %** | 99,30 % |
+| 222 | 2476 | 86,19 % | 100,00 % | **99,92 %** | 99,68 % |
+| **gesamt** | **11800** | **86,48 %** | **99,88 %** | 92,31 % | 92,85 % |
+
+Rohdaten: `benchmarks/results/chunk4_schwierige_eigen.csv` und `…_hamilton.csv`.
+
+**Die Gesamt-F1-Werte sind fast gleich (92,70 gegen 92,58) — und das ist irreführend.** Die
+beiden Detektoren scheitern völlig verschieden:
+
+* **Der eigene ist konservativ.** Der Vorhersagewert liegt bei 99,88 %: er erfindet praktisch
+  nie einen Schlag. Dafür übersieht er auf schwierigen Aufnahmen jeden siebten bis vierten.
+* **Hamilton ist aggressiv.** Auf drei der vier schweren Aufnahmen findet er deutlich mehr
+  Schläge, produziert aber auf Aufnahme 108 **805 falsch-positive** bei 1758 echten Schlägen —
+  der Vorhersagewert bricht auf 60,7 % ein. Eine HRV-Auswertung darauf wäre wertlos.
+
+Für ein Werkzeug, dessen Ergebnis eine Variabilitätsanalyse ist, ist die konservative
+Auslegung die richtige: ein übersehener Schlag verlängert ein RR-Intervall, ein erfundener
+zerreisst zwei. Trotzdem sind 86,5 % Sensitivität deutlich unter dem Stand der Technik
+(publizierte Detektoren erreichen über 99 %).
+
+#### Warum der eigene Detektor Schläge übersieht — zwei belegte Ursachen
+
+**1. Die Schwelle ist global, nicht adaptiv.** `detect_r_peaks()` berechnet sie einmal über
+die *gesamte* Aufnahme (98. Perzentil × 0,25); der Docstring nennt sie „adaptive Threshold",
+was sie nicht ist. Gemessen am 98. Perzentil je Minute schwankt die Amplitude innerhalb einer
+Aufnahme erheblich:
+
+| Aufnahme | Schwankung | Sensitivität |
+|---|---|---|
+| 100 | 1,2× | 100,0 % |
+| 222 | 2,2× | 86,2 % |
+| 108 | 3,2× | 85,0 % |
+
+Der Zusammenhang ist eindeutig: Wo die Amplitude über die Aufnahme konstant bleibt, ist die
+Erkennung perfekt. Wo sie schwankt, liegt die global bestimmte Schwelle in den leisen
+Abschnitten zu hoch.
+
+**2. Der Mindestabstand von 300 ms schliesst schnelle Rhythmen aus.** In Aufnahme 207 liegen
+**265 von 2326 RR-Intervallen unter 300 ms** — diese Schläge kann der Detektor bauartbedingt
+nicht finden, unabhängig von Signalqualität oder Schwelle. Das erklärt einen erheblichen Teil
+der dortigen 539 Fehlschläge.
+
+#### Was eine Korrektur brächte (gemessen, nicht geschätzt)
+
+Blockweise Schwelle über 10-Sekunden-Fenster statt global, sonst unverändert:
+
+| Aufnahme | heute | mit 10-s-Fenster |
+|---|---|---|
+| 100 | 100,0 / 100,0 | 100,0 / 100,0 |
+| 108 | 85,0 / 100,0 | **99,1** / 99,7 |
+| 203 | 84,9 / 99,7 | 87,3 / 99,7 |
+| 207 | 76,9 / 99,9 | **87,6** / 99,7 |
+| 222 | 86,2 / 100,0 | **93,3** / 100,0 |
+| **gesamt** | **86,50 / 99,90** | **92,82 / 99,81** |
+
+Sensitivität +6,3 Prozentpunkte, Vorhersagewert praktisch unverändert (−0,09). Der Gewinn
+kostet also nichts.
+
+Ein zusätzlich auf 200 ms verkürzter Mindestabstand brächte auf 207 weitere 2,6 Punkte,
+kostet aber auf 108 den Vorhersagewert (99,7 → 92,2 %). Diese Änderung ist deshalb **nicht**
+zu empfehlen; die Fensterung allein ist der klare Gewinn.
+
+**Bewusst nicht umgesetzt.** Eine Änderung am Detektor verändert jede HRV-Ausgabe der
+Anwendung — das ist eine fachliche Entscheidung und keine Aufräumarbeit. Die Messung liegt
+vor, die Entscheidung nicht.
