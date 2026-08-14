@@ -219,3 +219,91 @@ Das Rhythmus-Screening steht bisher in **keinem** Registry-Eintrag. Mit diesen Z
 sich es erstmals belegt aufnehmen — als Screening-Marker mit hoher Spezifität und
 eingeschränkter Sensitivität auf Fensterebene, gemessen an 234 Stunden annotiertem EKG.
 
+---
+
+# Protokoll-Erweiterung: die Frage auf Patientenebene
+
+**Vor der Messung geschrieben (14.08.2026).**
+
+## Warum die Fensterebene die falsche Einheit ist
+
+Alles oben zählt 30-Sekunden-Fenster. Klinisch wird aber nicht je Fenster entschieden, sondern
+**je Patient**: Liegt Vorhofflimmern vor, ja oder nein?
+
+Der Unterschied ist keine Formalie, sondern folgt aus der Krankheit. Vorhofflimmern ist häufig
+**paroxysmal** — es tritt in Episoden auf. Für einen Patienten mit anfallsartigem Vorhofflimmern
+gilt deshalb:
+
+* Wird **ein einziges** Fenster richtig erkannt, steht die Diagnose. Alle übrigen verpassten
+  Fenster derselben Episode ändern daran nichts.
+* Umgekehrt zählt bei einem Gesunden **jeder einzelne** Fehlalarm — ein falsch positives Fenster
+  in vierzig genügt, um jemanden fälschlich mit einem Vorhofflimmern-Verdacht zu belasten.
+
+Eine Sensitivität von 75,3 % je Fenster ist damit weder gut noch schlecht, sondern schlicht die
+falsche Auskunft auf die eigentliche Frage. Die Fensterebene bleibt trotzdem stehen: Sie ist die
+belastbare Größe für Qualitätssicherung und für den Vergleich zweier Verfahren, weil sie
+tausende unabhängige Beobachtungen liefert statt dreiundzwanzig.
+
+## Was bisher fehlt
+
+Auf Aufnahmeebene erkennt das Screening 23 von 23 — **und diese Zahl ist wertlos**, weil die
+AFib-Datenbank keine einzige Aufnahme ohne Vorhofflimmern enthält. Die Hälfte der Frage
+(„schlägt es bei Gesunden nicht an?") ist damit unbeantwortet.
+
+## Negativkohorte
+
+**MIT-BIH Normal Sinus Rhythm Database**: 18 Aufnahmen à rund 25 Stunden, 128 Hz, Probanden
+ohne nachweisbare relevante Arrhythmien (`benchmarks/fetch_nsrdb.py`).
+
+**Was diese Kohorte nicht ist:** eine neurologische Routineambulanz. Gesunde Freiwillige, keine
+Extrasystolen, keine Medikation. Eine hier gemessene Spezifität ist deshalb eine **Obergrenze**;
+Patienten mit Ektopie erzeugen mehr Fehlalarme — dafür ist die P-Wellen-Stufe gebaut, und die
+Frage braucht die Arrhythmie-Datenbank und eine eigene Betrachtung.
+
+Zweiter Vorbehalt: 128 Hz gegen 250 Hz in der AFib-Datenbank. Vor der Auswertung wird geprüft,
+ob Detektion und CosEn dort vergleichbar arbeiten; falls nicht, wird das berichtet.
+
+## Bewertungseinheit: 20-Minuten-Abschnitte
+
+**Nicht die vollen Aufnahmen.** Die Regel „ein Fenster genügt" macht die Fehlalarm­wahrschein­lich­keit
+zu einer Funktion der Aufnahmedauer — auf 25 Stunden schlägt sie nahezu sicher an
+(rechnerisch 99,3 % bei 10 Stunden). Ein an 25-Stunden-Aufnahmen gemessener Wert beantwortet
+eine Frage, die an dieses Werkzeug niemand stellt.
+
+Bewertet werden deshalb **20-Minuten-Abschnitte** — die Dauer, mit der die Anwendung
+tatsächlich arbeitet. Zusätzlich werden 10 und 30 Minuten berichtet, damit die Abhängigkeit von
+der Dauer sichtbar wird statt versteckt.
+
+Die Abschnitte entstehen durch Zusammenfassen der bereits herausgeschriebenen Einzelfenster —
+es wird nichts neu gerechnet, und jede Zahl bleibt aus der Fenster-CSV nachvollziehbar.
+
+## Drei Gruppen
+
+| Gruppe | Herkunft | erwartet |
+|---|---|---|
+| **A — gesund** | nsrdb-Abschnitte | kein Verdacht |
+| **B — AFib-Patient, aber gerade Sinusrhythmus** | afdb-Abschnitte ohne annotiertes AFib | kein Verdacht |
+| **C — AFib im Abschnitt** | afdb-Abschnitte mit mindestens einem AFib-Fenster | Verdacht |
+
+Gruppe B wird **getrennt** ausgewiesen und nicht mit A verrechnet. Ein Abschnitt eines
+AFib-Patienten ohne Episode ist der klinisch heikelste Fall: derselbe Mensch, dasselbe Herz,
+nur gerade kein Flimmern. Ein Fehlalarm ist dort weniger folgenschwer als bei einem Gesunden,
+aber er ist trotzdem einer.
+
+Ein Abschnitt aus Gruppe B, der keinen Verdacht auslöst, ist **richtig negativ** — kein
+verpasster Fall. Diese Unterscheidung ist der Grund, warum die Gruppen über die Annotation
+gebildet werden und nicht über die Datenbankzugehörigkeit.
+
+## Verdikt
+
+Wie in der Anwendung (`classify_afib_risk`): Verdacht, sobald **mindestens ein** auswertbares
+Fenster im AFib-Bereich liegt. Schwellen unverändert.
+
+## Kennzahlen
+
+Sensitivität aus Gruppe C, Spezifität getrennt aus A und B, jeweils mit den Vier-Felder-Zahlen
+und der Zahl der Abschnitte. Zusätzlich für jede Abschnittslänge, damit die Dauerabhängigkeit
+belegt statt behauptet ist.
+
+Ergebnisse siehe unten, sobald gemessen.
+

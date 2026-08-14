@@ -51,3 +51,6 @@ benchmarks/data/
 
 # MIT-BIH AFib-Datenbank — 640 MB, öffentlich bei PhysioNet, siehe benchmarks/fetch_afdb.py
 benchmarks/data_afdb/
+
+# MIT-BIH Normal Sinus Rhythm — Negativkohorte, ~630 MB, siehe benchmarks/fetch_nsrdb.py
+benchmarks/data_nsrdb/
