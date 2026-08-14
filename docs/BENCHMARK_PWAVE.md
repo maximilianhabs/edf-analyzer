@@ -97,4 +97,67 @@ erzeugen, die nichts bedeuten.
     python3 benchmarks/run_pwave.py 04015                 # Kontrollpunkt
     python3 benchmarks/run_pwave.py --all --csv benchmarks/results/pwave_alle23.csv
 
-Ergebnisse siehe unten, sobald gemessen.
+Ergebnisse siehe unten.
+
+---
+
+# Schritt 2 — Kontrollpunkt (nicht abgebrochen)
+
+Zweck: Läuft das Verfahren auf diesen Daten, wie lange dauert es, und **trennt** die Kohärenz
+überhaupt? Erst wenn das steht, lohnt sich ein Lauf über 234 Stunden.
+
+Geprüft an zwei bewusst gegensätzlich zusammengesetzten Aufnahmen, damit ein Ergebnis nicht
+an der Eigenart einer einzelnen hängt:
+
+| Aufnahme | Fenster | davon AFib |
+|---|---|---|
+| 04746 | 1.220 | 647 (53 %) |
+| 04015 | 1.176 | 7 (0,6 %) |
+| 06426 | 918 | 877 (96 %) |
+
+Aufnahme 04015 allein wäre als Kontrollpunkt untauglich gewesen — sieben AFib-Fenster tragen
+keine Aussage über eine Trennung. Die Auswahl richtet sich nach der Klassenbesetzung, nicht
+nach dem Ergebnis.
+
+## Das Verfahren trennt
+
+| | Median | Quartile |
+|---|---|---|
+| **AFib-Fenster** | **0,53–0,58** | 0,43–0,69 |
+| **Nicht-AFib-Fenster** | **0,95–0,97** | 0,94–0,98 |
+
+Abstand der Mediane rund **0,4**, und die Quartilsbereiche überschneiden sich kaum: Das obere
+Quartil der AFib-Fenster liegt bei 0,61–0,69, das untere der unauffälligen bei 0,94.
+**Kein einziges Fenster war nicht auswertbar** — die Sorge, 250 Hz könnten die
+Ensemble-Mittelung nicht tragen, hat sich nicht bestätigt.
+
+Die Werte passen zu den drei Referenzfällen aus dem Bestand (Sinusrhythmus 0,99, Ektopie 0,83,
+Vorhofflimmern 0,41) und bestätigen sie erstmals an großer Zahl.
+
+**Die Abbruchbedingung greift nicht.**
+
+## Die bestehende Schwelle steht weit unterhalb der Trennung
+
+An der unveränderten Schwelle (Kohärenz < 0,35):
+
+| Aufnahmen | Sensitivität | Spezifität | Vorhersagewert |
+|---|---|---|---|
+| 04746 | 12,98 % | 100,00 % | 100,00 % |
+| 04015 + 06426 | 12,90 % | 99,92 % | 99,13 % |
+
+Beide Male rund **13 %** — der Schnitt bei 0,35 liegt unterhalb fast aller AFib-Fenster, deren
+Masse zwischen 0,43 und 0,69 sitzt. Er ist damit extrem konservativ: Was er meldet, stimmt
+praktisch immer, aber er meldet sehr wenig.
+
+Das erklärt sich aus seiner Herkunft: Der einzige AFib-Referenzfall im Bestand hatte eine
+Kohärenz von 0,41, und die Schwelle wurde darunter gesetzt. An 2.094 annotierten Fenstern
+zeigt sich, dass 0,41 am **unteren Rand** der AFib-Verteilung liegt und nicht in ihrer Mitte.
+
+**Die Schwelle wird hier nicht angepasst** — das bleibt Regel dieses Benchmarks. Der Befund
+wird berichtet, die Entscheidung liegt beim Betreiber.
+
+## Laufzeit
+
+Rund 15 Sekunden je Aufnahme, also etwa **6 Minuten** für alle 23. Der volle Lauf ist
+unproblematisch.
+
