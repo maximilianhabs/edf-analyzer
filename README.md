@@ -181,7 +181,7 @@ A second file, `test_edf_afib.edf`, covers an irregular rhythm for the rhythm sc
 ## Scientific transparency
 
 The aim is methodological honesty rather than feature marketing. A central registry
-(`analysis/methods.py`) classifies **all 22 procedures in use** on **two separate axes**,
+(`analysis/methods.py`) classifies **all 24 procedures in use** on **two separate axes**,
 because there are two different questions to answer here.
 
 **Axis 1 — implementation fidelity:** how closely does our implementation follow the published
@@ -189,9 +189,9 @@ procedure?
 
 | Implementation | Count | Meaning |
 |---|---|---|
-| full | 15 | follows the published procedure in full (e.g. Task Force 1996 for HRV, Hamilton 2002, FOOOF/Donoghue 2020) |
+| full | 16 | follows the published procedure in full (e.g. Task Force 1996 for HRV, Hamilton 2002, Lake & Moorman 2011 for CosEn) |
 | 🟡 simplified | 6 | working but deliberately simplified variant — labeled as such |
-| 🔬 proxy | 1 | exploratory surrogate marker with no established norm |
+| 🔬 proxy | 2 | exploratory surrogate marker with no established norm |
 
 **Axis 2 — evidence level:** what does the claim that the computation is correct actually rest
 on?
@@ -200,7 +200,7 @@ on?
 |---|---|---|
 | 📖 literature-based | 4 | the method is published — which says nothing about *this* implementation |
 | ✅ implementation-validated | 18 | reproduces the expected values on a dataset with known ground truth, with a documented tolerance and test |
-| 🏥 clinically validated | 0 | checked against a clinical reference standard or an annotated database (e.g. MIT-BIH) |
+| 🏥 clinically validated | 2 | checked against a clinical reference standard or an annotated database (e.g. MIT-BIH) |
 
 This separation was **introduced in 2026-08**. Before that, 15 procedures carried the label
 "✅ validated", defined as "published standard algorithm" — that is literature-based, while the
@@ -222,13 +222,16 @@ Following the **add-on principle**, the established standard methods stay unchan
 simplified default method a full counterpart exists for direct comparison under "Advanced
 Analyses". Nothing is switched over silently.
 
-**Clinically validated, in the sense above, is closer than the table suggests.** Three ECG
-procedures — R-peak detection, the CosEn atrial-fibrillation screen, and the P-wave coherence
-stage — have been measured against public, expert-annotated reference databases (MIT-BIH
-Arrhythmia, Atrial Fibrillation, and Normal Sinus Rhythm; 44 + 23 + 18 recordings, roughly
-700 hours of ECG). See **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)** for the full results,
-including sensitivity/specificity at patient level and what combining two screening methods
-does and does not buy. Not yet folded into the registry table above — that is next.
+**The two 🏥 clinically-validated rows are the AFib screening (CosEn) and the P-wave
+coherence stage** — checked against three public, expert-annotated MIT-BIH databases
+(Arrhythmia, Atrial Fibrillation, Normal Sinus Rhythm; 44 + 23 + 18 recordings, roughly
+700 hours of ECG), added 2026-08-14. R-peak detection itself stays
+implementation-validated above (the same benchmark exists for it, `docs/BENCHMARK_QRS.md`,
+but that upgrade is a separate step not yet made). See
+**[docs/BENCHMARKS.md](docs/BENCHMARKS.md)** for the full results, including
+sensitivity/specificity at patient level and what combining two screening methods does and
+does not buy — an ordered screen-then-confirm combination measurably beats either method
+alone or a simple OR, and is not implemented pending an operator decision.
 
 **What happens to the signal before a number appears** — every filter, the choice of analysis
 window, artifact handling, resampling — is specified in

@@ -335,6 +335,55 @@ METHODS: List[Method] = [
                        "sauberen Datei. Schwache oder einkanalige Artefakte und die "
                        "Falsch-Positiv-Rate auf echten Aufnahmen sind damit nicht geprüft; "
                        "kalibriert wurde an zwei Routineaufnahmen."),
+
+    # ── Rhythmus-Screening — 2026-08-14 erstmals mit Beleg eingetragen. Beide Verfahren
+    # liefen zuvor OHNE Registry-Eintrag: die Methodenübersicht behauptete implizit, es gäbe
+    # sie nicht. Beleg jetzt: vier Protokolle gegen drei öffentliche MIT-BIH-Datenbanken
+    # (Arrhythmia, Atrial Fibrillation, Normal Sinus Rhythm — docs/BENCHMARKS.md), insgesamt
+    # rund 700 Stunden annotiertes EKG. Vor jeder Messung geschrieben, keine Schwelle im
+    # Nachhinein an diesen Daten angepasst.
+    Method("Rhythmus", "Vorhofflimmern-Screening (CosEn)",
+           "Coefficient of Sample Entropy je 30-s-Fenster, Schwelle −0,8; Verdacht ab EINEM "
+           "auffälligen Fenster je Aufnahme (paroxysmal-tauglich)",
+           "Lake & Moorman 2011; Sarkar et al. 2015 (Schwellenbereiche)", FULL, CLINICAL,
+           Evidence("MIT-BIH Atrial Fibrillation DB (23 Aufn., 234 h) + Normal Sinus Rhythm DB "
+                    "(18 Aufn., 459 h) — docs/BENCHMARK_AFIB.md",
+                    "AFib-Verdacht auf Patientenebene (20-Min-Abschnitte, dieselbe "
+                    "Ein-Fenster-Regel wie in der Anwendung)",
+                    "Sensitivität 96,87 % · Spezifität gesund 85,96 % · Spezifität "
+                    "AFib-Patient ohne Episode 97,07 % (gemessen, kein Sollwert)",
+                    "kein Sollwert — die Kennzahl selbst ist das Ergebnis",
+                    "benchmarks/run_patient.py"),
+           limitations="Hohe Sensitivität, aber rund jeder siebte gesunde 20-Minuten-Abschnitt "
+                       "löst einen Fehlalarm aus. Ursache belegt: die Schwelle −0,8 sitzt am "
+                       "Rand der AFib-Verteilung statt in ihrer Mitte (Median der verpassten "
+                       "AFib-Fenster: −1,00). Eine Bestätigung durch die P-Wellen-Kohärenz "
+                       "(Screen-then-Confirm, UND-Verknüpfung) wurde gemessen und verbessert "
+                       "beide Kennzahlen zugleich — bewusst nicht umgesetzt, siehe "
+                       "docs/BENCHMARK_AFIB.md."),
+    Method("Rhythmus", "P-Wellen-Nachweis (Ensemble-Kohärenz)",
+           "Schlag-Summation im PR-Fenster (−250…−60 ms) gegen Ensemble-Mittel, "
+           "Pearson-Kohärenz, Schwellen 0,6/0,35",
+           "eigenes Verfahren, angelehnt an Signal-Averaged-ECG — kein einzelner "
+           "Referenzalgorithmus für die Kohärenz-Schwelle", PROXY, CLINICAL,
+           Evidence("MIT-BIH Atrial Fibrillation DB (23 Aufn., 234 h, 26.874 Fenster) + "
+                    "Normal Sinus Rhythm DB (18 Aufn., 459 h, 45.919 Fenster) — dieselben "
+                    "wie beim CosEn-Beleg oben, docs/BENCHMARK_PWAVE.md + Schritt 3/4 in "
+                    "docs/BENCHMARK_AFIB.md",
+                    "P-Wellen-Kohärenz als alleiniges Kriterium, Fenster- und Patientenebene",
+                    "Fensterebene: Sens 47,51 % · Spez (AFib-DB) 99,72 % · Spez (459 h "
+                    "gesund) 99,98 %. Patientenebene (20 min): Sens 89,97 % · Spez gesund "
+                    "99,39 % · Spez AFib-Pat. ohne Episode 96,48 % (gemessen, kein Sollwert)",
+                    "kein Sollwert — die Kennzahl selbst ist das Ergebnis",
+                    "benchmarks/run_pwave.py"),
+           limitations="Allein sensitiver schlechter als CosEn, aber deutlich spezifischer in "
+                       "beiden Richtungen — auf gesunden Probanden 800 CosEn- gegen nur 7 "
+                       "eigene Fehlalarme über 459 h, ohne Überschneidung der Fälle. Deckt "
+                       "NICHT den eigentlichen Entwicklungszweck (Ektopie-Fehlalarme "
+                       "vermeiden) ab — die genutzten Datenbanken annotieren Ektopie nicht "
+                       "getrennt; das braucht die MIT-BIH-Arrhythmia-Datenbank und eine "
+                       "eigene Betrachtung. Bei 128 Hz (Normal-Sinus-DB) an einem "
+                       "Kontrollpunkt geprüft und tragfähig befunden."),
 ]
 
 

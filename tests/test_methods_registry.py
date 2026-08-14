@@ -39,14 +39,25 @@ def test_keine_stufe_ohne_beleg():
     assert Method("X", "Y", "Z", "Ref", FULL).level == LITERATURE
 
 
-def test_klinische_validierung_wird_nicht_behauptet():
-    """Klinisch validiert ist bisher nichts, und das darf nicht versehentlich passieren:
-    dafür bräuchte es eine annotierte Datenbank (MIT-BIH) mit Sensitivität/PPV, keinen
-    weiteren synthetischen Datensatz."""
-    from analysis.methods import count_by_level, CLINICAL
-    assert count_by_level()[CLINICAL] == 0, (
-        "klinische Validierung behauptet — dann gehört der Referenzstandard samt Kennzahlen "
-        "in die Evidence, und diese Sperre wird bewusst entfernt")
+def test_klinische_validierung_nennt_eine_annotierte_datenbank_mit_kennzahlen():
+    """Bis 2026-08-14 war klinische Validierung gesperrt: dafür bräuchte es eine annotierte
+    Datenbank (MIT-BIH) mit Sensitivität/PPV, keinen weiteren synthetischen Datensatz. Seit
+    dem CosEn- und P-Wellen-Benchmark (docs/BENCHMARK_AFIB.md, docs/BENCHMARK_PWAVE.md) gibt
+    es genau das — die Sperre ist gefallen, aber die Anforderung bleibt: jede klinisch
+    validierte Zeile MUSS eine annotierte Datenbank und eine Kennzahl wie Sensitivität/
+    Spezifität nennen, kein synthetisches Manifest und kein reiner Formeltest."""
+    from analysis.methods import METHODS, CLINICAL
+
+    klinisch = [m for m in METHODS if m.level == CLINICAL]
+    assert klinisch, "keine klinisch validierte Methode gefunden — Benchmark verloren?"
+    for m in klinisch:
+        ev = m.evidence
+        assert "MIT-BIH" in ev.dataset, (
+            f"'{m.parameter}': Datensatz '{ev.dataset}' nennt keine annotierte "
+            f"Referenzdatenbank")
+        assert any(k in ev.expected for k in ("Sens", "Spez")), (
+            f"'{m.parameter}': Sollwert '{ev.expected}' nennt weder Sensitivität noch "
+            f"Spezifität (auch als 'Sens'/'Spez' zulässig)")
 
 
 def test_verbliebene_literaturbasierte_verfahren_nennen_einen_grund():

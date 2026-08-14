@@ -135,15 +135,15 @@ Eine zweite Datei, `test_edf_afib.edf`, deckt für die Rhythmus-Screening-Seite 
 
 ## Wissenschaftliche Transparenz
 
-Der Anspruch ist methodische Ehrlichkeit statt Feature-Marketing. Eine zentrale Registry (`analysis/methods.py`) klassifiziert **alle 22 eingesetzten Verfahren** — auf **zwei getrennten Achsen**, weil hier zwei verschiedene Fragen zu beantworten sind.
+Der Anspruch ist methodische Ehrlichkeit statt Feature-Marketing. Eine zentrale Registry (`analysis/methods.py`) klassifiziert **alle 24 eingesetzten Verfahren** — auf **zwei getrennten Achsen**, weil hier zwei verschiedene Fragen zu beantworten sind.
 
 **Achse 1 — Umsetzungstreue:** wie nah folgt unsere Umsetzung der publizierten Vorschrift?
 
 | Umsetzung | Anzahl | Bedeutung |
 |---|---|---|
-| vollständig | 15 | folgt der publizierten Vorschrift vollständig (z. B. Task Force 1996 für HRV, Hamilton 2002, FOOOF/Donoghue 2020) |
+| vollständig | 16 | folgt der publizierten Vorschrift vollständig (z. B. Task Force 1996 für HRV, Hamilton 2002, Lake & Moorman 2011 für CosEn) |
 | 🟡 vereinfacht | 6 | funktionsfähige, bewusst vereinfachte Variante — als solche gekennzeichnet |
-| 🔬 Proxy | 1 | explorativer Ersatzmarker ohne etablierte Norm |
+| 🔬 Proxy | 2 | explorativer Ersatzmarker ohne etablierte Norm |
 
 **Achse 2 — Belegstufe:** worauf stützt sich die Aussage, dass die Berechnung stimmt?
 
@@ -151,7 +151,7 @@ Der Anspruch ist methodische Ehrlichkeit statt Feature-Marketing. Eine zentrale 
 |---|---|---|
 | 📖 literaturbasiert | 4 | das Verfahren ist publiziert — über *diese* Implementierung sagt das nichts aus |
 | ✅ implementierungsvalidiert | 18 | reproduziert auf einem Datensatz mit bekannter Wahrheit die Sollwerte, mit dokumentierter Toleranz und Test |
-| 🏥 klinisch validiert | 0 | gegen einen klinischen Referenzstandard oder eine annotierte Datenbank geprüft (z. B. MIT-BIH) |
+| 🏥 klinisch validiert | 2 | gegen einen klinischen Referenzstandard oder eine annotierte Datenbank geprüft (z. B. MIT-BIH) |
 
 Diese Trennung ist **2026-08 nachgezogen worden**. Vorher stand über 15 Verfahren „✅ validiert", definiert als „publizierter Standard-Algorithmus" — das ist literaturbasiert, das Etikett behauptete aber eine geprüfte Implementierung. Ein externes Review hat den Widerspruch zu Recht beanstandet. Die Registry lässt eine höhere Stufe jetzt technisch nur mit hinterlegtem Beleg (Datensatz, Sollwert, Toleranz, Test) zu, und die Seite „Erweiterte Analysen" zeigt diesen Beleg in derselben Zeile wie das Etikett.
 
@@ -159,7 +159,7 @@ Die Belege stammen aus den synthetischen Ground-Truth-Dateien (`tests/fixtures/`
 
 Nach dem **Add-on-Prinzip** bleiben die bewährten Standard-Methoden unverändert; für jede vereinfachte Default-Methode existiert ein vollständiges Pendant zum direkten Vergleich in der Rubrik „Erweiterte Analysen". Es wird nichts stillschweigend umgestellt.
 
-**Klinisch validiert im obigen Sinn ist näher, als die Tabelle vermuten lässt.** Drei EKG-Verfahren — R-Zacken-Detektion, das CosEn-Vorhofflimmern-Screening und die P-Wellen-Kohärenz — wurden gegen öffentliche, fachlich annotierte Referenzdatenbanken gemessen (MIT-BIH Arrhythmia, Atrial Fibrillation und Normal Sinus Rhythm; 44 + 23 + 18 Aufnahmen, rund 700 Stunden EKG). Die vollständigen Ergebnisse stehen in **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)** — inklusive Sensitivität/Spezifität auf Patientenebene und was die Kombination zweier Screening-Verfahren bringt und was nicht. Noch nicht in die obige Registry-Tabelle eingeflossen — das ist der nächste Schritt.
+**Die beiden 🏥 klinisch validierten Zeilen sind das AFib-Screening (CosEn) und die P-Wellen-Kohärenz** — geprüft gegen drei öffentliche, fachlich annotierte MIT-BIH-Datenbanken (Arrhythmia, Atrial Fibrillation, Normal Sinus Rhythm; 44 + 23 + 18 Aufnahmen, rund 700 Stunden EKG), ergänzt am 14.08.2026. Die R-Zacken-Detektion selbst steht oben weiterhin auf implementierungsvalidiert (derselbe Benchmark existiert auch für sie, `docs/BENCHMARK_QRS.md`, die Hochstufung ist aber ein eigener, noch nicht vollzogener Schritt). Die vollständigen Ergebnisse stehen in **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)** — inklusive Sensitivität/Spezifität auf Patientenebene und was die Kombination zweier Screening-Verfahren bringt und was nicht: eine geordnete Screen-then-Confirm-Kombination schlägt messbar jedes Einzelverfahren und eine einfache ODER-Verknüpfung, ist aber mangels Betreiber-Entscheidung nicht umgesetzt.
 
 **Was mit dem Signal geschieht, bevor eine Zahl entsteht** — jeder Filter, die Wahl des Analysefensters, die Artefaktbehandlung, die Umtastung — steht in [docs/PREPROCESSING.md](docs/PREPROCESSING.md), aus dem Code abgeleitet statt aus der Absicht. Die häufigste Fehlannahme, die dort geklärt wird: die Filtereinstellungen im EEG-Viewer beeinflussen **keinen** berechneten Wert, sie ändern nur die dargestellte Kurve.
 
