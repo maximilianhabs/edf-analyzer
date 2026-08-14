@@ -344,3 +344,84 @@ faktische 13–75 % je nach Schwellenwahl), sie ist auch spezifischer bei Gesund
 kein Kompromiss zwischen den beiden Zielen, sondern ein Verfahren, das auf dieser Datenlage
 in beiden Richtungen besser abschneidet als CosEn allein.
 
+---
+
+# Schritt 4 — Ergebnis auf Patientenebene
+
+Aggregiert aus den bereits geschriebenen Fenster-CSVs, ohne Neuberechnung
+(`benchmarks/run_patient.py`). 6.619 Abschnitte über drei Längen, drei Gruppen, drei
+Verfahren.
+
+## 20-Minuten-Abschnitte — die Dauer der Anwendung
+
+| Verfahren | Sensitivität (Gruppe C) | Spezifität, gesund (A) | Spezifität, AFib-Pat. ohne Episode (B) |
+|---|---|---|---|
+| CosEn allein | 96,87 % | 85,96 % | 97,07 % |
+| **P-Welle allein** | 89,97 % | **99,39 %** | 96,48 % |
+| CosEn ODER P-Welle | 97,49 % | 85,35 % | 93,84 % |
+
+**Auf Patientenebene kehrt sich das Bild um.** Die Regel „ein Fenster genügt" hebt CosEns
+Sensitivität auf 96,9 % — genau der paroxysmale Charakter, den der Betreiber beschrieben hat:
+eine einzelne erkannte Episode reicht. Der Preis dafür ist eine Spezifität von nur 85,96 % bei
+gesunden 20-Minuten-Abschnitten — **rund jeder siebte gesunde Abschnitt löst einen
+Fehlalarm aus**, in etwa die 15,2 %, die aus der Fenster-Fehlalarmrate vorab berechnet wurden
+(`docs/BENCHMARK_AFIB.md`, Abschnitt zur Ein-Fenster-Regel).
+
+Die P-Welle allein liegt bei 89,97 % Sensitivität — niedriger als CosEn, weil ihr auf
+Fensterebene ohnehin geringerer Anteil betroffener Fenster (47,5 % gegen CosEns 75,3 %) bei
+„ein Fenster genügt" weniger Chancen bekommt, wenigstens eines zu treffen. Dafür liegt ihre
+Spezifität bei 99,39 % — mehr als das Zehnfache besser.
+
+## Die Kombination hilft NICHT — sie summiert die Schwächen
+
+Das war die eigentliche Frage dieses Schritts, und die Antwort widerspricht der Erwartung aus
+der Fensterebene. **Die 160 CosEn-Fehlalarme und die 7 P-Wellen-Fehlalarme bei gesunden
+20-Minuten-Abschnitten überschneiden sich in KEINEM einzigen Fall.** Jedes Verfahren erzeugt
+seine eigenen, unabhängigen Fehlalarme — auf 12 von 18 gesunden Aufnahmen verteilt.
+
+Eine ODER-Verknüpfung („Verdacht, wenn CosEn ODER P-Welle anschlägt") erbt deshalb **beide**
+Fehlerquellen: Spezifität 85,35 % — kaum anders als CosEn allein, weil dessen 160 Fehlalarme
+fast unverändert durchschlagen und die 7 der P-Welle nur draufkommen. Die Sensitivität steigt
+dabei nur marginal (96,87 → 97,49 %), weil CosEn ohnehin schon fast alles fängt, was die
+P-Welle zusätzlich fände.
+
+**Damit ist die ursprüngliche Idee — „P-Welle als zweite Achse einsammeln" — auf
+Patientenebene widerlegt.** Sie trug auf Fensterebene (dort war P-Welle in beiden Richtungen
+besser), aber die Aggregationsregel „ein Fenster genügt" verstärkt gerade die Schwäche, die man
+kombinieren wollte auszugleichen.
+
+## Was stattdessen tatsächlich hilft: P-Welle statt CosEn, nicht zusätzlich
+
+Der eigentliche Hebel liegt nicht in der Kombination, sondern im **Austausch**:
+
+| bei 20 min | Sensitivität | Spezifität (gesund) |
+|---|---|---|
+| CosEn (heutiges Verfahren) | 96,87 % | 85,96 % |
+| **P-Welle statt CosEn** | 89,97 % | **99,39 %** |
+
+7 Punkte weniger Sensitivität für 13,4 Punkte mehr Spezifität — und eine Fehlalarmquote, die
+von „jeder siebte" auf „einer von 163" fällt. Für einen Betreiber, der ausdrücklich Spezifität
+vor Sensitivität stellt, ist das der günstigere Tausch der beiden geprüften Optionen.
+
+**Auch das ist gemessen, nicht umgesetzt.** Ein Wechsel des primären Verfahrens ist eine
+fachliche Entscheidung, keine Kombination zweier bestehender.
+
+## Dauerabhängigkeit — wie vorab erwartet
+
+| Länge | CosEn Spez. (gesund) | P-Welle Spez. (gesund) |
+|---|---|---|
+| 10 min | 89,69 % | 99,69 % |
+| 20 min | 85,96 % | 99,39 % |
+| 30 min | 83,51 % | 99,34 % |
+
+CosEns Spezifität fällt mit der Dauer spürbar, weil mehr Fenster mehr Gelegenheiten für einen
+Fehlalarm bedeuten. Die P-Welle bleibt über alle drei Längen nahe konstant — ihre Fehlalarme
+sind selten genug, dass die Dauer kaum ins Gewicht fällt.
+
+## Gruppe B — der Kontrollfall
+
+AFib-Patienten in einem Abschnitt ohne Episode verhalten sich bei CosEn (97,1–97,8 % korrekt
+negativ) ähnlich wie gesunde Probanden bei P-Welle, aber schlechter als gesunde Probanden bei
+CosEn — plausibel, da ihr Grundrhythmus (oft mit früherer Ektopie) unruhiger ist als der
+komplett gesunder Freiwilliger.
+
