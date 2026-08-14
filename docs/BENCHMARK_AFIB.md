@@ -425,3 +425,33 @@ negativ) ähnlich wie gesunde Probanden bei P-Welle, aber schlechter als gesunde
 CosEn — plausibel, da ihr Grundrhythmus (oft mit früherer Ektopie) unruhiger ist als der
 komplett gesunder Freiwilliger.
 
+## Nachtrag: die Reihenfolge macht den Unterschied — UND statt ODER
+
+Die ODER-Verknüpfung schadet, weil sie Fehlerquellen addiert. Naheliegend ist die
+Gegenrichtung: **CosEn als erste, empfindliche Stufe, P-Welle als zweite, bestätigende** —
+Verdacht nur, wenn BEIDE im selben 20-Minuten-Abschnitt anschlagen. Das klassische
+Screen-then-Confirm-Muster, bei dem ein sensitiver Test vorfiltert und ein spezifischer Test
+bestätigt.
+
+| bei 20 min | Sensitivität (C) | Spezifität, gesund (A) | Spezifität, AFib-Pat. o. Episode (B) |
+|---|---|---|---|
+| CosEn allein | 96,87 % | 85,96 % | 97,07 % |
+| P-Welle allein | 89,97 % | 99,39 % | 96,48 % |
+| CosEn ODER P-Welle | 97,49 % | 85,35 % | 93,84 % |
+| **CosEn UND P-Welle** | 89,34 % | **100,00 %** | **99,71 %** |
+
+**Das ist der beste der vier gemessenen Wege.** Gegenüber der P-Welle allein verliert die
+UND-Kombination fast nichts an Sensitivität (89,34 gegen 89,97 %), gewinnt aber auf beiden
+Spezifitäten hinzu — bei gesunden Abschnitten auf **keinen einzigen** Fehlalarm unter 1.140
+geprüften. Die Erklärung: CosEns 160 Fehlalarme und die 7 der P-Welle überschneiden sich in
+keinem Fall (siehe oben) — verlangt man beide zugleich, bleibt praktisch nichts übrig, wovon
+beide Verfahren gleichzeitig getäuscht werden.
+
+**Gemessen auf Abschnittsebene** (beide Verfahren schlagen irgendwo im 20-Minuten-Fenster an,
+nicht zwingend im selben 30-Sekunden-Fenster) — die feinere, fensterscharfe Bestätigung ist
+nicht geprüft und könnte das Ergebnis noch verändern.
+
+**Weiterhin gemessen, nicht umgesetzt.** Diese Reihenfolge zu wählen ist eine fachliche
+Entscheidung. Sie liegt aber, mit dem heutigen Datenstand, klar vor den anderen drei
+geprüften Wegen.
+
