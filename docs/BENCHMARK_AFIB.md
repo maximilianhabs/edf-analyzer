@@ -307,3 +307,40 @@ belegt statt behauptet ist.
 
 Ergebnisse siehe unten, sobald gemessen.
 
+## Kontrollpunkt: trägt 128 Hz?
+
+Vor der Aggregation zu 20-Minuten-Abschnitten geprüft an zwei Aufnahmen der Negativkohorte
+(16265, 16483), analog zum Kontrollpunkt in `docs/BENCHMARK_PWAVE.md`.
+
+Das P-Fenster (−250 bis −60 ms) umfasst bei 128 Hz **24 Abtastwerte**, gegenüber 47 bei den
+250 Hz der AFib-Datenbank — spürbar gröber.
+
+| Aufnahme | Fenster | Kohärenz Median | Minimum | Anteil < 0,35 |
+|---|---|---|---|---|
+| 16265 | 2.668 | 0,96 | 0,63 | 0,00 % |
+| 16483 | 2.517 | 0,99 | 0,73 | 0,00 % |
+
+Selbst das **niedrigste** gemessene Fenster (0,63) liegt weit über der Schwelle 0,35, und kein
+einziges Fenster war nicht auswertbar. **Die Abbruchbedingung greift nicht** — 128 Hz trägt für
+diese Kohorte.
+
+## Fensterebene, Negativkohorte
+
+45.919 Fenster, 18 gesunde Probanden, rund 459 Stunden — alle als „nicht AFib" gewertet.
+
+| Verfahren | Fehlalarme | Spezifität |
+|---|---|---|
+| CosEn (Schwelle −0,8) | 800 | 98,26 % |
+| **P-Wellen-Kohärenz (Schwelle 0,35)** | **7** | **99,98 %** |
+
+CosEn's Fehlalarme häufen sich stark bei einzelnen Probanden (16539: 258, 16773: 238,
+16795: 103) — vermutlich Phasen mit unregelmäßiger Sinusarrhythmie oder Bewegungsartefakt,
+die als RR-Irregularität erscheinen, ohne dass eine P-Welle fehlt. Genau die Situation, für
+die die P-Wellen-Stufe ursprünglich gebaut wurde (Ektopie-Fehlalarme), zeigt sich hier auch
+bei gesundem Sinusrhythmus.
+
+**Die P-Welle ist auf dieser Kohorte nicht nur empfindlicher für AFib (47,5 % gegen CosEns
+faktische 13–75 % je nach Schwellenwahl), sie ist auch spezifischer bei Gesunden.** Das ist
+kein Kompromiss zwischen den beiden Zielen, sondern ein Verfahren, das auf dieser Datenlage
+in beiden Richtungen besser abschneidet als CosEn allein.
+
