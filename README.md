@@ -222,6 +222,14 @@ Following the **add-on principle**, the established standard methods stay unchan
 simplified default method a full counterpart exists for direct comparison under "Advanced
 Analyses". Nothing is switched over silently.
 
+**Clinically validated, in the sense above, is closer than the table suggests.** Three ECG
+procedures — R-peak detection, the CosEn atrial-fibrillation screen, and the P-wave coherence
+stage — have been measured against public, expert-annotated reference databases (MIT-BIH
+Arrhythmia, Atrial Fibrillation, and Normal Sinus Rhythm; 44 + 23 + 18 recordings, roughly
+700 hours of ECG). See **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)** for the full results,
+including sensitivity/specificity at patient level and what combining two screening methods
+does and does not buy. Not yet folded into the registry table above — that is next.
+
 **What happens to the signal before a number appears** — every filter, the choice of analysis
 window, artifact handling, resampling — is specified in
 [docs/PREPROCESSING.md](docs/PREPROCESSING.md), derived from the code rather than from

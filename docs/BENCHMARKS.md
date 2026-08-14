@@ -1,9 +1,13 @@
-# Übersicht: alle Validierungen gegen öffentliche Referenzdatenbanken
+# Validierung: Referenzwerte und Benchmarks
 
-Vier Fragen, vier Protokolle, vier Auswertungen — jedes Protokoll vor der ersten Messung
-geschrieben, jede Messung reproduzierbar, jedes Ergebnis mit Datum und Commit. Diese Seite
-fasst zusammen; die Einzelheiten, jede Fallstricke und jede Kennzahl stehen in den verlinkten
-Dokumenten.
+Wie gut das EKG-seitige Screening dieser Anwendung tatsächlich arbeitet, gegen öffentliche,
+von Fachleuten annotierte Referenzdatenbanken gemessen — nicht behauptet.
+
+Vier Fragen, vier Protokolle, vier Auswertungen. **Jedes Protokoll wurde vor der ersten
+Messung geschrieben** und legt Datenquelle, Goldstandard, Kennzahlen und Ausschlussregeln vorab
+fest — so lässt sich eine Schwelle im Nachhinein nicht mehr passend zurechtbiegen. Diese Seite
+fasst zusammen; jede Einzelheit, jeder Fallstrick und jede Kennzahl steht in den verlinkten
+Protokollen, jedes Zwischenergebnis als CSV im Repository.
 
 | # | Frage | Protokoll |
 |---|---|---|
@@ -14,19 +18,41 @@ Dokumenten.
 
 ## 1 · Datensätze — was tatsächlich geprüft wurde
 
-| Datensatz | Herkunft | Aufnahmen | Dauer | Abtastrate | Goldstandard |
-|---|---|---|---|---|---|
-| **MIT-BIH Arrhythmia** | PhysioNet, ODC-BY | 44 von 48¹ | ~24 Min. je Aufnahme, 100.932 Schläge gesamt | 360 Hz | R-Zacken einzeln von Kardiologen annotiert |
-| **MIT-BIH Atrial Fibrillation** | PhysioNet, ODC-BY | 23 von 25² | ~10 h je Aufnahme, 234 h gesamt | 250 Hz | Rhythmus-Intervalle `(AFIB`/`(N`/`(AFL`/`(J` von den Datenbankautoren |
-| **MIT-BIH Normal Sinus Rhythm** | PhysioNet, ODC-BY | 18 von 18 | ~25 h je Aufnahme, 459 h gesamt | 128 Hz | Datenbankzugehörigkeit: gesunde Probanden, keine relevante Arrhythmie |
+**Kein Datensatz stammt von uns.** Alle drei sind seit Jahrzehnten öffentliche
+Referenzdatenbanken bei [PhysioNet](https://physionet.org), an denen sich publizierte QRS- und
+AFib-Detektoren üblicherweise messen lassen — der Vergleich ist damit nicht nur intern, sondern
+gegen den Stand des Feldes möglich. Alle drei stehen unter der
+[Open Data Commons Attribution License v1.0](https://physionet.org/content/mitdb/view-license/1.0.0/)
+(ODC-BY): frei nutzbar, mit Pflicht zur Namensnennung.
+
+| Datensatz | Aufnahmen | Umfang | Abtastrate | Goldstandard |
+|---|---|---|---|---|
+| [**MIT-BIH Arrhythmia Database**](https://doi.org/10.13026/C2F305) | 44 von 48¹ | 100.932 Schläge | 360 Hz | R-Zacken einzeln kardiologisch annotiert |
+| [**MIT-BIH Atrial Fibrillation Database**](https://doi.org/10.13026/C2MW2D) | 23 von 25² | 234 Stunden | 250 Hz | Rhythmus-Intervalle (`AFIB`/`N`/`AFL`/`J`) von den Datenbankautoren |
+| [**MIT-BIH Normal Sinus Rhythm Database**](https://doi.org/10.13026/C2NK5R) | 18 von 18 | 459 Stunden | 128 Hz | gesunde Probanden, keine dokumentierte Arrhythmie |
 
 ¹ 4 Aufnahmen mit Herzschrittmacher nach ANSI/AAMI EC57 ausgeschlossen (Konvention, nicht
 unsere Wahl). ² 2 Aufnahmen ohne Signaldatei auf PhysioNet, nur Annotationen — nichts zu
 detektieren.
 
-**Kein Datensatz stammt von uns.** Alle drei sind seit Jahrzehnten öffentliche
-Referenzdatenbanken, an denen sich publizierte QRS- und AFib-Detektoren üblicherweise messen
-lassen — der Vergleich ist damit nicht nur intern, sondern gegen den Stand des Feldes möglich.
+<details>
+<summary><strong>Empfohlene Zitierweise</strong> (nach Angabe der jeweiligen PhysioNet-Seite)</summary>
+
+Jede Datenbank nennt zwei Zitate: die Originalpublikation und die PhysioNet-Plattform selbst.
+
+**MIT-BIH Arrhythmia Database**
+> Moody GB, Mark RG. *The impact of the MIT-BIH Arrhythmia Database.* IEEE Eng in Med and Biol 20(3):45–50 (May–June 2001).
+
+**MIT-BIH Atrial Fibrillation Database**
+> Moody GB, Mark RG. *A new method for detecting atrial fibrillation using R-R intervals.* Computers in Cardiology 10:227–230 (1983).
+
+**MIT-BIH Normal Sinus Rhythm Database**
+> beitragende Autoren: Ary L. Goldberger, MIT Laboratory for Computational Physiology — kein eigener Zeitschriftenartikel, zitiert wird nur die PhysioNet-Plattform.
+
+**Alle drei Datenbanken zusätzlich, wie von PhysioNet empfohlen:**
+> Pollard T, Moody BE, Lehman L, Gow B, Fernandes C, Xie C, Johnson A, Mark RG, Heldt T. *PhysioNet as a global platform for biomedical research.* Nature Health (2026).
+
+</details>
 
 ## 2 · Bewertungsebenen
 
@@ -157,12 +183,13 @@ Entscheidungen.
 
 ## Reproduzierbarkeit
 
-Jede Zahl auf dieser Seite lässt sich nachrechnen:
+Jede Zahl auf dieser Seite lässt sich nachrechnen — die Daten liegen bewusst nicht im
+Repository (zusammen rund 1,8 GB), sondern werden von PhysioNet direkt bezogen:
 
     pip install -r requirements-benchmark.txt
-    python3 benchmarks/fetch_mitdb.py --all      # ~500 MB
-    python3 benchmarks/fetch_afdb.py --all       # ~640 MB
-    python3 benchmarks/fetch_nsrdb.py --all      # ~630 MB
+    python3 benchmarks/fetch_mitdb.py --all      # MIT-BIH Arrhythmia,  ~500 MB
+    python3 benchmarks/fetch_afdb.py --all       # MIT-BIH AFib,        ~640 MB
+    python3 benchmarks/fetch_nsrdb.py --all      # MIT-BIH Normal Sinus,~630 MB
 
     python3 benchmarks/run_qrs.py --all --csv benchmarks/results/chunk5_alle44_eigen.csv
     python3 benchmarks/run_hrv.py --all --csv benchmarks/results/hrv_alle44.csv
@@ -171,5 +198,5 @@ Jede Zahl auf dieser Seite lässt sich nachrechnen:
     python3 benchmarks/run_nsrdb.py --all
     python3 benchmarks/run_patient.py --csv benchmarks/results/patient_ebene.csv
 
-Alle Zwischenergebnisse (jedes einzelne Fenster, nicht nur Zusammenfassungen) liegen als CSV
-in `benchmarks/results/` und sind Teil des Repositorys.
+Alle Zwischenergebnisse — jedes einzelne Fenster, nicht nur die Zusammenfassungen — liegen als
+CSV in [`benchmarks/results/`](../benchmarks/results/) und sind Teil des Repositorys.

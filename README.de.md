@@ -159,6 +159,8 @@ Die Belege stammen aus den synthetischen Ground-Truth-Dateien (`tests/fixtures/`
 
 Nach dem **Add-on-Prinzip** bleiben die bewährten Standard-Methoden unverändert; für jede vereinfachte Default-Methode existiert ein vollständiges Pendant zum direkten Vergleich in der Rubrik „Erweiterte Analysen". Es wird nichts stillschweigend umgestellt.
 
+**Klinisch validiert im obigen Sinn ist näher, als die Tabelle vermuten lässt.** Drei EKG-Verfahren — R-Zacken-Detektion, das CosEn-Vorhofflimmern-Screening und die P-Wellen-Kohärenz — wurden gegen öffentliche, fachlich annotierte Referenzdatenbanken gemessen (MIT-BIH Arrhythmia, Atrial Fibrillation und Normal Sinus Rhythm; 44 + 23 + 18 Aufnahmen, rund 700 Stunden EKG). Die vollständigen Ergebnisse stehen in **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)** — inklusive Sensitivität/Spezifität auf Patientenebene und was die Kombination zweier Screening-Verfahren bringt und was nicht. Noch nicht in die obige Registry-Tabelle eingeflossen — das ist der nächste Schritt.
+
 **Was mit dem Signal geschieht, bevor eine Zahl entsteht** — jeder Filter, die Wahl des Analysefensters, die Artefaktbehandlung, die Umtastung — steht in [docs/PREPROCESSING.md](docs/PREPROCESSING.md), aus dem Code abgeleitet statt aus der Absicht. Die häufigste Fehlannahme, die dort geklärt wird: die Filtereinstellungen im EEG-Viewer beeinflussen **keinen** berechneten Wert, sie ändern nur die dargestellte Kurve.
 
 ## Limitationen
