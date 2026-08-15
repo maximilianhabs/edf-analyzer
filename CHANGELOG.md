@@ -5,6 +5,19 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Behoben — EDF-Upload auf iPhone/iPad war blockiert
+
+`st.file_uploader(..., type=["edf"])` übersetzt Streamlit intern in ein HTML
+`accept=".edf"`. iOS Safari kennt der Dateiendung `.edf` keinen Dokumenttyp zu und graut die
+Datei im Dateipicker aus — **bevor** sie überhaupt an die App übergeben wird. Kein
+Streamlit-Bug, sondern iOS' Dateityperkennung; auf Desktop-Browsern fiel es nie auf, weil die
+dort deutlich großzügiger sind.
+
+Der Typfilter ist entfernt. Die eigentliche Prüfung übernahm ohnehin schon
+`core/edf_validation.py` direkt nach dem Upload — falsche Dateien werden weiterhin mit klarer
+Fehlermeldung abgewiesen, nur einen Schritt später als vorher. Kein Sicherheitsverlust, nur
+ein anderer Zeitpunkt der Prüfung. Bestätigt per Live-Test vom iPhone.
+
 ### Geändert — die Analyseschicht kennt die Oberfläche nicht mehr
 
 Ein drittes Review, diesmal rein auf Architektur, hat den strukturell wichtigsten Punkt
