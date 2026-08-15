@@ -313,7 +313,13 @@ python3 tools/check_fonts.py     # every requested font resolves, no CDN referen
 python3 tools/check_methods.py   # method registry: no evidence level without proof,
                                  # and both READMEs match the registry
 python3 tools/check_layering.py  # analysis/ stays free of UI and Streamlit imports
+ruff check .                     # linter, over the WHOLE repo, benchmarks/ and tools/ included
 ```
+
+Or all at once, exactly what CI's fast job runs: `bash tools/preflight.sh`. Added 2026-08-15
+after four pushes went red on ruff alone — the app's own checks were run locally before every
+push, ruff over the full repo was not, so a linting issue in `benchmarks/` (never part of the
+app import graph) only showed up in CI.
 
 All of this runs in CI on every push. The test suite deliberately needs **no** real recording:
 it works against the synthetic ground-truth fixtures in `tests/fixtures/`, whose expected

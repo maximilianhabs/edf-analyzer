@@ -233,7 +233,13 @@ python3 tools/check_fonts.py     # jede angeforderte Schrift auflösbar, kein CD
 python3 tools/check_methods.py   # Methoden-Registry: keine Belegstufe ohne Nachweis,
                                  # beide READMEs stimmen mit der Registry überein
 python3 tools/check_layering.py  # analysis/ bleibt frei von UI- und Streamlit-Importen
+ruff check .                     # Linter, über das GESAMTE Repository, inkl. benchmarks/ und tools/
 ```
+
+Oder alles auf einmal, genau das, was der schnelle CI-Job prüft: `bash tools/preflight.sh`.
+Ergänzt am 15.08.2026, nachdem vier Pushes in Folge allein an ruff scheiterten — die
+App-eigenen Prüfer liefen vor jedem Push lokal, ruff über das gesamte Repo nicht, deshalb
+fiel ein Lint-Fund in `benchmarks/` (nie Teil des App-Importgraphen) erst in der CI auf.
 
 Das alles läuft bei jedem Push in der CI. Die Test-Suite braucht bewusst **keine** echte
 Aufnahme: sie arbeitet gegen die synthetischen Ground-Truth-Dateien in `tests/fixtures/`,
