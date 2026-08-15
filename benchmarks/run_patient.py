@@ -64,7 +64,7 @@ def abschnitte_bilden(fenster: list[dict], n_fenster: int) -> list[list[dict]]:
     nach_aufnahme: dict[str, list[dict]] = {}
     for f in fenster:
         nach_aufnahme.setdefault(f["record"], []).append(f)
-    for rec, fl in nach_aufnahme.items():
+    for _rec, fl in nach_aufnahme.items():
         fl = sorted(fl, key=lambda z: float(z["t0_s"]))
         for i in range(0, len(fl) - n_fenster + 1, n_fenster):
             aus.append(fl[i:i + n_fenster])
