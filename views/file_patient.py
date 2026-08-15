@@ -115,7 +115,12 @@ def render():
             else:
                 uploaded = st.file_uploader(
                     ":material/folder_open: " + tr("file_patient.uploader_label"),
-                    type=["edf"], accept_multiple_files=False,
+                    # KEIN type=["edf"]: Streamlit übersetzt das in ein HTML accept=".edf".
+                    # iOS Safari kennt .edf keinem Dokumenttyp zugeordnet und graut die Datei
+                    # im Dateipicker aus (bevor sie überhaupt an die App übergeben wird) —
+                    # kein Streamlit-Bug, sondern iOS' Dateityperkennung. Die eigentliche
+                    # Prüfung übernimmt ohnehin core/edf_validation.py direkt nach dem Upload.
+                    accept_multiple_files=False,
                 )
                 if uploaded is not None:
                     dest_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}_{os.path.basename(uploaded.name)}")
