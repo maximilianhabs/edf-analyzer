@@ -16,13 +16,29 @@ Protokollen, jedes Zwischenergebnis als CSV im Repository.
 | 3 | Wie gut erkennt CosEn Vorhofflimmern? | [BENCHMARK_AFIB.md](BENCHMARK_AFIB.md) |
 | 4 | Trägt die P-Wellen-Stufe, und hilft sie CosEn? | [BENCHMARK_PWAVE.md](BENCHMARK_PWAVE.md) + Schritt 3/4 in BENCHMARK_AFIB.md |
 
-> **Bevor du startest: Umfang und Downloadzeit.** Zum Nachrechnen werden **rund 1,8 GB** von
-> PhysioNet geladen (nicht Teil dieses Repos, siehe unten). Bei 20–50 MBit/s sind das grob
-> 5–15 Minuten, bei 500 MBit/s+ unter zwei Minuten — **in der eigenen Erfahrung dauerte allein
-> die 640-MB-AFib-Datenbank über eine halbe Stunde**, weil PhysioNets Server selbst oft der
-> Flaschenhals sind, nicht die eigene Leitung. Wer nur die Ergebnisse lesen will, braucht
-> nichts davon herunterzuladen — jedes einzelne Zwischenergebnis liegt bereits als CSV in
-> [`benchmarks/results/`](../benchmarks/results/).
+> **Diese Datenbanken sind NICHT nötig, um die Anwendung zu benutzen** — sie dienen
+> ausschließlich dazu, die hier gezeigten Ergebnisse selbst nachzurechnen. Die App läuft ohne
+> sie vollständig; siehe die Gegenüberstellung direkt darunter.
+>
+> **Umfang und Downloadzeit dieser Referenzdatenbanken.** Zum Nachrechnen werden **rund
+> 1,8 GB** von PhysioNet geladen (nicht Teil dieses Repos, siehe unten). Bei 20–50 MBit/s sind
+> das grob 5–15 Minuten, bei 500 MBit/s+ unter zwei Minuten — **in der eigenen Erfahrung
+> dauerte allein die 640-MB-AFib-Datenbank über eine halbe Stunde**, weil PhysioNets Server
+> selbst oft der Flaschenhals sind, nicht die eigene Leitung. Wer nur die Ergebnisse lesen
+> will, braucht nichts davon herunterzuladen — jedes einzelne Zwischenergebnis liegt bereits
+> als CSV in [`benchmarks/results/`](../benchmarks/results/).
+
+## 0 · Zum Vergleich: was die Anwendung selbst zum Laufen braucht
+
+| | Umfang | Downloadzeit bei 20–50 MBit/s |
+|---|---|---|
+| **App-Abhängigkeiten** (`requirements.txt`, `pip install`) | ~134 MB komprimiert | **~30–60 Sekunden** |
+| **Docker-Image** (fertig gebaut) | ~1,45 GB | ~4–10 Minuten, meist Build-Zeit statt Download |
+| Referenzdatenbanken (nur für diese Seite hier) | ~1,8 GB | ~5–15 Minuten, siehe oben |
+
+Die App selbst ist also klein und schnell startklar; groß und langsam sind ausschließlich die
+**Referenzdatenbanken für diese Validierungsseite** — die niemand braucht, der die Anwendung
+einfach benutzen will.
 
 ## 1 · Datensätze — was tatsächlich geprüft wurde
 

@@ -98,6 +98,11 @@ pip install -r requirements.txt
 EDF_PASSWORD=yourPassword streamlit run app.py
 ```
 
+The app itself is light: `requirements.txt` is ~134 MB compressed, well under a minute on a
+normal connection. That is separate from the ~1.8 GB of reference databases used to reproduce
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md) — those are optional and not needed to run or use
+the app.
+
 `EDF_PASSWORD` is a required environment variable — without it the app refuses to start for
 security reasons (no default password in the source code).
 
