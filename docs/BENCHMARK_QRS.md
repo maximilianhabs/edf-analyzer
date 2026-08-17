@@ -122,7 +122,7 @@ schwer wie lange.
 
 ## Reproduzierbarkeit
 
-Die Daten liegen **nicht** im Repository (rund 500 MB). `benchmarks/fetch_mitdb.py` lädt sie
+Die Daten liegen **nicht** im Repository (rund 500 MB, Download bei 20–50 MBit/s grob 2–4 Minuten). `benchmarks/fetch_mitdb.py` lädt sie
 nach `benchmarks/data/` (in `.gitignore`). Im Repository liegen das Auswertungsskript und die
 **Ergebnisse als CSV** — diffbar, damit eine Veränderung zwischen zwei Ständen sichtbar wird.
 

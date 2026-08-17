@@ -97,6 +97,10 @@ erzeugen, die nichts bedeuten.
     python3 benchmarks/run_pwave.py 04015                 # Kontrollpunkt
     python3 benchmarks/run_pwave.py --all --csv benchmarks/results/pwave_alle23.csv
 
+Setzt die AFib-Datenbank voraus (`benchmarks/fetch_afdb.py --all`, ~640 MB — Downloadzeit
+siehe docs/BENCHMARK_AFIB.md). Für die Patientenebene (Schritt 4) kommt die Normal-Sinus-
+Datenbank dazu (`benchmarks/fetch_nsrdb.py --all`, ~630 MB, bei uns 20–30 min).
+
 Ergebnisse siehe unten.
 
 ---

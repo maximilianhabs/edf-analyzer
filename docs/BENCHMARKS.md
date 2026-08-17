@@ -16,6 +16,14 @@ Protokollen, jedes Zwischenergebnis als CSV im Repository.
 | 3 | Wie gut erkennt CosEn Vorhofflimmern? | [BENCHMARK_AFIB.md](BENCHMARK_AFIB.md) |
 | 4 | Trägt die P-Wellen-Stufe, und hilft sie CosEn? | [BENCHMARK_PWAVE.md](BENCHMARK_PWAVE.md) + Schritt 3/4 in BENCHMARK_AFIB.md |
 
+> **Bevor du startest: Umfang und Downloadzeit.** Zum Nachrechnen werden **rund 1,8 GB** von
+> PhysioNet geladen (nicht Teil dieses Repos, siehe unten). Bei 20–50 MBit/s sind das grob
+> 5–15 Minuten, bei 500 MBit/s+ unter zwei Minuten — **in der eigenen Erfahrung dauerte allein
+> die 640-MB-AFib-Datenbank über eine halbe Stunde**, weil PhysioNets Server selbst oft der
+> Flaschenhals sind, nicht die eigene Leitung. Wer nur die Ergebnisse lesen will, braucht
+> nichts davon herunterzuladen — jedes einzelne Zwischenergebnis liegt bereits als CSV in
+> [`benchmarks/results/`](../benchmarks/results/).
+
 ## 1 · Datensätze — was tatsächlich geprüft wurde
 
 **Kein Datensatz stammt von uns.** Alle drei sind seit Jahrzehnten öffentliche
@@ -184,12 +192,19 @@ Entscheidungen.
 ## Reproduzierbarkeit
 
 Jede Zahl auf dieser Seite lässt sich nachrechnen — die Daten liegen bewusst nicht im
-Repository (zusammen rund 1,8 GB), sondern werden von PhysioNet direkt bezogen:
+Repository, sondern werden von PhysioNet direkt bezogen:
+
+| Datensatz | Größe | bei 20–50 MBit/s | eigene Erfahrung |
+|---|---|---|---|
+| MIT-BIH Arrhythmia | ~500 MB | ~2–4 min | — |
+| MIT-BIH AFib | ~640 MB | ~2–5 min | **über 30 min** (PhysioNet-seitig gebremst) |
+| MIT-BIH Normal Sinus | ~630 MB | ~2–5 min | ~20–30 min |
+| **zusammen** | **~1,8 GB** | **~6–14 min** | **eher 45–90 min** |
 
     pip install -r requirements-benchmark.txt
-    python3 benchmarks/fetch_mitdb.py --all      # MIT-BIH Arrhythmia,  ~500 MB
-    python3 benchmarks/fetch_afdb.py --all       # MIT-BIH AFib,        ~640 MB
-    python3 benchmarks/fetch_nsrdb.py --all      # MIT-BIH Normal Sinus,~630 MB
+    python3 benchmarks/fetch_mitdb.py --all      # MIT-BIH Arrhythmia,  ~500 MB, s. Tabelle oben
+    python3 benchmarks/fetch_afdb.py --all       # MIT-BIH AFib,        ~640 MB, s. Tabelle oben
+    python3 benchmarks/fetch_nsrdb.py --all      # MIT-BIH Normal Sinus,~630 MB, s. Tabelle oben
 
     python3 benchmarks/run_qrs.py --all --csv benchmarks/results/chunk5_alle44_eigen.csv
     python3 benchmarks/run_hrv.py --all --csv benchmarks/results/hrv_alle44.csv

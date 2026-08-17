@@ -4,6 +4,10 @@ Wie bei der Arrhythmie-Datenbank liegen die Daten bewusst NICHT im Repository: 2
 à 10 Stunden sind rund 640 MB, und sie sind öffentlich und dauerhaft verfügbar. Im Repository
 liegen nur die Skripte und die Ergebnisse.
 
+Downloadzeit: bei 20-50 MBit/s theoretisch 2-5 Minuten — in unserer eigenen Erfahrung eher
+eine gute halbe Stunde, weil PhysioNets Server oft der Flaschenhals sind, nicht die eigene
+Leitung. Einplanen, nicht nebenbei laufen lassen und vergessen.
+
     python3 benchmarks/fetch_afdb.py 04015        # eine Aufnahme (~28 MB)
     python3 benchmarks/fetch_afdb.py --all        # alle 23
 

@@ -6,6 +6,8 @@ keine einzige unauffällige Aufnahme — dort ist die Spezifität auf Aufnahmeeb
 nicht messbar.
 
 18 Aufnahmen à rund 25 Stunden, 128 Hz, Probanden ohne nachweisbare relevante Arrhythmien.
+Umfang rund 630 MB; Downloadzeit bei uns 20-30 Minuten (siehe fetch_afdb.py zur Einordnung,
+warum das länger dauert als die reine Bandbreite vermuten liesse).
 
     python3 benchmarks/fetch_nsrdb.py 16265        # eine Aufnahme
     python3 benchmarks/fetch_nsrdb.py --all        # alle 18 (rund 630 MB)

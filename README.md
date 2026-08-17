@@ -231,7 +231,9 @@ but that upgrade is a separate step not yet made). See
 **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)** for the full results, including
 sensitivity/specificity at patient level and what combining two screening methods does and
 does not buy — an ordered screen-then-confirm combination measurably beats either method
-alone or a simple OR, and is not implemented pending an operator decision.
+alone or a simple OR, and is not implemented pending an operator decision. Reproducing it
+downloads ~1.8 GB from PhysioNet; see that page for size and timing per database before you
+start.
 
 **What happens to the signal before a number appears** — every filter, the choice of analysis
 window, artifact handling, resampling — is specified in

@@ -112,7 +112,10 @@ mit tausenden.
 ## Durchführung
 
     pip install -r requirements-benchmark.txt
-    python3 benchmarks/fetch_afdb.py --all          # rund 640 MB
+    python3 benchmarks/fetch_afdb.py --all          # ~640 MB — bei uns über 30 min, PhysioNet
+                                                     # ist hier oft der Flaschenhals, nicht die
+                                                     # eigene Leitung (bei 20-50 MBit/s waeren
+                                                     # theoretisch 2-5 min drin)
     python3 benchmarks/run_afib.py --all --csv benchmarks/results/afib_alle23.csv
 
 Ergebnisse siehe unten.

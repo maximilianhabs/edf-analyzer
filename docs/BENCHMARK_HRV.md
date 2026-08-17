@@ -93,7 +93,7 @@ nach Festlegung des Betreibers Aufgabe des Anwenders und nicht Gegenstand dieses
 ## Durchführung
 
     pip install -r requirements-benchmark.txt
-    python3 benchmarks/fetch_mitdb.py --all
+    python3 benchmarks/fetch_mitdb.py --all      # ~500 MB, 20-50 MBit/s: grob 2-4 min
     python3 benchmarks/run_hrv.py --all --csv benchmarks/results/hrv_alle44.csv
 
 Ergebnisse siehe unten.

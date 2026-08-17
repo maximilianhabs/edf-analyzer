@@ -3,6 +3,8 @@
 Die Daten liegen bewusst NICHT im Repository: 48 Aufnahmen sind rund 500 MB, und sie sind
 öffentlich und dauerhaft verfügbar. Im Repository liegen nur die Skripte und die Ergebnisse.
 
+Downloadzeit: bei 20-50 MBit/s grob 2-4 Minuten.
+
     python3 benchmarks/fetch_mitdb.py 100          # eine Aufnahme
     python3 benchmarks/fetch_mitdb.py --all        # alle 44 der Auswertung
 
