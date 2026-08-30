@@ -82,7 +82,7 @@ def read_requirements(path):
 
 
 def stdlib_names():
-    """Namen der Standardbibliothek — auch auf Python 3.9.
+    """Namen der Standardbibliothek — auch auf älteren Python-Versionen.
 
     `sys.stdlib_module_names` gibt es erst ab 3.10. Das Projekt läuft aber auf 3.9 (Dockerfile,
     wegen MNE), und genau dort brach dieses Skript in der ersten CI ab. Fallback leitet die

@@ -39,9 +39,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.9 ist die Zielversion (Dockerfile, wegen MNE); 3.12 als Vorwarnung, falls eine
-        # Abhängigkeit auf neueren Versionen bricht.
-        python-version: ["3.9", "3.12"]
+        # 3.12 ist seit August 2026 die Zielversion und entspricht dem Dockerfile.
+        # Vorher lief hier zusätzlich 3.9; das war die Version des Images, bis
+        # Python 3.9 sein Lebensende erreichte. Eine zweite Version (3.13) als
+        # Vorwarnung wäre sinnvoll, sobald die Abhängigkeiten sie tragen.
+        python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

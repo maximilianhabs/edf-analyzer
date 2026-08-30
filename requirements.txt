@@ -2,12 +2,12 @@
 #
 # Untergrenze UND Obergrenze, bewusst keine exakten Pins (`==`).
 #
-# Exakte Pins wären für eine Anwendung sonst das Richtige — gerade weil die Reports jetzt die
-# Paketversionen mitschreiben. Hier gehen sie aber nicht: das Docker-Image läuft auf Python
-# 3.9 (wegen MNE), Entwicklung und CI zusätzlich auf 3.12, und für mehrere dieser Pakete gibt
-# es keine Version, die auf beiden installierbar ist (numpy 2.0.2 ist die letzte mit
-# 3.9-Rädern, aktuelle Umgebungen haben 2.1+). Ein exakter Pin würde also entweder das Image
-# oder die CI unbrauchbar machen.
+# Historisch waren exakte Pins nicht möglich: Das Image lief auf Python 3.9, Entwicklung und
+# CI auf 3.12, und für mehrere Pakete gab es keine Version, die auf beiden installierbar war
+# (numpy 2.0.2 war die letzte mit 3.9-Rädern). Seit dem Wechsel auf 3.12 (August 2026) gilt
+# dieser Grund nicht mehr — überall läuft dieselbe Version. Exakte Pins wären damit möglich
+# und für die Reproduzierbarkeit das Bessere; das ist ein eigener, bewusst zu treffender
+# Schritt und noch nicht vollzogen.
 #
 # Die Obergrenzen schließen jeweils den nächsten MAJOR-Sprung aus. Sie verhindern das
 # realistische Problem — eine Neuinstallation zieht über Nacht eine Version mit geänderter

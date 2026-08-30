@@ -1,5 +1,13 @@
-# MNE läuft stabil auf 3.9 — bewusste Wahl gegen FSL-Python 3.12
-FROM python:3.9-slim-bookworm
+# Python 3.12 (seit August 2026). Der frühere Hinweis "3.9 wegen MNE, bewusste
+# Wahl gegen FSL-Python 3.12" bezog sich auf die lokale Entwicklungsumgebung, in
+# der FSL ein eigenes Python mitbringt — für das Container-Image galt er nie.
+#
+# Anlass: Python 3.9 hat im Oktober 2025 sein Lebensende erreicht und erhält keine
+# Sicherheitsupdates mehr. Vor dem Wechsel wurden die Kennwerte beider Fixture-
+# Aufnahmen in alter und neuer Umgebung erhoben und verglichen
+# (tools/versionsvergleich.py): 78 von 78 identisch, trotz numpy 2.0.2 -> 2.5.2,
+# scipy 1.13.1 -> 1.18.1 und mne 1.8.0 -> 1.12.1.
+FROM python:3.12-slim-bookworm
 
 # Systemlibs für MNE (OpenBLAS/scipy) und ReportLab (Fonts)
 RUN apt-get update && apt-get install -y --no-install-recommends \

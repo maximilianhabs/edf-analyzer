@@ -6,7 +6,7 @@
 
 [![Tests](https://github.com/maximilianhabs/edf-analyzer/actions/workflows/test.yml/badge.svg)](https://github.com/maximilianhabs/edf-analyzer/actions/workflows/test.yml)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Python](https://img.shields.io/badge/python-3.9-blue)
+![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Status](https://img.shields.io/badge/status-aktiv%20·%20research%20prototype-orange)
 
 > ⚠️ **Kein Medizinprodukt, keine Diagnosesoftware.** Der EDF-Analyzer ist ein Werkzeug für Forschung, methodische Exploration und Lehre. Alle ausgegebenen Werte sind **Orientierung**, keine Diagnosekriterien, und ersetzen keine ärztliche Befundung.
@@ -67,7 +67,7 @@ docker run -p 8501:8501 -e EDF_PASSWORD=deinPasswort edf-analyzer
 > dem Rebuild der Vergleich unter „Erweiterte Analysen" und die entsprechenden Report-Zeilen.
 > Die App läuft in beiden Fällen; sie weist aus, welcher Detektor tatsächlich lief.
 
-**Lokal (Python 3.9):**
+**Lokal (Python 3.12):**
 
 ```bash
 pip install -r requirements.txt
@@ -205,7 +205,7 @@ statt über ein öffentliches Issue melden.
 
 ## Tech-Stack
 
-Python 3.9 · Streamlit · MNE · SciPy/NumPy/pandas · pyedflib · FOOOF · reportlab/openpyxl.
+Python 3.12 · Streamlit · MNE · SciPy/NumPy/pandas · pyedflib · FOOOF · reportlab/openpyxl.
 Vollständige Liste in [`requirements.txt`](requirements.txt); die optionalen, GPL-lizenzierten
 Vergleichsdetektoren stehen in [`requirements-validated.txt`](requirements-validated.txt).
 Lizenzen der Drittkomponenten in [NOTICE](NOTICE).

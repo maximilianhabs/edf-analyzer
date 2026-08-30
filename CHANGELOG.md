@@ -5,6 +5,48 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Geändert — Basis-Image auf Python 3.12
+
+Python 3.9 hat im Oktober 2025 sein Lebensende erreicht und erhält keine Sicherheitsupdates
+mehr. Das Image lief bis dahin darauf; der Kommentar im Dockerfile („3.9 wegen MNE, bewusste
+Wahl gegen FSL-Python 3.12") bezog sich auf die lokale Entwicklungsumgebung, in der FSL ein
+eigenes Python mitbringt — für den Container galt er nie.
+
+**Nicht die Python-Version war das Risiko, sondern was sie nach sich zieht.** Auf 3.9
+installierte pip `numpy 2.0.2` — die letzte Version mit 3.9-Rädern. Auf 3.12 kommen deutlich
+neuere Fassungen, und damit möglicherweise andere BLAS-Pfade und FFT-Implementierungen. Die
+Ground-Truth-Tests hätten eine systematische Verschiebung um wenige Promille nicht
+zwangsläufig gemeldet: Sie arbeiten mit Toleranzen. Aufgefallen wäre so etwas erst, wenn
+zwei Befunde derselben Aufnahme aus verschiedenen Monaten nebeneinanderliegen.
+
+Deshalb neu: `tools/versionsvergleich.py` erhebt die Kennwerte beider Fixture-Aufnahmen —
+Spektralbänder, aperiodischer Fit, Entropien, R-Zacken, HRV in Zeit- und Frequenzdomäne — und
+vergleicht zwei Umgebungen zahlenweise, mit Einordnung der relativen Abweichung.
+
+Ergebnis des Wechsels:
+
+| | vorher | nachher |
+|---|---|---|
+| Python | 3.9.25 | 3.12.11 |
+| numpy | 2.0.2 | 2.5.2 |
+| scipy | 1.13.1 | 1.18.1 |
+| mne | 1.8.0 | 1.12.1 |
+
+**78 von 78 Kennwerten identisch** — nicht innerhalb einer Toleranz, sondern gleich. Dazu 90
+bestandene Tests (5 übersprungen: optionale Abhängigkeiten) und ein grüner Preflight.
+
+Beim Bau des Vergleichsskripts fiel ein Fehler auf, der es wertlos gemacht hätte: Gerundet
+wurde zunächst auf neun *Nachkomma*stellen. MNE liefert Daten in Volt, Bandleistungen liegen
+damit bei ~1e-11 — sie wurden glatt zu `0.0`, und der EEG-Teil des Vergleichs hätte
+zuverlässig „keine Abweichung" gemeldet, ohne je etwas gemessen zu haben. Jetzt neun
+*signifikante* Stellen, unabhängig von der Größenordnung.
+
+Die CI testet nur noch 3.12 (vorher 3.9 und 3.12). Damit entfällt auch der Grund, weshalb die
+Abhängigkeiten nicht exakt gepinnt werden konnten — überall läuft nun dieselbe Version.
+Exakte Pins wären für die Reproduzierbarkeit das Bessere, sind aber ein eigener Schritt und
+noch nicht vollzogen.
+
+
 ### Behoben — EDF-Upload auf iPhone/iPad war blockiert
 
 `st.file_uploader(..., type=["edf"])` übersetzt Streamlit intern in ein HTML

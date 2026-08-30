@@ -10,7 +10,7 @@ evidence for each procedure actually is.
 
 [![Tests](https://github.com/maximilianhabs/edf-analyzer/actions/workflows/test.yml/badge.svg)](https://github.com/maximilianhabs/edf-analyzer/actions/workflows/test.yml)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Python](https://img.shields.io/badge/python-3.9-blue)
+![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Status](https://img.shields.io/badge/status-active%20·%20research%20prototype-orange)
 
 > ⚠️ **Not a medical device, not diagnostic software.** The EDF-Analyzer is a tool for
@@ -91,7 +91,7 @@ docker run -p 8501:8501 -e EDF_PASSWORD=yourPassword edf-analyzer
 > "Advanced Analyses" comparison and the corresponding report rows will be gone after the
 > rebuild. The app itself keeps working either way and states which detector actually ran.
 
-**Locally (Python 3.9):**
+**Locally (Python 3.12):**
 
 ```bash
 pip install -r requirements.txt
@@ -291,7 +291,7 @@ rather than a public issue).
 
 ## Tech stack
 
-Python 3.9 · Streamlit · MNE · SciPy/NumPy/pandas · pyedflib · FOOOF · reportlab/openpyxl.
+Python 3.12 · Streamlit · MNE · SciPy/NumPy/pandas · pyedflib · FOOOF · reportlab/openpyxl.
 Full list in [`requirements.txt`](requirements.txt); the optional, GPL-licensed comparison
 detectors live in [`requirements-validated.txt`](requirements-validated.txt). Third-party
 licences are listed in [NOTICE](NOTICE).
