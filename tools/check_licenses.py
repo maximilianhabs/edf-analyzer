@@ -66,6 +66,15 @@ COPYLEFT = ("GPL", "AGPL", "LGPL", "MPL", "EUPL", "CDDL", "OSL", "CECILL")
 # `neurokit2` gefunden, das über die gesamte Projekthistorie ungenutzt mitgeschleppt wurde).
 CLI_ONLY = {"ruff"}
 
+# Pakete, die eine ANDERE Bibliothek intern nutzt, ohne dass Projektcode sie importiert.
+# `watchdog` ist so ein Fall: Streamlit greift darauf zurueck, um Quelldateien zu
+# ueberwachen, und weist beim Start selbst darauf hin, wenn es fehlt. Es steht deshalb
+# bewusst in requirements-dev.txt, taucht aber in keinem `import` auf.
+# Getrennt von CLI_ONLY gefuehrt, weil der Grund ein anderer ist: nicht "wird als Kommando
+# aufgerufen", sondern "wird von einer Abhaengigkeit importiert". Wer die Liste spaeter
+# erweitert, soll den Unterschied sehen.
+INDIREKT_GENUTZT = {"watchdog"}
+
 SKIP_DIRS = {".git", "tools", ".venv", "venv", "static", "build", "dist"}
 
 
@@ -173,7 +182,7 @@ def main():
     for pkg in sorted(used - declared):
         problems.append(f"[nicht deklariert] '{pkg}' wird importiert, steht aber in keiner "
                         f"requirements-Datei")
-    for pkg in sorted(declared - used - CLI_ONLY):
+    for pkg in sorted(declared - used - CLI_ONLY - INDIREKT_GENUTZT):
         problems.append(f"[ungenutzt] '{pkg}' ist deklariert, wird aber nirgends importiert")
 
     # 3 — Copyleft gehört nicht in die Standard-Requirements

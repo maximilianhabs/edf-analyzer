@@ -13,3 +13,12 @@ pypdf>=4.0,<7
 # Linter. Schmale Regelauswahl in ruff.toml — nur echte Fehler plus die Fallen aus
 # bugbear, keine Stildebatten. Läuft im schnellen CI-Job in Sekunden.
 ruff>=0.16,<1
+
+# Streamlit ueberwacht die Quelldateien, um bei Aenderungen neu zu laden. Ohne watchdog
+# faellt es auf Polling zurueck und weist beim Start selbst darauf hin ("For better
+# performance, install the Watchdog module"). Auf diesem Projekt ist der Unterschied
+# spuerbar: Am 30.08.2026 wirkte die App dadurch traege genug, dass ein Klick auf
+# "Uebernehmen" in der Kanaluebersicht folgenlos schien und die Navigation hakte -- es
+# war kein Logikfehler, sondern Wartezeit. Nur fuer die lokale Entwicklung relevant;
+# im Container laedt nichts neu.
+watchdog>=4.0,<7
