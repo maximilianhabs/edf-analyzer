@@ -5,6 +5,30 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Behoben — „EKG & HRV" stürzte bei sehr kurzen Aufnahmen ab
+
+Mit einer kurzen EDF-Datei brach die ganze Seite mit
+`TypeError: 'NoneType' object is not subscriptable` ab (User-Fund 2026-09-29). Unter
+20 RR-Intervallen liefert die Frequenzanalyse bewusst kein Ergebnis — eine HRV-Spektralanalyse
+braucht Minuten, nicht Sekunden. Der Code vermerkte selbst, dass das „überall abgefangen werden"
+muss; die Tabelle für den Excel-Export griff trotzdem blind auf `fd["lf_power"]` zu. Und weil sie
+bei jedem Öffnen der Seite gebaut wird, riss sie die gesamte Seite mit.
+
+Fehlende Frequenzwerte ergeben jetzt eine leere Zelle statt eines Absturzes. Alle übrigen Zugriffe
+auf die Frequenzanalyse in dieser Seite waren bereits abgesichert (geprüft).
+`tests/test_kurze_aufnahme.py` kürzt die Fixture auf 12 Sekunden und rendert die Seite; ohne den
+Fix schlägt der Test mit genau der gemeldeten Meldung fehl.
+
+### Bekannt, noch offen — Navigation auf dem iPhone hakt
+
+Auf iOS (Safari) reagiert die Navigation über die Seitenleiste teils nicht; einmal blieb schon
+nach der Passworteingabe die Weiterleitung aus. Im Desktop-Browser läuft dieselbe Version mit
+derselben Datei einwandfrei — auch lokal mit Paket für Paket identischer Umgebung nachgeprüft
+(Upload → Kanal-Identifikation → EEG-Viewer). Laut Betreiber funktionierte die Navigation auf
+dem iPhone früher. Zeitlich naheliegender Kandidat ist der Wechsel auf Python 3.12 (30.08.2026),
+mit dem Streamlit 1.62 und dessen neuer Webserver (uvicorn statt tornado) kamen. Nicht
+nachgewiesen; die Untersuchung steht aus.
+
 ### Geändert — Basis-Image auf Python 3.12
 
 Python 3.9 hat im Oktober 2025 sein Lebensende erreicht und erhält keine Sicherheitsupdates

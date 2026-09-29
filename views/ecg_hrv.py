@@ -2315,6 +2315,14 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
             st.dataframe(df_rr, hide_index=True, use_container_width=True, height=300)
 
         # Excel-Export
+        # Frequenzdomäne kann fehlen: bei sehr kurzen Aufnahmen reicht die RR-Reihe nicht für
+        # ein Spektrum, `fd` ist dann None. Der Rest der Seite fängt das ab; diese Tabelle griff
+        # bis 2026-09-29 blind zu und brach die ganze Seite mit einem TypeError ab (User-Fund
+        # mit einer kurzen EDF-Datei). Fehlender Wert = leere Zelle, nicht Absturz.
+        def _fd_wert(key, nd):
+            v = fd.get(key) if fd else None
+            return round(v, nd) if v is not None and v == v else None
+
         summary_rows = [
             {"Parameter": "Herzfrequenz (Mittel)",         "Wert": round(mean_hr, 1),            "Einheit": "bpm"},
             {"Parameter": "Mittleres RR",                   "Wert": round(mean_rr, 1),            "Einheit": "ms"},
@@ -2331,10 +2339,10 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
             {"Parameter": "Sample Entropy (nichtlinear)",   "Wert": round(samp_en, 2) if samp_en == samp_en else None, "Einheit": "—"},
             {"Parameter": "Aufnahmedauer (Analyse)",        "Wert": round(len(rr_ms_analysis) and float(np.sum(rr_ms_analysis)/1000) or 0.0, 1), "Einheit": "s"},
             {"Parameter": "Schläge entfernt (Outlier-Filter)", "Wert": round(pct_removed, 1),   "Einheit": "%"},
-            {"Parameter": "LF Power",                       "Wert": round(fd["lf_power"], 1),     "Einheit": "ms²"},
-            {"Parameter": "HF Power",                       "Wert": round(fd["hf_power"], 1),     "Einheit": "ms²"},
-            {"Parameter": "Total Power",                    "Wert": round(fd["total_power"], 1),  "Einheit": "ms²"},
-            {"Parameter": "LF/HF-Ratio",                   "Wert": round(fd["lf_hf_ratio"], 2),  "Einheit": "—"},
+            {"Parameter": "LF Power",                       "Wert": _fd_wert("lf_power", 1),     "Einheit": "ms²"},
+            {"Parameter": "HF Power",                       "Wert": _fd_wert("hf_power", 1),     "Einheit": "ms²"},
+            {"Parameter": "Total Power",                    "Wert": _fd_wert("total_power", 1),  "Einheit": "ms²"},
+            {"Parameter": "LF/HF-Ratio",                   "Wert": _fd_wert("lf_hf_ratio", 2),  "Einheit": "—"},
             {"Parameter": "Spektralmethode",                "Wert": freq_method,                   "Einheit": ""},
         ]
         df_summary = pd.DataFrame(summary_rows)
