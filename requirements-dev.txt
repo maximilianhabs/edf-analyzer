@@ -8,7 +8,7 @@ pytest>=7.0,<9
 # Liest die erzeugten Reports zurück: ReportLab komprimiert die Textströme, eine Suche
 # im Rohbytestrom findet die Herkunftsangaben nicht. Ohne pypdf könnten die Report-Tests
 # nur prüfen, DASS ein PDF entsteht — nicht, was darin steht.
-pypdf>=4.0,<7
+pypdf>=6.19.0,<7
 
 # Linter. Schmale Regelauswahl in ruff.toml — nur echte Fehler plus die Fallen aus
 # bugbear, keine Stildebatten. Läuft im schnellen CI-Job in Sekunden.
