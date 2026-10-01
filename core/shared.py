@@ -752,8 +752,21 @@ def load_and_prepare(path: str):
 
 
 @st.cache_data(show_spinner=False)  # s. load_and_prepare: Spinner-Text an der Aufrufstelle
-def get_filtered_eeg(_data, eeg_map, sfreq, low_hz, high_hz):
-    """Bandpass-Filter auf die EEG-Kanäle der Datenmatrix. _data wird nicht gehasht."""
+def get_filtered_eeg(_data, eeg_map, sfreq, low_hz, high_hz, datei_id):
+    """Bandpass-Filter auf die EEG-Kanäle der Datenmatrix.
+
+    `_data` wird bewusst NICHT gehasht (die volle Matrix zu hashen kostet bei jedem Aufruf
+    Sekunden). Deshalb MUSS `datei_id` die Aufnahme eindeutig benennen — den Upload-Pfad,
+    der je Upload eine zufällige Kennung trägt.
+
+    Bis 2026-10-01 fehlte dieser Parameter: Der Schlüssel bestand nur aus Kanalbelegung,
+    Abtastrate und Filter. Zwei verschiedene Aufnahmen vom selben Gerätetyp — gleiche
+    Montage, gleiche Abtastrate, also der Normalfall — bekamen dieselbe gefilterte Matrix,
+    und weil der Cache prozessweit gilt, über Sitzungen und Nutzer hinweg: Der EEG-Viewer
+    konnte das EEG eines anderen Patienten anzeigen. Gefunden durch ein externes Review,
+    reproduziert mit den beiden Fixtures, seit der ersten Version (17.06.2026) im Code.
+    Siehe tests/test_cache_isolation.py.
+    """
     from scipy.signal import butter, filtfilt
     filtered = _data.copy()
     idxs = list(eeg_map.values())

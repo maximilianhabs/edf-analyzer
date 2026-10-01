@@ -5,6 +5,71 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Behoben — Zwischenspeicher konnten Aufnahmen und Reports verschiedener Patienten vertauschen
+
+**Schwerwiegend.** Streamlit lässt Funktionsparameter mit führendem Unterstrich (`_x`) beim
+Bilden des Cache-Schlüssels weg. An vier Stellen fehlte dadurch die Aufnahme im Schlüssel — und
+weil die Zwischenspeicher prozessweit gelten, wirkte das **über Sitzungen und Nutzer hinweg**:
+
+| Stelle | Folge |
+|---|---|
+| `core/shared.py::get_filtered_eeg` (EEG-Viewer) | Schlüssel nur aus Kanalbelegung, Abtastrate, Filter: zwei Aufnahmen vom selben Gerätetyp bekamen dieselbe gefilterte Matrix — **der Viewer konnte das EEG eines anderen Patienten zeigen** |
+| `views/report.py::_export_bytes` (PDF, Excel, Manifest) | **alle** Parameter mit `_`, Schlüssel leer: jeder Nutzer bekam den **ersten Report seit dem letzten Neustart**, unabhängig von Datei, Alter, Geschlecht |
+| `views/report.py::_glory_bytes` (visueller Report) | ebenso |
+| `views/artifact_selection.py::_export_corrected` | ebenso, zusätzlich wurde die Artefaktmaske ignoriert |
+
+Reproduziert mit den beiden Fixtures, die genau diese Konstellation haben (gleiche
+Kanalbelegung und Abtastrate, verschiedene Signale). Im Code **seit der ersten Version
+(17.06.2026)**. Der Viewer-Fall wurde von einem externen Review gefunden, die drei Report-Fälle
+von der daraufhin gebauten Ratsche — ein zweites, unabhängiges Review kam zum selben Ergebnis.
+
+**Korrektur einer früheren Meldung:** Der User-Fund vom August („es werden alte Reports
+genommen") wurde damals als behoben gemeldet — repariert war aber nur der Session-State, nicht
+dieser Zwischenspeicher. Der damalige Test prüfte mit nur einer Datei und konnte den Fehler
+deshalb nicht sehen.
+
+Behebung: Die Aufnahme steht jetzt im Schlüssel (`datei_id` beim Viewer, Parameter ohne
+Unterstrich bei den Exporten). Bei den Exporten gehören zusätzlich die manuellen
+Kanalkorrekturen in den Schlüssel, weil die Funktionen sie aus dem Session-State lesen — ohne
+sie bekam man nach einer Umklassifizierung einen veralteten Report.
+
+`tests/test_cache_isolation.py` sichert das dreifach ab: der Viewer mit zwei Aufnahmen, zwei
+Nutzer erzeugen nacheinander Reports im selben Prozess (geprüft über die SHA-256 der Datei im
+Manifest), und eine Ratsche über **alle** Zwischenspeicher, die jeden ungehashten Parameter ohne
+Datei-Kennung daneben meldet. Ohne den Fix schlagen alle drei fehl.
+
+Beim Deploy wird der Zwischenspeicher durch den Container-Neustart vollständig geleert — bereits
+vertauschte Einträge überleben ihn nicht.
+
+### Bekannt, noch offen — weitere Befunde aus dem Performance- und Architektur-Review (01.10.2026)
+
+Zwei externe Reviews, von uns im Code nachgeprüft. Noch nicht behoben, in absteigender Wichtigkeit:
+
+- **Ergebnisse werden bei geänderten Einstellungen nicht zuverlässig verworfen.** Eine geänderte
+  Kanalzuordnung macht etwa den zwischengespeicherten HRV-Wert der Report-Seite
+  (`hrv_summary_report`) nicht ungültig; fertige Exporte bleiben bei geändertem Patientenalter
+  abrufbar. Nötig ist ein gemeinsamer Ergebnisschlüssel aus Aufnahme, Kanalzuordnung,
+  Analyseparametern, Artefaktmaske und Patientenkontext.
+- **Ein Fehler kann als unauffälliges Ergebnis erscheinen.** `analysis/report_export.py` ersetzt
+  einen beliebigen Fehler der Artefakterkennung durch eine leere Maske — der Report weist dann
+  „0 Segmente, 100 % sauber" aus. Ergebnisse brauchen unterscheidbare Zustände (erfolgreich,
+  zu wenig Daten, nicht verfügbar, fehlgeschlagen).
+- **Speicher wächst mit jedem Upload.** Keiner der rund 20 Zwischenspeicher hat eine Größen- oder
+  Zeitgrenze; jeder Upload erzeugt neue Einträge (gemessen: rund 4× Dateigrösse allein für die
+  geladene Aufnahme), die erst ein Neustart freigibt. Der Datei-Cleanup löscht Dateien, nicht
+  Cache-Einträge. Erklärt, warum die App im Betrieb zäher wird.
+- **Der EEG-Viewer filtert bei jeder Filteränderung die ganze Aufnahme**, obwohl nur eine Epoche
+  angezeigt wird. Beschleunigung nur mit ausreichend Randdaten und Vergleichstest gegen den
+  Ganzaufnahme-Filter, sonst entstehen Randartefakte.
+- **Mehrere Seiten laden die EDF erneut vollständig** in eigenen Zwischenspeichern.
+- **Herkunftsangaben unvollständig:** Der Fingerabdruck enthält nur die Anzahl der
+  Artefaktsegmente, nicht ihre Grenzen, und keine Kanalkorrekturen.
+- **Schichtung:** `analysis/` greift an einigen Stellen noch auf `views/` zu (bekannte, per
+  `tools/check_layering.py` begrenzte Altlast); manche gecachte Funktionen lesen versteckt den
+  Session-State.
+- **Betrieb:** Container ohne RAM-/CPU-Grenzen, Healthcheck prüft nur „antwortet", Host braucht
+  Kernel-Updates und Neustart, Abhängigkeiten ohne Lock-Datei.
+
 ### Behoben — „EKG & HRV" stürzte bei sehr kurzen Aufnahmen ab
 
 Mit einer kurzen EDF-Datei brach die ganze Seite mit
@@ -19,15 +84,51 @@ auf die Frequenzanalyse in dieser Seite waren bereits abgesichert (geprüft).
 `tests/test_kurze_aufnahme.py` kürzt die Fixture auf 12 Sekunden und rendert die Seite; ohne den
 Fix schlägt der Test mit genau der gemeldeten Meldung fehl.
 
-### Bekannt, noch offen — Navigation auf dem iPhone hakt
+### Bekannt, noch offen — Navigation auf dem iPhone hängt (Ursache nachgewiesen)
 
-Auf iOS (Safari) reagiert die Navigation über die Seitenleiste teils nicht; einmal blieb schon
-nach der Passworteingabe die Weiterleitung aus. Im Desktop-Browser läuft dieselbe Version mit
-derselben Datei einwandfrei — auch lokal mit Paket für Paket identischer Umgebung nachgeprüft
-(Upload → Kanal-Identifikation → EEG-Viewer). Laut Betreiber funktionierte die Navigation auf
-dem iPhone früher. Zeitlich naheliegender Kandidat ist der Wechsel auf Python 3.12 (30.08.2026),
-mit dem Streamlit 1.62 und dessen neuer Webserver (uvicorn statt tornado) kamen. Nicht
-nachgewiesen; die Untersuchung steht aus.
+**Symptom:** Auf dem iPhone (Safari/WebKit) lässt sich eine Datei laden und die
+Kanal-Identifikation öffnen; danach öffnet sich über die Seitenleiste keine weitere Seite mehr
+(EEG-Viewer, EKG & HRV, …). Einmal blieb schon nach der Passworteingabe die Weiterleitung aus.
+Kein Eintrag im Server-Log, keine Fehlermeldung — die Verbindung hängt still. **Im
+Desktop-Browser läuft dieselbe Version einwandfrei.**
+
+**Ursache:** Streamlit hat mit **Version 1.57** seinen Webserver von tornado auf
+uvicorn/starlette umgestellt (1.53–1.56 lieferten beide mit, ab 1.57 nur noch den neuen). Mit
+dem Wechsel auf Python 3.12 am 30.08.2026 kam Streamlit 1.62 und damit der neue Webserver auf
+den Server.
+
+**Nachweis (29./30.09.2026):** Dieselbe App, identische Pakete bis auf die Streamlit-Version,
+lokal im WLAN, am echten iPhone geprüft — ohne Proxy, ohne Caddy dazwischen:
+
+| Streamlit | Webserver | iPhone |
+|---|---|---|
+| 1.50 | tornado | ✅ |
+| 1.56 | tornado (letzte Version damit) | ✅ |
+| 1.57 | uvicorn (erste Version nur damit) | ❌ |
+| 1.62 (live) | uvicorn | ❌ |
+| 1.64 (neueste) | uvicorn | ❌ |
+
+Ausgeschlossen wurden vorher: unser Code, die Bibliotheken ausser Streamlit (Paket-für-Paket-
+Abgleich per `pip freeze`), Server-Last, Speicher, die Caddy-Konfiguration. Eine
+iPhone-Emulation mit WebKit (Playwright) zeigte den Fehler **nicht** — aussagekräftig war nur
+das echte Gerät.
+
+**Mögliche Lösung, geprüft, bewusst noch nicht umgesetzt:** Streamlit auf 1.56.0 festschreiben.
+Am Desktop gegengeprüft: alle Tests grün, `tools/versionsvergleich.py` 78 von 78 Kennwerten
+identisch, alle zehn Seiten und die Report-Erzeugung fehlerfrei. Nicht umgesetzt, weil die
+Desktop-Version Vorrang hat und ein Versionswechsel dort das einzige Risiko wäre; die
+iPhone-Nutzung ist ein Zusatz. Wird später gesondert angegangen.
+
+**Öffentlich bekannt? (Recherche 30.09.2026):** Genau dieses Fehlerbild — Navigation auf iOS
+hängt ab 1.57 — ist in den Streamlit-Issues und im Forum **nicht beschrieben**; der offizielle
+Feedback-Thread zum neuen Webserver ([#13600](https://github.com/streamlit/streamlit/issues/13600))
+enthält keine iOS-Meldungen. Verwandt, aber nicht dasselbe:
+[#13326](https://github.com/streamlit/streamlit/issues/13326) (iOS 26 Safari rendert Streamlit
+1.52 gar nicht — anderes Symptom, alter Webserver),
+[#8334](https://github.com/streamlit/streamlit/issues/8334) (Seitenleisten-Knopf verschwindet
+auf dem Handy nach Tastatureingabe),
+[#12108](https://github.com/streamlit/streamlit/issues/12108) (WebSocket-Abbrüche je nach
+Ping-Intervall). Ein eigener Issue-Bericht bei Streamlit wäre sinnvoll.
 
 ### Geändert — Basis-Image auf Python 3.12
 

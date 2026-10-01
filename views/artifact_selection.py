@@ -793,13 +793,19 @@ def render():
     st.subheader("⬇️ " + tr("artifact.export_header"))
     st.caption(tr("artifact.export_caption"))
 
+    # KEIN führender Unterstrich bei den Parametern: Streamlit lässt `_x`-Parameter beim
+    # Cache-Schlüssel weg. Bis 2026-10-01 begannen hier ALLE Parameter mit `_` — der Schlüssel
+    # war damit leer, und jeder Aufrufer bekam den ersten korrigierten Report seit dem letzten Neustart,
+    # unabhängig von Datei, Alter und Nutzer (externes Review + eigene Ratsche, siehe
+    # tests/test_cache_isolation.py). `overrides_key` gehört dazu, weil die Funktion die
+    # manuellen Kanalkorrekturen aus dem Session-State liest.
     @st.cache_data(show_spinner=False)   # Spinner an der Aufrufstelle, hinter dem Knopf
-    def _export_corrected(_path, _seg_tuple, _disp, _age, _sex, _pediatric):
+    def _export_corrected(path, seg_tuple, disp, age, sex, pediatric, overrides_key):
         from analysis.report_export import collect_sections, build_pdf, build_excel
-        e = apply_channel_overrides(load_and_prepare(_path))
-        segs = [{"start_s": a, "end_s": b} for a, b in _seg_tuple]
-        secs = collect_sections(e, _path, corr_segments=segs, age=_age, sex=_sex, is_pediatric=_pediatric)
-        return build_pdf(secs, _disp + " (mit deiner Maske)"), build_excel(secs, e, _disp)
+        e = apply_channel_overrides(load_and_prepare(path))
+        segs = [{"start_s": a, "end_s": b} for a, b in seg_tuple]
+        secs = collect_sections(e, path, corr_segments=segs, age=age, sex=sex, is_pediatric=pediatric)
+        return build_pdf(secs, disp + " (mit deiner Maske)"), build_excel(secs, e, disp)
 
     _disp = st.session_state.get("edf_display_name", "report")
     _base = (_disp.rsplit(".", 1)[0] if _disp else "report") + "_artefaktkorrigiert"
@@ -821,7 +827,9 @@ def render():
                     st.session_state["art_export"] = {
                         "segs": _seg_tuple,
                         "bytes": _export_corrected(edf_path, _seg_tuple, _disp,
-                                                   _art_age, _art_sex, _art_pediatric),
+                                                   _art_age, _art_sex, _art_pediatric,
+                                                   str(sorted(st.session_state.get(
+                                                       "channel_overrides", {}).items()))),
                     }
             except Exception as e:
                 st.session_state.pop("art_export", None)

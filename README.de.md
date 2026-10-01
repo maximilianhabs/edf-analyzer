@@ -174,6 +174,7 @@ Nach dem **Add-on-Prinzip** bleiben die bewährten Standard-Methoden unveränder
 - **Artefakterkennung** ist regelbasiert und konservativ, bislang an wenigen Aufnahmen erprobt — keine ICA/autoreject-basierte Korrektur.
 - **HRV-Frequenzdomäne** benötigt ausreichend lange, stationäre Abschnitte (Task Force: ≥ 5 min); kurze Aufnahmen liefern hier bewusst keine Werte.
 - **Keine Normdatenbank** — angezeigte Normbereiche sind Literatur-Orientierungswerte, keine alters-/geschlechtsadjustierten Referenzkohorten.
+- **iPhone/iPad: Seitenwechsel kann hängen.** Datei laden und Kanal-Identifikation funktionieren; danach reagiert der Wechsel auf weitere Seiten über die Seitenleiste unter Umständen nicht mehr. Desktop-Browser sind nicht betroffen. Ursache auf Streamlit ab 1.57 (neuer Webserver uvicorn) eingegrenzt; mit 1.56 funktioniert das iPhone. Nachweis und Details im [CHANGELOG.md](CHANGELOG.md). Bis dahin bitte einen Desktop-Browser verwenden.
 
 ## Datenschutz
 

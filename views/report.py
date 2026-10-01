@@ -406,25 +406,33 @@ def render():
     st.subheader("⬇️ " + tr("report.export_header"))
     st.caption(tr("report.export_caption"))
 
+    # KEIN führender Unterstrich bei den Parametern: Streamlit lässt `_x`-Parameter beim
+    # Cache-Schlüssel weg. Bis 2026-10-01 begannen hier ALLE Parameter mit `_` — der Schlüssel
+    # war damit leer, und jeder Aufrufer bekam den ersten Report seit dem letzten Neustart,
+    # unabhängig von Datei, Alter und Nutzer (externes Review + eigene Ratsche, siehe
+    # tests/test_cache_isolation.py). `overrides_key` gehört dazu, weil die Funktion die
+    # manuellen Kanalkorrekturen aus dem Session-State liest.
     @st.cache_data(show_spinner=False)  # Spinner an der Aufrufstelle, s. core/shared.py
-    def _export_bytes(_path, _disp, _age, _sex, _pediatric):
+    def _export_bytes(path, disp, age, sex, pediatric, overrides_key):
         from analysis.report_export import (collect_sections, build_excel, build_pdf,
                                             build_manifest)
-        e = apply_channel_overrides(load_and_prepare(_path))
-        secs = collect_sections(e, _path, age=_age, sex=_sex, is_pediatric=_pediatric)
-        return (build_pdf(secs, _disp), build_excel(secs, e, _disp),
-                build_manifest(secs, e, _path, _disp, age=_age, sex=_sex,
-                               is_pediatric=_pediatric))
+        e = apply_channel_overrides(load_and_prepare(path))
+        secs = collect_sections(e, path, age=age, sex=sex, is_pediatric=pediatric)
+        return (build_pdf(secs, disp), build_excel(secs, e, disp),
+                build_manifest(secs, e, path, disp, age=age, sex=sex,
+                               is_pediatric=pediatric))
 
     _disp = st.session_state.get("edf_display_name", "report")
     _base = _disp.rsplit(".", 1)[0] if _disp else "report"
     _rep_age, _rep_sex = get_patient_info()
     _rep_pediatric = st.session_state.get("is_pediatric", False)
-    @st.cache_data(show_spinner=False)
-    def _glory_bytes(_path, _disp, _age, _pediatric):
+    @st.cache_data(show_spinner=False)  # Parameter ohne `_` — siehe _export_bytes oben
+    def _glory_bytes(path, disp, age, pediatric, overrides_key):
         from analysis.glory_report import build_glory_pdf
-        e = apply_channel_overrides(load_and_prepare(_path))
-        return build_glory_pdf(e, _path, _disp, age=_age, is_pediatric=_pediatric)
+        e = apply_channel_overrides(load_and_prepare(path))
+        return build_glory_pdf(e, path, disp, age=age, is_pediatric=pediatric)
+
+    _ov_key = str(sorted(st.session_state.get("channel_overrides", {}).items()))
 
     # Erzeugen NUR auf Knopfdruck (User-Entscheidung 2026-08-13). Vorher genügte das Öffnen
     # dieser Seite, um PDF, Excel, Manifest UND den visuellen Report zu bauen — auf einer
@@ -437,7 +445,7 @@ def render():
         try:
             with st.spinner(tr("report.creating_reports")):
                 st.session_state["report_export"] = _export_bytes(
-                    edf_path, _disp, _rep_age, _rep_sex, _rep_pediatric)
+                    edf_path, _disp, _rep_age, _rep_sex, _rep_pediatric, _ov_key)
         except Exception as e:
             st.session_state.pop("report_export", None)
             st.error(tr("report.export_failed", err=e))
@@ -463,7 +471,7 @@ def render():
                     try:
                         with st.spinner(tr("report.creating_visual")):
                             st.session_state["visual_export"] = _glory_bytes(
-                                edf_path, _disp, _rep_age, _rep_pediatric)
+                                edf_path, _disp, _rep_age, _rep_pediatric, _ov_key)
                     except Exception as ex:
                         st.caption(tr("report.visual_unavailable", err=ex))
             if st.session_state.get("visual_export") is not None:

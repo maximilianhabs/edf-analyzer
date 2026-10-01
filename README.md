@@ -256,6 +256,10 @@ intent. The most common misconception it settles: the filter settings in the EEG
   ≥ 5 min); for short recordings it deliberately reports no values.
 - **No normative database** — the reference ranges shown are orientation values from the
   literature, not age-/sex-adjusted reference cohorts.
+- **iPhone/iPad: page navigation can hang.** Uploading a file and opening the channel view
+  work; switching to further pages from the sidebar may then stop responding. Desktop browsers
+  are not affected. Cause traced to Streamlit ≥ 1.57 (new uvicorn web server); 1.56 works on
+  iPhone. Details and evidence in [CHANGELOG.md](CHANGELOG.md). Use a desktop browser for now.
 
 ## Privacy
 

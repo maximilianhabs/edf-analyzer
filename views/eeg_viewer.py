@@ -77,7 +77,8 @@ def render():
         st.info(tr("eeg_viewer.calibration_phase"))
 
     with st.spinner(tr("shared.filtering_eeg")):
-        filtered_data = get_filtered_eeg(edf["data"], edf["eeg_map"], sfreq, low_hz, high_hz)
+        filtered_data = get_filtered_eeg(edf["data"], edf["eeg_map"], sfreq, low_hz, high_hz,
+                                         datei_id=edf_path)
     derivs = get_bipolar_epoch(filtered_data, edf["eeg_map"], pairs, i_s, i_e)
 
     if show_ecg_lane and ecg_channels_avail:
