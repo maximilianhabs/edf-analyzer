@@ -1,5 +1,6 @@
 """ECG analysis: R-peak detection, RR intervals, HRV metrics."""
 
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
@@ -464,6 +465,7 @@ def edr_from_ecg(ecg: np.ndarray, r_peaks: np.ndarray, fs: float,
         b, a = butter(2, [resp_band[0] / nyq, min(resp_band[1] / nyq, 0.99)], btype="band")
         edr_bp = filtfilt(b, a, edr)
     except Exception:
+        logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
         edr_bp = edr
 
     nperseg = int(min(len(edr_bp), fs_interp * 60))

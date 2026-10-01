@@ -11,6 +11,7 @@ Vektor-PDF via matplotlib PdfPages. Verändert nichts an den bestehenden Analyse
 """
 
 from __future__ import annotations
+import logging
 
 import io
 import math
@@ -170,7 +171,13 @@ def _collect(edf, edf_path, age=None, is_pediatric=False):
         res = mask_from_edf(edf)
         d["segments"], d["clean_frac"] = res.segments, res.clean_frac
     except Exception:
-        d["segments"], d["clean_frac"] = [], 1.0
+        # Weiterrechnen ohne Maske (die Kennwerte bleiben gültig), aber KEINE Qualitätsaussage:
+        # bis 2026-10-01 stand hier clean_frac = 1.0 — der Report zeigte dann „100 % sauberes
+        # EEG", obwohl die Erkennung gar nicht gelaufen war. Derselbe Fehler wie im
+        # Tabellen-Report (analysis/report_export.py), dort zuerst gefunden.
+        logging.getLogger(__name__).warning("Artefakterkennung im visuellen Report "
+                                            "fehlgeschlagen", exc_info=True)
+        d["segments"], d["clean_frac"] = [], None
     d["t_clean"] = _quiet_window(edf, dur, d["segments"])
 
     # EEG posterior/anterior
@@ -220,6 +227,7 @@ def _collect(edf, edf_path, age=None, is_pediatric=False):
             if parres["n_post"] >= 2 and parres["n_ant"] >= 2:
                 d["par"] = parres["par"]
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             pass
         # Asymmetrie
         d["ai"] = {}
@@ -239,6 +247,7 @@ def _collect(edf, edf_path, age=None, is_pediatric=False):
             fw, pw = welch_psd(seg, sf, fmax=45.0)
             d["ap"] = fit_aperiodic(fw, pw, 1, 40)
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             d["ap"] = None
 
     # EKG — nutzt DENSELBEN Pfad wie der Standard-Report und die EKG&HRV-Live-Seite/das
@@ -265,6 +274,7 @@ def _collect(edf, edf_path, age=None, is_pediatric=False):
                 try:
                     fd = compute_frequency_domain(clean, rr_data["times"], "welch")
                 except Exception:
+                    logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
                     pass
                 raw = edf["data"][edf["ch_idx"][ch]].astype(float)
                 raw = raw - np.median(raw)
@@ -308,6 +318,7 @@ def _collect(edf, edf_path, age=None, is_pediatric=False):
             sig_filt = bandpass_ecg(sig_uv, fs)
             d["pwave"] = analyze_window(sig_filt, e["peaks"], fs, 0.0, len(sig_uv) / fs)
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             pass
     return d
 
@@ -371,11 +382,17 @@ def _page_cover(pdf, d, disp):
 
     # Qualitäts-Donut
     ax = fig.add_axes([0.79, 0.60, 0.17, 0.26]); ax.set_aspect("equal"); ax.axis("off")
-    q = d["clean_frac"] * 100
-    ax.pie([q, 100 - q], colors=["#27ae60", "#e9edf2"], startangle=90,
-           wedgeprops=dict(width=0.32, edgecolor="white"))
-    ax.text(0, 0, f"{q:.0f}%", ha="center", va="center", fontsize=17, fontweight="bold", color="#1e8449")
-    ax.text(0, -0.42, "sauberes EEG", ha="center", va="center", fontsize=8, color=C_MUTED)
+    if d["clean_frac"] is None:          # Erkennung fehlgeschlagen — keine Qualitätsaussage
+        ax.pie([1], colors=["#e9edf2"], startangle=90, wedgeprops=dict(width=0.32, edgecolor="white"))
+        ax.text(0, 0, "—", ha="center", va="center", fontsize=17, fontweight="bold", color=C_MUTED)
+        ax.text(0, -0.42, "Artefakterkennung\nfehlgeschlagen", ha="center", va="center",
+                fontsize=7.5, color=C_MUTED)
+    else:
+        q = d["clean_frac"] * 100
+        ax.pie([q, 100 - q], colors=["#27ae60", "#e9edf2"], startangle=90,
+               wedgeprops=dict(width=0.32, edgecolor="white"))
+        ax.text(0, 0, f"{q:.0f}%", ha="center", va="center", fontsize=17, fontweight="bold", color="#1e8449")
+        ax.text(0, -0.42, "sauberes EEG", ha="center", va="center", fontsize=8, color=C_MUTED)
 
     # Laborwert-Balken statt reiner Kacheln (User-Wunsch 2026-08-09) — Normbereich +
     # Positions-Marker, dieselbe Bewertung wie im Standard-PDF/Excel (d["grades"]).

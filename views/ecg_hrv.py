@@ -1,5 +1,6 @@
 """Seite: EKG & HRV — RR-Analyse, Frequenzdomäne, Laborwert-Befund, Exporte."""
 
+import logging
 import io
 import os
 from typing import Optional
@@ -534,6 +535,7 @@ def render():
             try:
                 _fd = _cfd(rr_seg, r_times_seg, method="welch")
             except Exception:
+                logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
                 _fd = None
 
         _lf  = _fd["lf_power"]    if _fd else float("nan")
@@ -588,6 +590,7 @@ def render():
             with st.expander(tr("ecg_hrv.chart_explanation"), icon=":material/info:"):
                 st.markdown(_ANS_LEGEND)
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             pass
 
         if sdnn_warning:
@@ -2539,6 +2542,7 @@ erfüllen diese Bedingungen nicht — alle Werte sind **Orientierung**, keine Di
                     try:
                         return _cfd2(seg["rr_ms"], seg["r_times"], method=method_key)
                     except Exception:
+                        logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
                         return None
 
                 fd_pre  = _seg_fd(seg_pre)

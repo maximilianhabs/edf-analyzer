@@ -12,6 +12,7 @@ Unicode-Font DejaVu → α₁, ≤, ↑↓, − korrekt). Verändert die bestehe
 """
 
 from __future__ import annotations
+import logging
 
 import io
 import math
@@ -124,6 +125,7 @@ def _eeg_metrics(edf, edf_path, segments=None, window_hint_segments=None):
         m["permen"] = permutation_entropy(seg) if len(seg) >= 100 else float("nan")
         m["lzc"] = lziv_complexity(seg, sf) if len(seg) >= int(5 * sf) else {"shuffle": float("nan"), "phase": float("nan")}
     except Exception:
+        logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
         m["lzc"] = {"shuffle": float("nan"), "phase": float("nan")}
 
     m["par"], m["exp_grad"] = float("nan"), float("nan")
@@ -134,6 +136,7 @@ def _eeg_metrics(edf, edf_path, segments=None, window_hint_segments=None):
             if par["n_post"] >= 2 and par["n_ant"] >= 2:
                 m["par"], m["exp_grad"] = par["par"], par["exp_grad"]
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             pass
 
     m["ai"] = {}
@@ -181,6 +184,7 @@ def _compute_hrv_corrected(edf_path, edf, segments):
     try:
         fd = compute_frequency_domain(rr_c, times_c, method="welch")
     except Exception:
+        logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
         pass
     return {"mean_hr": td["mean_hr_bpm"], "mean_rr": td["mean_rr_ms"], "sdnn": td["sdnn_ms"],
             "cv": td["cv_pct"], "rmssd": td["rmssd_ms"], "pnn50": td["pnn50_pct"],
@@ -257,7 +261,6 @@ def collect_sections(edf: dict, edf_path: str, corr_segments=None,
             from analysis.artifacts import mask_from_edf
             corr_segments = mask_from_edf(edf).segments
         except Exception as exc:
-            import logging
             logging.getLogger(__name__).exception("Artefakterkennung im Report fehlgeschlagen")
             artefakt_fehler = f"{type(exc).__name__}: {exc}"[:120]
             corr_segments = []
@@ -293,6 +296,7 @@ def collect_sections(edf: dict, edf_path: str, corr_segments=None,
             from views.report import _compute_hrv
             hf = _compute_hrv(edf_path, edf)
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             hf = None
         hc = _compute_hrv_corrected(edf_path, edf, corr_segments) if (hf and corr_segments) else None
         if hf:
@@ -531,6 +535,7 @@ def _add_validated(sections, edf, edf_path, has_ecg, em):
             from views.report import _compute_hrv
             hf = _compute_hrv(edf_path, edf)
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             hf = None
         ham = _hrv_hamilton(edf)
         if hf and ham:
@@ -562,6 +567,7 @@ def _add_validated(sections, edf, edf_path, has_ecg, em):
                      "Langzeit-Steigung — nur im Standard-DFA (neu)"],
                 ]
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             pass
         # HRV-Spektrum: Welch vs Lomb-Scargle
         try:
@@ -578,6 +584,7 @@ def _add_validated(sections, edf, edf_path, has_ecg, em):
                     ["HF normiert (HRV-Spektrum)", _f(w.get("hf_norm")), _f(ls.get("hf_norm")), "%", "Welch vs Lomb-Scargle"],
                 ]
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             pass
     # Aperiodik: eigen vs FOOOF; Alpha-Peak CoG vs FOOOF
     if em:
@@ -601,6 +608,7 @@ def _add_validated(sections, edf, edf_path, has_ecg, em):
                 fa_v = max(fa, key=lambda x: x[1])[0] if fa else float("nan")
                 rows += [[f"Alpha-Peak ({ch})", _f(own_a, ".2f"), _f(fa_v, ".2f"), "Hz", "eigen CoG (linear) vs FOOOF (aperiodik-bereinigt)"]]
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             pass
         # relative Asymmetrie (validiert gegen absolute)
         try:
@@ -613,6 +621,7 @@ def _add_validated(sections, edf, edf_path, has_ecg, em):
                         continue
                     rows.append([f"AI {bn} ({lbl})", _f(a_abs, ".0f"), _f(a_rel, ".0f"), "%", "absolut vs relativ (impedanz-robust)"])
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             pass
     if rows:
         sections.append({"name": "Validierte Zusatzverfahren (eigen vs. validiert)",

@@ -1,5 +1,6 @@
 """Seite: Report — Gesamtübersicht: Aufnahme, HRV, EEG-Spektrum. Selbstständig berechnend."""
 
+import logging
 import math
 
 import numpy as np
@@ -106,6 +107,7 @@ def _compute_hrv(edf_path, edf):
             if _edr:
                 edr_rate = _edr["resp_rate_bpm"]
     except Exception:
+        logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
         pass
 
     fd_welch = fd_burg = None
@@ -113,6 +115,7 @@ def _compute_hrv(edf_path, edf):
         fd_welch = compute_frequency_domain(rr_ms, r_times, method="welch")
         fd_burg  = compute_frequency_domain(rr_ms, r_times, method="burg", burg_order=16)
     except Exception:
+        logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
         pass
 
     return {
@@ -185,12 +188,20 @@ def render():
         if not edf.get("ecg_channels"):
             st.info(tr("report.no_ecg"))
         else:
-            hrv = st.session_state.get("hrv_summary_report")
+            # Gespeichert wird der Wert zusammen mit den Eingaben, aus denen er entstand: Datei
+            # und EKG-Kanäle. Eine Kanalkorrektur ändert die EKG-Kanäle — bis 2026-10-01 blieb
+            # danach der alte HRV-Wert stehen (Rest der Fehlerklasse „veraltetes Ergebnis").
+            _hrv_konfig = (edf_path, tuple(edf.get("ecg_channels", [])))
+            _gespeichert = st.session_state.get("hrv_summary_report")
+            hrv = None
+            if isinstance(_gespeichert, dict) and _gespeichert.get("konfig") == _hrv_konfig:
+                hrv = _gespeichert.get("wert")
             if hrv is None:
                 with st.spinner(tr("report.computing_hrv")):
                     try:
                         hrv = _compute_hrv(edf_path, edf)
-                        st.session_state["hrv_summary_report"] = hrv
+                        st.session_state["hrv_summary_report"] = {"konfig": _hrv_konfig,
+                                                                  "wert": hrv}
                     except Exception as e:
                         st.warning(tr("report.hrv_failed", err=e))
                         hrv = None
@@ -400,6 +411,7 @@ def render():
                                      _R: tr("report.ref_post_ant_count", n_post=_par["n_post"], n_ant=_par["n_ant"]), "": "—"},
                                 ]), hide_index=True, use_container_width=True)
                         except Exception:
+                            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
                             pass
 
     # ── 4. Export: kompletter Report als PDF / Excel ──────────────────────────

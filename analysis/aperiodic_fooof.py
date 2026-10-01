@@ -7,6 +7,7 @@ Verändert die bestehende Analyse NICHT.
 """
 
 from __future__ import annotations
+import logging
 
 import numpy as np
 
@@ -16,6 +17,7 @@ def fit_fooof(freqs, psd, fmin: float = 1.0, fmax: float = 40.0, knee: bool = Fa
     try:
         from fooof import FOOOF
     except Exception:
+        logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
         return None
     mode = "knee" if knee else "fixed"
     fm = FOOOF(peak_width_limits=[1.0, 8.0], max_n_peaks=6,
@@ -23,6 +25,7 @@ def fit_fooof(freqs, psd, fmin: float = 1.0, fmax: float = 40.0, knee: bool = Fa
     try:
         fm.fit(np.asarray(freqs, float), np.asarray(psd, float), [float(fmin), float(fmax)])
     except Exception:
+        logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
         return None
     ap = fm.get_params("aperiodic_params")
     if mode == "knee":

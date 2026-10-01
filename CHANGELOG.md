@@ -5,6 +5,38 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Behoben — stille Fehler sichtbar, HRV im Report nach Kanalkorrektur, README-Validierung (01.10.2026)
+
+- **Report-HRV nach Kanalkorrektur:** Die HRV-Zusammenfassung der Report-Seite wurde in der
+  Sitzung gespeichert und nach einer Änderung der EKG-Kanäle nicht neu berechnet. Sie ist jetzt
+  an Datei und EKG-Kanäle gebunden (`views/report.py`) und wird neu berechnet, sobald sich
+  eines von beiden ändert.
+- **Visueller Report zeigte „100 % sauber" bei fehlgeschlagener Artefakterkennung**
+  (`analysis/glory_report.py`): Der Ersatzwert war 1.0. Jetzt zeigt das Diagramm grau „—" mit
+  dem Text „Artefakterkennung fehlgeschlagen".
+- **Stille Fehler:** 30 bisher stumme `except`-Zweige in 13 Dateien protokollieren den Fehler
+  jetzt (`logger.warning(..., exc_info=True)`), auch im Aufräum-Thread. Ein unbemerkt
+  fehlschlagender Aufräumlauf könnte sonst Uploads länger als 4 h liegen lassen. Die Ausgabe ist
+  unverändert.
+- **Zwei Fallen durch funktionslokales `import logging`** in `report_export.py` und
+  `glory_report.py` entfernt. Ein solcher Import macht `logging` in der ganzen Funktion lokal und
+  führt zu `UnboundLocalError`, wenn der Zweig mit dem Import nicht durchlaufen wurde.
+- **README (DE/EN):** Der Hinweis „nicht klinisch validiert (z. B. MIT-BIH)" war veraltet. Er
+  nennt jetzt die retrospektiven MIT-BIH-Benchmarks der drei EKG-Verfahren. Ausdrücklich bleibt
+  stehen: keine prospektive klinische Validierung und keine annotierte EEG-Referenz.
+- **Neue Regressionstests** (`tests/test_ergebnis_konsistenz.py`):
+  - HRV wird nach Kanalkorrektur neu berechnet.
+  - Kein `except` verschluckt einen Fehler still; Ausnahmen sind in einer Liste begründet.
+  - `logging` wird nie funktionslokal importiert.
+  - Der visuelle Report zeigt eine fehlgeschlagene Erkennung an.
+  - Gegenprobe: Ohne die Änderungen schlagen 4 Tests fehl.
+
+Prüfung:
+- Alle Tests in `tests/`: 104 bestanden.
+- Preflight grün.
+- 78/78 Kennwerte identisch.
+- Alle zehn Seiten fehlerfrei.
+
 ### Behoben — veraltete Exporte, Fehler als „100 % sauber", versteckte Cache-Eingaben (01.10.2026)
 
 Vier Punkte aus dem dritten externen Review, alle im Code bestätigt. Die berechneten Werte
@@ -119,17 +151,16 @@ vertauschte Einträge überleben ihn nicht.
 Zwei externe Reviews, von uns im Code nachgeprüft. Noch nicht behoben, in absteigender Wichtigkeit:
 
 - **Ergebnisse bei geänderten Einstellungen — teilweise behoben** (01.10.2026: Exporte,
-  Erweiterte Analysen, siehe oben). Weiter offen: der zwischengespeicherte HRV-Wert der
-  Report-Seite (`hrv_summary_report`) wird bei geänderter Kanalzuordnung nicht verworfen; ein
-  gemeinsamer Ergebnisschlüssel für alle Seiten steht aus.
+  Erweiterte Analysen, Report-HRV, siehe oben). Weiter offen: ein gemeinsamer
+  Ergebnisschlüssel für alle Seiten.
 - **Fehler als unauffälliges Ergebnis — für die Artefakterkennung behoben** (siehe oben).
   Allgemein fehlen unterscheidbare Ergebniszustände (erfolgreich, zu wenig Daten, nicht
   verfügbar, fehlgeschlagen).
 - ~~**Speicher wächst mit jedem Upload.**~~ Behoben am 01.10.2026, siehe „Geändert —
   Performance" oben.
-- **Fehler werden stillschweigend geschluckt:** acht Stellen mit `except Exception: pass` oder
-  Ersatzwert ohne Log (u. a. `report.py`, `ecg_hrv.py`, `channel_report.py`) — Werte fehlen
-  dann, ohne dass jemand erfährt, warum.
+- ~~**Fehler werden stillschweigend geschluckt.**~~ Behoben am 01.10.2026 (30 Stellen
+  protokollieren jetzt, per Test abgesichert). In der Oberfläche fehlen solche Werte weiterhin
+  ohne Begründung (siehe Ergebniszustände oben).
 - **Der EEG-Viewer filtert bei jeder Filteränderung die ganze Aufnahme**, obwohl nur eine Epoche
   angezeigt wird. Beschleunigung nur mit ausreichend Randdaten und Vergleichstest gegen den
   Ganzaufnahme-Filter, sonst entstehen Randartefakte.

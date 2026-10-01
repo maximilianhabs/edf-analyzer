@@ -10,6 +10,7 @@ liefert nur eine dünne, report-taugliche Fassade (einheitliches Rückgabeformat
 plus die Definitionstexte (Akronym-Erklärungen für Leser ohne App-Kontext).
 """
 from __future__ import annotations
+import logging
 
 # ── HRV-Parameter: Label, Einheit, kurze Erklärung (Akronym/Begriff → Bedeutung) ──────────
 HRV_PARAM_DEFS = {
@@ -183,6 +184,7 @@ def grade_hrv(param: str, value, age, heart_rate, rmssd_ms=None, is_pediatric: b
                       ("sdnn", "rmssd", "hf_power", "lf_power", "total_power", "cv")
                       else "Task Force 1996 / Literatur")
     except Exception:
+        logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
         return {"zone": "info", "severity": "—", "direction": "—", "label": "—",
                 "source": "—", "ref_text": "—"}
 

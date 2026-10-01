@@ -8,6 +8,7 @@ Ergänzt das opportunistische Aufräumen beim Session-Start (views/file_patient.
 harte Garantie im laufenden Container. (Bei Container-Neustart/Deploy ist /tmp ohnehin weg.)
 """
 
+import logging
 import os
 import shutil
 import tempfile
@@ -55,6 +56,7 @@ def _loop():
         try:
             sweep_once()
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             pass
         time.sleep(SWEEP_INTERVAL_S)
 

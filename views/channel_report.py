@@ -1,5 +1,6 @@
 """Kanal-Identifikations-Report: Classifier-Ergebnisse + manuelle Korrekturen."""
 
+import logging
 import re
 
 import streamlit as st
@@ -393,6 +394,7 @@ def render():
                             try:
                                 negate = detect_polarity_flip(raw_seg, sfreq)
                             except Exception:
+                                logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
                                 negate = False
                         else:
                             y_vals = raw_seg * 1e6   # → µV

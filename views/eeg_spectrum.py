@@ -1,5 +1,6 @@
 """EEG-Spektralanalyse — Konsensus A/P-Panel + Einzelkanal-Analyse."""
 
+import logging
 import numpy as np
 import streamlit as st
 from core.cleanup import CACHE_TTL_S, CACHE_MAX  # noqa: E402
@@ -393,6 +394,7 @@ def _fft_figure(signals: dict, t_start, t_end, fs, panel_id,
                 from analysis.aperiodic import fit_aperiodic
                 _ap_res = fit_aperiodic(freqs, psd, 1, 20)
             except Exception:
+                logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
                 _ap_res = None
         dominant_peaks[label] = _dominant_band_peak(freqs, psd, alpha_band=(a_lo, a_hi),
                                                      aperiodic_res=_ap_res)

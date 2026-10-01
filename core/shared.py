@@ -1,5 +1,6 @@
 """Gemeinsame Konstanten, Cache-Funktionen und Plot-Bausteine für alle App-Seiten."""
 
+import logging
 import html
 import os
 import numpy as np
@@ -142,6 +143,7 @@ def render_sidebar_status():
                 del _voll
                 st.session_state["_edf_cache_meta"] = edf
             except Exception:
+                logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
                 edf = {}
         if edf:
             dur_s   = edf.get("duration_s", 0)
@@ -725,6 +727,7 @@ def load_and_prepare(path: str):
                 header_calculated_age = today.year - year - (
                     (today.month, today.day) < (birth.month, birth.day))
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             pass
 
     annotations = []

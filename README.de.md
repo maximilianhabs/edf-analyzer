@@ -170,7 +170,7 @@ Nach dem **Add-on-Prinzip** bleiben die bewährten Standard-Methoden unveränder
 
 ## Limitationen
 
-- **Nicht klinisch validiert.** Es existiert (noch) keine prospektive Validierung gegen etablierte Referenzsysteme oder annotierte Datensätze (z. B. MIT-BIH). Ergebnisse sind explorativ.
+- **Keine prospektive klinische Validierung.** Drei EKG-Verfahren — R-Zacken-Detektion, das CosEn-Vorhofflimmern-Screening und die P-Wellen-Kohärenz — wurden retrospektiv gegen öffentliche, fachlich annotierte Datenbanken geprüft (MIT-BIH; siehe [docs/BENCHMARKS.md](docs/BENCHMARKS.md)). Das ist Übereinstimmung mit einer Annotation, kein Nachweis klinischen Nutzens, und es gibt keine prospektive Studie. Die EEG-Kennwerte sind nur gegen synthetische und analytisch bekannte Werte geprüft; eine annotierte EEG-Referenz wurde nicht verwendet. Ergebnisse bleiben explorativ.
 - **Artefakterkennung** ist regelbasiert und konservativ, bislang an wenigen Aufnahmen erprobt — keine ICA/autoreject-basierte Korrektur.
 - **HRV-Frequenzdomäne** benötigt ausreichend lange, stationäre Abschnitte (Task Force: ≥ 5 min); kurze Aufnahmen liefern hier bewusst keine Werte.
 - **Keine Normdatenbank** — angezeigte Normbereiche sind Literatur-Orientierungswerte, keine alters-/geschlechtsadjustierten Referenzkohorten.

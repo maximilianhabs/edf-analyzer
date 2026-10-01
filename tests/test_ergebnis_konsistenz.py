@@ -128,3 +128,120 @@ def test_export_und_oberflaeche_verwenden_dieselbe_altersvorgabe():
     zeilen = _zeilen(collect_sections(edf, DATEI, age=None, sex="X", is_pediatric=False))
     alter = [z for z in zeilen if z.startswith("Parameter: Alter ")]   # Herkunftsabschnitt
     assert alter and str(STANDARD_ALTER) in alter[0], alter
+
+
+# ── 5. HRV-Wert der Report-Seite nach Kanalkorrektur ──────────────────────────
+
+def test_report_hrv_wird_nach_kanalkorrektur_neu_berechnet(monkeypatch):
+    """Bis 2026-10-01 blieb der zwischengespeicherte HRV-Wert der Report-Seite nach einer
+    Kanalkorrektur stehen — er hing an keinem Schlüssel. Geprüft wird das Verhalten selbst:
+    Nach einer Korrektur, die die EKG-Kanäle verändert, muss die HRV erneut berechnet werden;
+    ohne Änderung dagegen nicht (sonst wäre der Zwischenspeicher wirkungslos)."""
+    import core.shared as sh
+    import views.report as rep
+    from core.channel_classifier import ECG
+
+    aufrufe = []
+    original = rep._compute_hrv
+    monkeypatch.setattr(rep, "_compute_hrv",
+                        lambda p, e: aufrufe.append(tuple(e["ecg_channels"])) or original(p, e))
+
+    at = _report_app(monkeypatch, 52)
+    at.run()
+    at.run()                                   # unverändert: kein zweites Rechnen
+    assert not at.exception, [str(e.value) for e in at.exception]
+    assert len(aufrufe) == 1, f"ohne Änderung erneut gerechnet: {aufrufe}"
+
+    edf = sh.load_and_prepare(DATEI)
+    anderer = next(c for c in edf["ch_names"] if c not in edf["ecg_channels"])
+    at.session_state["channel_overrides"] = {anderer: ECG}
+    at.run()
+    assert not at.exception, [str(e.value) for e in at.exception]
+    assert len(aufrufe) == 2, "HRV-Wert aus der alten Kanalzuordnung wird weiter angezeigt"
+    assert anderer in aufrufe[-1]
+
+
+# ── 6. Keine stillen Fehler ───────────────────────────────────────────────────
+
+#: Stellen, an denen ein Fehler bewusst still bleiben darf — je mit Grund. Alles andere muss
+#: protokollieren, eine Meldung zeigen oder den Fehler weiterreichen.
+STILL_ERLAUBT = {
+    ("core/auth.py", "require_login"): "Cookie-Komponente fehlt → Anmeldung nur über Session",
+    ("core/auth.py", "logout_button"): "Cookie löschen ist best effort",
+    ("core/auth.py", "_render_login"): "Cookie setzen ist best effort",
+    ("core/i18n.py", "init_lang"): "Sprach-Cookie nicht lesbar → Standardsprache",
+    ("core/i18n.py", "set_lang"): "Sprach-Cookie nicht schreibbar → nur für diese Sitzung",
+    ("analysis/report_export.py", "_register_font"): "Schrift fehlt → Helvetica",
+    ("analysis/ecg.py", "validated_detectors_available"): "Verfügbarkeitsprüfung, False ist die Antwort",
+    ("analysis/glory_report.py", "build_glory_pdf"): "schreibt die Meldung sichtbar in den Report",
+    ("analysis/report_export.py", "_add_provenance"): "schreibt die Meldung sichtbar in den Report",
+}
+
+
+def _stille_handler():
+    erg = []
+    for ordner in ("views", "core", "analysis"):
+        for py in sorted((ROOT / ordner).glob("*.py")):
+            baum = ast.parse(py.read_text(encoding="utf-8"))
+            eltern = {k: n for n in ast.walk(baum) for k in ast.iter_child_nodes(n)}
+            for n in ast.walk(baum):
+                if not (isinstance(n, ast.ExceptHandler) and n.type is not None
+                        and ast.unparse(n.type) in ("Exception", "BaseException")):
+                    continue
+                aufrufe = [ast.unparse(c.func) for c in ast.walk(n) if isinstance(c, ast.Call)]
+                meldet = any(k in a for a in aufrufe for k in (
+                    "log", "warning", "error", "info", "caption", "exception", "st.", "print",
+                    "Paragraph", "_fallback"))
+                if meldet or any(isinstance(c, ast.Raise) for c in ast.walk(n)):
+                    continue
+                f, fn = n, "<modul>"
+                while f in eltern:
+                    f = eltern[f]
+                    if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        fn = f.name
+                        break
+                erg.append((f"{ordner}/{py.name}", fn, n.lineno))
+    return erg
+
+
+def test_kein_fehler_wird_still_verschluckt():
+    """Bis 2026-10-01 schluckten 30 Stellen Fehler ohne jede Spur — ein Wert fehlte, eine
+    Qualitätsaussage stand falsch da, und niemand erfuhr warum. Ratsche: neue stille
+    `except Exception` sind ein Fehler; bewusste Ausnahmen stehen begründet in STILL_ERLAUBT."""
+    still = [f"{d}:{z} in {fn}" for d, fn, z in _stille_handler() if (d, fn) not in STILL_ERLAUBT]
+    assert not still, "Fehler werden still verschluckt:\n  " + "\n  ".join(still)
+
+
+def test_logging_wird_nie_funktionslokal_importiert():
+    """`import logging` in einer Funktion macht `logging` dort zur lokalen Variable — für die
+    GANZE Funktion. Steht der Import in einem except-Zweig, der nicht läuft, stürzt jede andere
+    Log-Zeile derselben Funktion mit UnboundLocalError ab. Zweimal beim Bauen passiert."""
+    funde = []
+    for ordner in ("views", "core", "analysis"):
+        for py in sorted((ROOT / ordner).glob("*.py")):
+            for n in ast.walk(ast.parse(py.read_text(encoding="utf-8"))):
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    for k in ast.walk(n):
+                        if isinstance(k, ast.Import) and any(a.name == "logging" for a in k.names):
+                            funde.append(f"{ordner}/{py.name}:{k.lineno} in {n.name}")
+    assert not funde, "funktionslokales `import logging`:\n  " + "\n  ".join(funde)
+
+
+def test_visueller_report_zeigt_fehlgeschlagene_artefakterkennung(monkeypatch):
+    """Derselbe „100 % sauber"-Fehler wie im Tabellen-Report, hier im visuellen Report
+    (glory_report: clean_frac = 1.0 bei jedem Fehler). Jetzt: grauer Ring, „fehlgeschlagen"."""
+    import io
+
+    import analysis.artifacts as art
+    import core.shared as sh
+    from analysis.glory_report import build_glory_pdf
+    from pypdf import PdfReader
+
+    def kaputt(_edf):
+        raise RuntimeError("Testfehler")
+    monkeypatch.setattr(art, "mask_from_edf", kaputt)
+
+    pdf = build_glory_pdf(sh.load_and_prepare(DATEI), DATEI, "a.edf", age=52, is_pediatric=False)
+    text = " ".join(s.extract_text() or "" for s in PdfReader(io.BytesIO(pdf)).pages)
+    assert "fehlgeschlagen" in text, "fehlgeschlagene Erkennung nicht ausgewiesen"
+    assert "100%" not in text.replace(" ", ""), "zeigt weiterhin 100 % sauberes EEG"

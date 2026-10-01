@@ -20,6 +20,7 @@ daher als Größenordnung/Hinweis zu verstehen, nicht als exakter Zählwert — 
 Einzelfall den Detektor-Vergleich in "Erweiterte Analysen" heranziehen.
 """
 from __future__ import annotations
+import logging
 
 import numpy as np
 
@@ -44,6 +45,7 @@ def _qrs_width_ms(sig: np.ndarray, peak_idx: int, fs: float,
         b, a = butter(2, [5 / nyq, min(15 / nyq, 0.99)], btype="band")
         filt = filtfilt(b, a, seg)
     except Exception:
+        logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
         return float("nan")
     p = peak_idx - lo
     if p < 0 or p >= len(filt):

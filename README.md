@@ -248,8 +248,13 @@ intent. The most common misconception it settles: the filter settings in the EEG
 
 ## Limitations
 
-- **Not clinically validated.** There is (as yet) no prospective validation against
-  established reference systems or annotated datasets (e.g. MIT-BIH). Results are exploratory.
+- **No prospective clinical validation.** Three ECG procedures — R-peak detection, the CosEn
+  atrial-fibrillation screen and the P-wave coherence stage — have been benchmarked
+  retrospectively against public, expert-annotated databases (MIT-BIH; see
+  [docs/BENCHMARKS.md](docs/BENCHMARKS.md)). That is agreement with an annotation, not proof of
+  clinical benefit, and there is no prospective study. The EEG measures are checked only
+  against synthetic and analytically known values; no annotated EEG reference has been used.
+  Results remain exploratory.
 - **Artifact detection** is rule-based and conservative, so far tried on few recordings — no
   ICA/autoreject-based correction.
 - **HRV frequency domain** requires sufficiently long, stationary segments (Task Force:

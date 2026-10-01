@@ -22,6 +22,7 @@ Usage
 """
 
 from __future__ import annotations
+import logging
 
 import numpy as np
 from dataclasses import dataclass, field
@@ -326,6 +327,7 @@ def _compute_features(sig: np.ndarray, sfreq: float) -> dict:
                 b, a = butter(4, [f_lo, f_hi], btype="band")
                 _sig_variants.append((filtfilt(b, a, sig), min_d))
         except Exception:
+            logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             pass
     if not _sig_variants:
         _sig_variants = [(sig.copy(), 0.30)]
