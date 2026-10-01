@@ -78,8 +78,9 @@ ELECTRODE_POS = {
 
 EPOCH_SEC = 10  # Standard-Epochenlänge (EKG-Tab, Fallback)
 
-#: Vorbelegung des Patientenalters — an EINER Stelle, siehe get_patient_info().
-STANDARD_ALTER = 52
+#: Vorbelegung des Patientenalters — definiert in analysis/hrv_reference.py, hier nur
+#: weitergereicht (get_patient_info(), views/file_patient.py).
+from analysis.hrv_reference import STANDARD_ALTER  # noqa: E402
 
 
 def render_sidebar_status():
@@ -1072,6 +1073,8 @@ ABGELEITETE_KEYS = (
     "_edf_cache_meta", "hrv_summary", "hrv_summary_report", "eeg_summary",
     # fertig gebaute Report-Dateien — gehören zur Datei, aus der sie entstanden sind
     "hrv_export", "report_export", "visual_export", "art_export",
+    # die Konfiguration, aus der ein Export entstand — gehört zu ihm, verfällt mit ihm
+    "report_konfig", "visual_konfig",
     # manuelle Korrekturen — beziehen sich auf die Kanäle GENAU DIESER Aufnahme
     "channel_overrides", "artifact_overrides",
     # Positionen in der Aufnahme (eine Epoche aus Datei A bedeutet in Datei B nichts)

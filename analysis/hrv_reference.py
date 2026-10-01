@@ -22,6 +22,12 @@ import numpy as np
 from typing import Optional
 
 # Pooled-Mediane [IQR] aus Hansen et al. 2024, Table 2 (n=875, 5-Min-Ruhe-EKG)
+#: Vorbelegung des Patientenalters, wenn keines angegeben ist — an EINER Stelle für Oberfläche
+#: UND Export. Liegt hier und nicht in core/shared.py, weil analysis/ kein Streamlit kennen darf.
+#: Bis 2026-08-13 gab es 50 und 52 nebeneinander; der Report-Export setzte bis 2026-10-01
+#: weiterhin 50 ein, obwohl die Oberfläche längst 52 verwendete.
+STANDARD_ALTER = 52
+
 POOLED_REFERENCE = {
     "heart_rate": {"median": 67, "iqr": (61, 74), "unit": "bpm"},
     "sdnn":       {"median": 37, "iqr": (27, 54), "unit": "ms"},

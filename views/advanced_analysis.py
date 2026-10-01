@@ -38,8 +38,19 @@ _DET_STYLE = {
 }
 
 
+def _overrides_key() -> str:
+    """Die manuellen Kanalkorrekturen als Cache-Schlüssel.
+
+    Die gecachten Funktionen dieser Seite rufen `apply_channel_overrides()`, das die Korrekturen
+    aus dem Session-State liest — also an ihrem Schlüssel vorbei. Bis 2026-10-01 fehlte dieser
+    Schlüssel hier: Nach einer Umklassifizierung zeigte die Seite weiter das alte Ergebnis.
+    Dieselbe Form wie auf den Seiten Aperiodik, Spektrum und Artefakte.
+    """
+    return str(sorted(st.session_state.get("channel_overrides", {}).items()))
+
+
 @st.cache_data(show_spinner="Erkenne R-Zacken (mehrere Detektoren) …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
-def _detect_all(edf_path: str, ch: str):
+def _detect_all(edf_path: str, ch: str, overrides_key: str = ""):
     from analysis.ecg import (detect_r_peaks_polarity_safe, detect_r_peaks_validated_ex,
                               build_rr_series, compute_hrv_time_domain)
     e = apply_channel_overrides(load_and_prepare(edf_path))
@@ -133,7 +144,7 @@ def _render_rpeak_visual(edf, edf_path):
     overlay = c2.multiselect(tr("advanced.overlay_detectors"), list(_DET_STYLE.keys()),
                              default=["eigen (aktueller Default)", "Hamilton 2002 (validiert)"])
 
-    det, _, sig_corr, was_flipped = _detect_all(edf_path, ch)
+    det, _, sig_corr, was_flipped = _detect_all(edf_path, ch, _overrides_key())
     sig_mv = sig_corr * 1000.0
     sig_mv = sig_mv - np.median(sig_mv)
     if was_flipped:
@@ -210,7 +221,7 @@ def _render_rpeak_visual(edf, edf_path):
 
 
 @st.cache_data(show_spinner="Berechne Aperiodik (eigen + FOOOF) …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
-def _fooof_compare(edf_path, ch, hi, knee):
+def _fooof_compare(edf_path, ch, hi, knee, overrides_key=""):
     from analysis.aperiodic import welch_psd, fit_aperiodic
     from analysis.aperiodic_fooof import fit_fooof
     from views.eeg_spectrum import _highpass
@@ -244,7 +255,7 @@ def _render_fooof(edf, edf_path):
     knee = c3.toggle("Knee-Modell", value=False, key="fooof_knee",
                      help="FOOOF mit Knick (aperiodic_mode='knee') — sinnvoll über breite Bereiche.")
 
-    d = _fooof_compare(edf_path, ch, int(hi), bool(knee))
+    d = _fooof_compare(edf_path, ch, int(hi), bool(knee), _overrides_key())
     own, ff = d["own"], d["ff"]
 
     rows = [{"Methode": "eigen (Sigma-Clip-Geradenfit)", "Exponent": f"{own['exponent']:.2f}",
@@ -381,7 +392,7 @@ def _render_lombscargle(edf, edf_path):
 
 
 @st.cache_data(show_spinner="Berechne Asymmetrie (absolut + relativ) …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
-def _asym_compute(edf_path):
+def _asym_compute(edf_path, overrides_key=""):
     from views.report import _compute_bandpower
     from views.eeg_spectrum import _highpass
     e = apply_channel_overrides(load_and_prepare(edf_path))
@@ -402,7 +413,7 @@ def _render_asymmetry(edf, edf_path):
                    "AI zusätzlich auf relativer Bandpower — robuster gegen Impedanz/Amplitude")
     _default_vs_alt_badge("absolute Bandpower (Nuwer 1997)",
                           "relative Bandpower (impedanz-/amplitudenrobuster)")
-    bps = _asym_compute(edf_path)
+    bps = _asym_compute(edf_path, _overrides_key())
     BK = ["Delta (1–4 Hz)", "Theta (4–8 Hz)", "Alpha (8–13 Hz)", "Beta (13–30 Hz)"]
     BN = ["Delta", "Theta", "Alpha", "Beta"]
 
@@ -493,7 +504,7 @@ def _render_dfa(edf, edf_path):
 
 
 @st.cache_data(show_spinner="Berechne Spektrum (Welch + Multitaper) …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
-def _mt_compare(edf_path, ch):
+def _mt_compare(edf_path, ch, overrides_key=""):
     from views.eeg_spectrum import (_compute_psd, _highpass, _band_power, _peak_freq,
                                     _spectral_edge, BANDS)
     e = apply_channel_overrides(load_and_prepare(edf_path))
@@ -526,7 +537,7 @@ def _render_multitaper(edf, edf_path):
     posterior = [c for c in ("O2", "O1", "Pz", "P4", "P3") if c in em]
     opts = posterior + [c for c in em if c not in posterior]
     ch = st.selectbox(tr("advanced.channel"), opts, key="mt_ch")
-    d = _mt_compare(edf_path, ch)
+    d = _mt_compare(edf_path, ch, _overrides_key())
     if "Welch" not in d or "Multitaper" not in d:
         st.info(tr("advanced.spectrum_uncomputable"))
         return

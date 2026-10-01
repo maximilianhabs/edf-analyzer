@@ -347,6 +347,9 @@ STRINGS = {
             "build_button": "Reports erzeugen",
             "build_caption": "PDF, Excel und Manifest werden erst auf Knopfdruck berechnet.",
             "build_hint": "Noch nicht erzeugt — der Knopf oben startet die Berechnung.",
+            "export_stale": "Die Einstellungen (Alter, Geschlecht, Kanalzuordnung) haben sich seit "
+                            "dem Erzeugen geändert — diese Reports entsprechen nicht mehr dem "
+                            "aktuellen Stand. Bitte „Reports erzeugen“ erneut klicken.",
             "build_visual_button": "Visuellen Report erzeugen",
             "build_visual_caption": "Eigener Knopf: kostet noch einmal gut eine Sekunde extra.",
             "creating_reports": "Erstelle Report-Dateien …",
@@ -959,6 +962,9 @@ STRINGS = {
             "build_button": "Create reports",
             "build_caption": "PDF, Excel and manifest are computed only when you ask for them.",
             "build_hint": "Not created yet — the button above starts the computation.",
+            "export_stale": "The settings (age, sex, channel assignment) have changed since these "
+                            "reports were created — they no longer match the current state. "
+                            "Please click \"Create reports\" again.",
             "build_visual_button": "Create visual report",
             "build_visual_caption": "Its own button: costs another second or so on top.",
             "creating_reports": "Creating report files …",

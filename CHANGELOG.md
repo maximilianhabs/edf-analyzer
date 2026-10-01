@@ -5,6 +5,41 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Behoben — veraltete Exporte, Fehler als „100 % sauber", versteckte Cache-Eingaben (01.10.2026)
+
+Vier Punkte aus dem dritten externen Review, alle im Code bestätigt. Die berechneten Werte
+bleiben unverändert (78/78 Kennwerte identisch, alle zehn Seiten fehlerfrei); geändert hat sich,
+was angezeigt bzw. als gültig angeboten wird.
+
+1. **Visueller Report blieb nach Einstellungsänderungen stehen.** Wer Alter, Geschlecht oder
+   Kanalzuordnung änderte und „Reports erzeugen" erneut klickte, bekam neue Tabellen-Reports,
+   aber den alten visuellen Report — und dessen Knopf verschwand. Ein Fehler aus dem
+   Knopf-Umbau vom August. Jetzt merkt sich jeder Export die Konfiguration (Datei, Alter,
+   Geschlecht, pädiatrisch, Kanalkorrekturen), aus der er entstand: Tabellen-Reports bleiben
+   abrufbar, werden bei Abweichung aber deutlich als veraltet markiert; ein nicht mehr
+   passender visueller Report wird nicht mehr angeboten, der Knopf erscheint wieder; beim
+   Neuerzeugen wird er verworfen.
+2. **Eine fehlgeschlagene Artefakterkennung erschien als „0 Segmente, 100 % sauber".**
+   `analysis/report_export.py` ersetzte jeden Fehler still durch eine leere Maske — ein
+   technischer Fehlschlag wurde zur Qualitätsaussage. Weiterhin wird mit den unkorrigierten
+   Werten gerechnet (die bleiben gültig), aber der Report sagt jetzt „Artefakterkennung
+   fehlgeschlagen — keine Aussage über die Signalqualität", die Herkunftsangabe ebenso, und
+   der Fehler landet mit Stacktrace im Server-Log.
+3. **Vier gecachte Funktionen lasen die Kanalkorrekturen am Schlüssel vorbei** — alle auf
+   „Erweiterte Analysen" (`_detect_all`, `_fooof_compare`, `_asym_compute`, `_mt_compare`).
+   Nach einer Umklassifizierung zeigte die Seite weiter das alte Ergebnis. Das Review nannte
+   eine Stelle; eine Suche über alle Zwischenspeicher fand vier, acht weitere waren bereits
+   korrekt. Jetzt mit `overrides_key` wie auf den übrigen Seiten.
+4. **Zwei Altersvorgaben.** Der Report-Export setzte ohne Angabe 50 ein, die Oberfläche seit
+   August 52. `STANDARD_ALTER` liegt jetzt einmal in `analysis/hrv_reference.py` und wird von
+   beiden benutzt.
+
+`tests/test_ergebnis_konsistenz.py`: je ein Test pro Punkt, alle vier schlagen ohne die
+Behebung fehl; dazu eine Gegenprobe, dass der Normalfall unverändert aussieht, und eine neue
+Ratsche — jede gecachte Funktion, die Kanalkorrekturen oder den Session-State liest, muss sie
+als Parameter im Schlüssel tragen (die Unterstrich-Ratsche erkennt diese Klasse nicht).
+100 Tests, Preflight grün.
+
 ### Geändert — Performance: schnellere Klicks, begrenzter Speicher (01.10.2026)
 
 Anlass: Rückmeldung „läuft online langsam, bleibt hängen, nicht mehr so smooth wie zu Beginn".
@@ -83,15 +118,13 @@ vertauschte Einträge überleben ihn nicht.
 
 Zwei externe Reviews, von uns im Code nachgeprüft. Noch nicht behoben, in absteigender Wichtigkeit:
 
-- **Ergebnisse werden bei geänderten Einstellungen nicht zuverlässig verworfen.** Eine geänderte
-  Kanalzuordnung macht etwa den zwischengespeicherten HRV-Wert der Report-Seite
-  (`hrv_summary_report`) nicht ungültig; fertige Exporte bleiben bei geändertem Patientenalter
-  abrufbar. Nötig ist ein gemeinsamer Ergebnisschlüssel aus Aufnahme, Kanalzuordnung,
-  Analyseparametern, Artefaktmaske und Patientenkontext.
-- **Ein Fehler kann als unauffälliges Ergebnis erscheinen.** `analysis/report_export.py` ersetzt
-  einen beliebigen Fehler der Artefakterkennung durch eine leere Maske — der Report weist dann
-  „0 Segmente, 100 % sauber" aus. Ergebnisse brauchen unterscheidbare Zustände (erfolgreich,
-  zu wenig Daten, nicht verfügbar, fehlgeschlagen).
+- **Ergebnisse bei geänderten Einstellungen — teilweise behoben** (01.10.2026: Exporte,
+  Erweiterte Analysen, siehe oben). Weiter offen: der zwischengespeicherte HRV-Wert der
+  Report-Seite (`hrv_summary_report`) wird bei geänderter Kanalzuordnung nicht verworfen; ein
+  gemeinsamer Ergebnisschlüssel für alle Seiten steht aus.
+- **Fehler als unauffälliges Ergebnis — für die Artefakterkennung behoben** (siehe oben).
+  Allgemein fehlen unterscheidbare Ergebniszustände (erfolgreich, zu wenig Daten, nicht
+  verfügbar, fehlgeschlagen).
 - ~~**Speicher wächst mit jedem Upload.**~~ Behoben am 01.10.2026, siehe „Geändert —
   Performance" oben.
 - **Fehler werden stillschweigend geschluckt:** acht Stellen mit `except Exception: pass` oder

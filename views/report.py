@@ -434,6 +434,11 @@ def render():
         return build_glory_pdf(e, path, disp, age=age, is_pediatric=pediatric)
 
     _ov_key = str(sorted(st.session_state.get("channel_overrides", {}).items()))
+    # Alles, was die Exporte verschiebt. Jeder fertige Export merkt sich die Konfiguration, aus
+    # der er entstand; passt sie nicht mehr, wird das angezeigt (Tabellen) bzw. neu angeboten
+    # (visuell). Bis 2026-10-01 blieb ein einmal erzeugter visueller Report nach einer Änderung
+    # stehen, und sein Erzeugen-Knopf verschwand (externes Review, bestätigt).
+    _konfig = (edf_path, _rep_age, _rep_sex, _rep_pediatric, _ov_key)
 
     # Erzeugen NUR auf Knopfdruck (User-Entscheidung 2026-08-13). Vorher genügte das Öffnen
     # dieser Seite, um PDF, Excel, Manifest UND den visuellen Report zu bauen — auf einer
@@ -447,6 +452,11 @@ def render():
             with st.spinner(tr("report.creating_reports")):
                 st.session_state["report_export"] = _export_bytes(
                     edf_path, _disp, _rep_age, _rep_sex, _rep_pediatric, _ov_key)
+                st.session_state["report_konfig"] = _konfig
+                # Ein visueller Report aus einer früheren Konfiguration gehört nicht zu diesen
+                # Tabellen — verwerfen, der Knopf erscheint wieder.
+                st.session_state.pop("visual_export", None)
+                st.session_state.pop("visual_konfig", None)
         except Exception as e:
             st.session_state.pop("report_export", None)
             st.error(tr("report.export_failed", err=e))
@@ -456,6 +466,8 @@ def render():
         st.info(tr("report.build_hint"), icon=":material/hourglass_empty:")
     else:
         pdf_bytes, xlsx_bytes, manifest_bytes = _fertig
+        if st.session_state.get("report_konfig") != _konfig:
+            st.warning(tr("report.export_stale"), icon=":material/update:")
         ec1, ec2, ec3 = st.columns(3)
         ec1.download_button(tr("report.download_pdf"), pdf_bytes, icon=":material/description:", file_name=f"{_base}_report.pdf",
                             mime="application/pdf", use_container_width=True)
@@ -466,16 +478,20 @@ def render():
         # Eigener Knopf: der visuelle Report kostet noch einmal gut eine Sekunde und wird
         # seltener gebraucht als PDF und Excel.
         with ec3:
-            if st.session_state.get("visual_export") is None:
+            _visual_aktuell = (st.session_state.get("visual_export") is not None
+                               and st.session_state.get("visual_konfig") == _konfig)
+            if not _visual_aktuell:
                 if st.button(tr("report.build_visual_button"), icon=":material/palette:",
                              key="visual_build", use_container_width=True):
                     try:
                         with st.spinner(tr("report.creating_visual")):
                             st.session_state["visual_export"] = _glory_bytes(
                                 edf_path, _disp, _rep_age, _rep_pediatric, _ov_key)
+                            st.session_state["visual_konfig"] = _konfig
+                            _visual_aktuell = True
                     except Exception as ex:
                         st.caption(tr("report.visual_unavailable", err=ex))
-            if st.session_state.get("visual_export") is not None:
+            if _visual_aktuell:
                 ec3.download_button(tr("report.download_visual"),
                                     st.session_state["visual_export"],
                                     icon=":material/palette:", file_name=f"{_base}_visual.pdf", mime="application/pdf",

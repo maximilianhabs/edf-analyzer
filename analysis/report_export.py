@@ -244,14 +244,22 @@ def collect_sections(edf: dict, edf_path: str, corr_segments=None,
     }]
     sf, dur, em = edf["sfreq"], edf["duration_s"], edf.get("eeg_map", {})
     has_ecg = bool(edf.get("ecg_channels"))
-    age = age if age is not None else 50
+    from analysis.hrv_reference import STANDARD_ALTER
+    age = age if age is not None else STANDARD_ALTER
 
-    # Artefakt-Maske für die Korrigiert-Spalte (übergeben oder automatisch)
+    # Artefakt-Maske für die Korrigiert-Spalte (übergeben oder automatisch).
+    # Schlägt die Erkennung fehl, wird weiter mit leerer Maske gerechnet (die unkorrigierten
+    # Werte bleiben gültig) — aber der Report SAGT das jetzt. Bis 2026-10-01 wurde jeder Fehler
+    # hier still zu „0 Segmente, 100 % sauber", also zu einer scheinbaren Qualitätsaussage.
+    artefakt_fehler = None
     if corr_segments is None:
         try:
             from analysis.artifacts import mask_from_edf
             corr_segments = mask_from_edf(edf).segments
-        except Exception:
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).exception("Artefakterkennung im Report fehlgeschlagen")
+            artefakt_fehler = f"{type(exc).__name__}: {exc}"[:120]
             corr_segments = []
     disc = sum(s["end_s"] - s["start_s"] for s in corr_segments) if corr_segments else 0.0
 
@@ -265,8 +273,12 @@ def collect_sections(edf: dict, edf_path: str, corr_segments=None,
         ["EEG-Kanäle (10-20)", str(len(em)), "", ""],
         ["EKG erkannt", "ja" if has_ecg else "nein", "", edf["ecg_channels"][0] if has_ecg else ""],
         ["Datenschutz", phi, "", ""],
-        ["Artefakt-Korrektur", f"{len(corr_segments)} Segmente", "",
-         f"{disc:.0f}s entfernt · {max(0.0, dur-disc)/dur*100:.0f}% sauber" if dur else ""],
+        (["Artefakt-Korrektur", "fehlgeschlagen", "",
+          f"Artefakterkennung fehlgeschlagen ({artefakt_fehler}) — Werte unkorrigiert, "
+          "keine Aussage über die Signalqualität"]
+         if artefakt_fehler else
+         ["Artefakt-Korrektur", f"{len(corr_segments)} Segmente", "",
+          f"{disc:.0f}s entfernt · {max(0.0, dur-disc)/dur*100:.0f}% sauber" if dur else ""]),
     ]})
 
     # ── HRV ───────────────────────────────────────────────────────────────────
@@ -357,17 +369,20 @@ def collect_sections(edf: dict, edf_path: str, corr_segments=None,
     # Bewusst am ENDE und in beiden Ausgabeformaten: Wer zwei Reports derselben Aufnahme
     # vergleicht, muss entscheiden können, ob ein Unterschied aus der Aufnahme oder aus einer
     # Codeänderung stammt. Ohne diese Angaben ging das nicht.
-    _add_provenance(sections, edf, edf_path, corr_segments, age, is_pediatric)
+    _add_provenance(sections, edf, edf_path, corr_segments, age, is_pediatric,
+                    artefakt_fehler=artefakt_fehler)
     return sections
 
 
-def _add_provenance(sections, edf, edf_path, corr_segments, age, is_pediatric):
+def _add_provenance(sections, edf, edf_path, corr_segments, age, is_pediatric,
+                    artefakt_fehler=None):
     from core.version import provenance, provenance_lines
     # Die Parameter, die das Ergebnis tatsächlich verschieben — nicht jede Einstellung der
     # Oberfläche, sondern das, was in die Zahlen eingeht.
     from analysis.spectral import FREQ_MAX
     params = {
-        "Artefaktmaske": (f"{len(corr_segments)} Segment(e)" if corr_segments
+        "Artefaktmaske": ("Erkennung fehlgeschlagen" if artefakt_fehler
+                          else f"{len(corr_segments)} Segment(e)" if corr_segments
                           else "keine"),
         "Alter": age,
         "pädiatrische Normwerte": "ja" if is_pediatric else "nein",
