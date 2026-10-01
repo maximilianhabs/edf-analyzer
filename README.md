@@ -122,7 +122,8 @@ UI says so instead of quietly computing something else. The built-in detector is
 either way.
 
 Then open [http://localhost:8501](http://localhost:8501). The upload expects an EDF file
-(max. 200 MB).
+(max. 100 MB and at most 30 million samples, i.e. channels × sampling rate × duration;
+about 2 h at 21 channels and 200 Hz).
 
 ### Try it without your own recording
 

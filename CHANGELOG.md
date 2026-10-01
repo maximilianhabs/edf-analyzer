@@ -5,6 +5,34 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Betrieb — Ressourcengrenzen für den Container (01.10.2026)
+
+Der Container lief ohne RAM- und CPU-Grenze. Jetzt gelten auf dem Server 2,5 GB RAM plus
+1 GB Auslagerung und 1,5 von 2 CPU-Kernen, gesetzt per `docker update` ohne Neustart.
+Gemessene RAM-Spitze über alle Seiten (32 Kanäle, 500 Hz):
+
+| Aufnahme | Datei | Spitze |
+|---|---|---|
+| 20 min | 39 MB | 1,85 GB |
+| 40 min | 77 MB | 2,40 GB |
+| 90 min | 173 MB | 3,89 GB |
+
+Eine 90-Minuten-Aufnahme braucht mehr RAM, als der ganze Server hat (3,8 GB). Ohne Grenze
+hätte sie die anderen Dienste mitgerissen. Mit Grenze wird nur dieser Container beendet und
+neu gestartet. Eine erste Grenze von 2 GB war zu knapp und wurde nach der Messung angehoben.
+
+**Zu große Aufnahmen werden vor dem Laden abgelehnt** (`core/edf_validation.py`): Höchstens
+30 Mio. Messwerte (Kanäle × höchste Abtastrate × Dauer, aus dem Header). Das entspricht etwa
+31 min bei 32 Kanälen und 500 Hz oder 2 h bei 21 Kanälen und 200 Hz. Die Meldung nennt die
+mögliche Dauer und was zu tun ist. Die Dateigrenze sinkt von 200 auf 100 MB, sie ist nur eine
+grobe erste Schranke. Bisher hätte eine lange Aufnahme den Container beim Laden zum Absturz
+gebracht. Zwei Tests (knapp darüber abgelehnt, knapp darunter angenommen); Gegenprobe: ohne
+die Änderung schlagen beide fehl.
+
+Der Healthcheck bleibt unverändert. Docker startet einen als „unhealthy" markierten
+Container ohne Orchestrator nicht neu; ein aufwendigerer Check hätte also nur Rechenzeit
+gekostet.
+
 ### Behoben — stille Fehler sichtbar, HRV im Report nach Kanalkorrektur, README-Validierung (01.10.2026)
 
 - **Report-HRV nach Kanalkorrektur:** Die HRV-Zusammenfassung der Report-Seite wurde in der
@@ -165,6 +193,13 @@ Zwei externe Reviews, von uns im Code nachgeprüft. Noch nicht behoben, in abste
   angezeigt wird. Beschleunigung nur mit ausreichend Randdaten und Vergleichstest gegen den
   Ganzaufnahme-Filter, sonst entstehen Randartefakte.
 - **Mehrere Seiten laden die EDF erneut vollständig** in eigenen Zwischenspeichern.
+- **RAM-Bedarf etwa 10× Dateigröße** (Messung siehe „Betrieb" oben): Daten als float64
+  und mehrfach kopiert. Hebel: float32, weniger Kopien. Erst mit Vergleich der 78 Kennwerte.
+- **Kanalprüfung langsam** (User-Fund 01.10.2026): `channel_report.py` baut für jeden Kanal
+  die Signalvorschau (Plotly) samt Kennwerten und Bedienelementen, auch wenn der Bereich
+  zugeklappt ist, denn Streamlit rendert den Inhalt eines Expanders immer. Bei 25–30 Kanälen
+  entstehen so ebenso viele Diagramme, und nach jedem Korrektur-Klick wird alles neu gebaut.
+  Abhilfe: die Vorschau erst auf Klick erzeugen. Die Ergebnisse bleiben dabei gleich.
 - **Herkunftsangaben unvollständig:** Der Fingerabdruck enthält nur die Anzahl der
   Artefaktsegmente, nicht ihre Grenzen, und keine Kanalkorrekturen.
 - **Schichtung:** `analysis/` greift an einigen Stellen noch auf `views/` zu (bekannte, per

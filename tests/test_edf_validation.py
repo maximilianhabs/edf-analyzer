@@ -129,6 +129,40 @@ def test_kurze_aufnahme_warnt_nur(bauplatz):
     assert any("HRV" in w for w in res.warnings), res.warnings
 
 
+def _mit_blockzahl(bauplatz, n_bloecke, name):
+    """Fixture-Header mit anderer Blockzahl; die Daten werden als dünn belegte Datei
+    angehängt (`truncate`), damit der Test keine 60 MB schreiben muss."""
+    from core.edf_validation import MAIN_HEADER_BYTES, PER_SIGNAL_HEADER_BYTES
+    roh = bytearray(open(FIXTURE, "rb").read())
+    kopf = MAIN_HEADER_BYTES + 21 * PER_SIGNAL_HEADER_BYTES
+    bytes_pro_block = (len(roh) - kopf) // 600
+    roh[236:244] = b"%-8d" % n_bloecke
+    pfad = bauplatz / name
+    with open(pfad, "wb") as fh:
+        fh.write(bytes(roh[:kopf]))
+        fh.truncate(kopf + n_bloecke * bytes_pro_block)
+    return str(pfad)
+
+
+def test_zu_grosse_aufnahme_wird_vor_dem_laden_abgelehnt(bauplatz):
+    """Gemessen (01.10.2026): 86 Mio. Messwerte brauchen 3,9 GB RAM, mehr als der ganze
+    Server hat. Ohne diese Prüfung stürzt der Container beim Laden ab, und mit ihm alle
+    Sitzungen. 21 Kanäle × 200 Hz × 2 h = 30,24 Mio. Werte liegen knapp über der Grenze."""
+    from core.edf_validation import validate_edf, MAX_SAMPLES
+    res = validate_edf(_mit_blockzahl(bauplatz, 7200, "lang.edf"))
+    assert not res.ok
+    assert 21 * 200 * 7200 > MAX_SAMPLES
+    assert "zu groß" in res.message() and "kürzeren Abschnitt" in res.message(), res.message()
+
+
+def test_aufnahme_knapp_unter_der_grenze_wird_angenommen(bauplatz):
+    """Die Grenze darf nicht schon normale klinische Aufnahmen treffen."""
+    from core.edf_validation import validate_edf, MAX_SAMPLES
+    assert 21 * 200 * 7100 <= MAX_SAMPLES
+    res = validate_edf(_mit_blockzahl(bauplatz, 7100, "knapp.edf"))
+    assert res.ok, res.errors
+
+
 def test_meldungen_gibt_es_in_beiden_sprachen():
     """Eine abgelehnte Datei ist genau die Stelle, an der ein anderssprachiger Nutzer sonst
     stecken bleibt — ohne zu verstehen, warum."""

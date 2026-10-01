@@ -56,6 +56,13 @@ SHORT_DURATION_S = 300.0
 #: (Nyquist 30 Hz → 60 Hz, plus Reserve für den Antialiasing-Übergang).
 MIN_SFREQ_HZ = 100.0
 
+#: Obergrenze für Kanäle × höchste Abtastrate × Dauer. MNE rechnet beim Laden alle Kanäle auf
+#: die höchste Abtastrate hoch, und die App hält die Daten als float64, mehrfach kopiert.
+#: Gemessene RAM-Spitze über alle Seiten (01.10.2026, 32 Kanäle, 500 Hz): 19 Mio. Werte →
+#: 1,85 GB, 38 Mio. → 2,40 GB, 86 Mio. → 3,89 GB. Der Container hat 2,5 GB. 30 Mio. Werte
+#: entsprechen etwa 31 min bei 32 Kanälen/500 Hz oder 2 h bei 21 Kanälen/200 Hz.
+MAX_SAMPLES = 30_000_000
+
 
 # ── Meldungen ───────────────────────────────────────────────────────────────────────────────
 # Bewusst hier und nicht in `core/i18n.py`: dieses Modul soll ohne Streamlit importierbar
@@ -123,6 +130,15 @@ _MSG = {
         "(Task Force 1996) verlangt längere Abschnitte und bleibt deshalb möglicherweise leer.",
         "At {min_len:.1f} min the recording is shorter than 5 minutes. The HRV frequency "
         "domain (Task Force 1996) requires longer segments and may therefore stay empty."),
+    "too_large": (
+        "Die Aufnahme ist für diesen Server zu groß: {n} Kanäle × {fs:.0f} Hz × {dur:.0f} min "
+        "ergeben {mio:.0f} Mio. Messwerte, möglich sind {max_mio:.0f} Mio. (etwa {max_min:.0f} "
+        "min bei dieser Kanalzahl und Abtastrate). Bitte einen kürzeren Abschnitt exportieren "
+        "oder nicht benötigte Kanäle weglassen.",
+        "The recording is too large for this server: {n} channels × {fs:.0f} Hz × {dur:.0f} "
+        "min give {mio:.0f} million samples; the limit is {max_mio:.0f} million (about "
+        "{max_min:.0f} min at this channel count and sampling rate). Please export a shorter "
+        "section or leave out channels you do not need."),
     "low_sfreq": (
         "Die höchste Abtastrate der Datei beträgt {fs:.0f} Hz. Für ein EEG-Spektrum bis 30 Hz "
         "sind mindestens {min_fs:.0f} Hz empfohlen; höhere Frequenzanteile fehlen bzw. sind "
@@ -246,7 +262,17 @@ def validate_edf(path: str, lang: str = "de") -> ValidationResult:
         "size_bytes": size,
     }
 
-    # ── 4. Plausibilität — Warnungen, keine Ablehnung ────────────────────────────────────
+    # ── 4. Passt die Aufnahme in den Arbeitsspeicher? ────────────────────────────────────
+    # Vor dem Laden prüfen: Eine zu große Aufnahme ließe sonst den Container wegen
+    # Speichermangels abstürzen, und mit ihm alle laufenden Sitzungen.
+    werte = n_signals * max_sfreq * dauer_s
+    if werte > MAX_SAMPLES:
+        return ValidationResult(False, [m(
+            "too_large", n=n_signals, fs=max_sfreq, dur=dauer_s / 60, mio=werte / 1e6,
+            max_mio=MAX_SAMPLES / 1e6,
+            max_min=MAX_SAMPLES / (n_signals * max_sfreq) / 60)], info=res.info)
+
+    # ── 5. Plausibilität — Warnungen, keine Ablehnung ────────────────────────────────────
     if dauer_s < MIN_DURATION_S:
         res.ok = False
         res.errors.append(m("too_short", dur=dauer_s, min=MIN_DURATION_S))

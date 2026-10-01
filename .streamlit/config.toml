@@ -24,5 +24,6 @@ enableStaticServing = true
 # beim Laden/Filtern), das ist deutlich größer als die Dateigröße. Faustregel (empirisch,
 # Audit 2026-07-04): eine typische mehrkanalige 10-Minuten-Aufnahme braucht ~180 MB RAM
 # pro aktiver Session — bei mehreren gleichzeitigen Sessions multipliziert sich das linear.
-# Kein hartes RAM-Limit im Code hinterlegt; auf dem VPS ggf. über Docker-Limits absichern.
-maxUploadSize = 200
+# Die eigentliche Grenze ist MAX_SAMPLES in core/edf_validation.py (Messwerte statt Bytes,
+# geprüft am Header vor dem Laden). Diese Dateigrenze ist nur die erste, grobe Schranke.
+maxUploadSize = 100

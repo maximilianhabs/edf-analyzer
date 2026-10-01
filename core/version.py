@@ -99,7 +99,7 @@ def environment() -> dict:
 
 
 def file_hash(path: str, chunk: int = 1 << 20) -> str:
-    """SHA-256 der EDF-Datei, blockweise gelesen (die Dateien werden bis 200 MB groß).
+    """SHA-256 der EDF-Datei, blockweise gelesen (die Dateien werden bis 100 MB groß).
 
     Der Hash identifiziert die Aufnahme, ohne irgendetwas über sie preiszugeben — er kann in
     einem Report stehen, auch wenn der Dateiname es nicht dürfte."""

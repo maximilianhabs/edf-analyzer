@@ -70,12 +70,17 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health').read()==b'ok' else 1)" || exit 1
 
 # Betriebshinweis — Ressourcengrenzen gehören an den Start, nicht ins Image:
-#     docker run --memory=2g --cpus=2 --read-only \
+#     docker run --memory=2560m --memory-swap=3584m --cpus=1.5 --read-only \
 #                --tmpfs /tmp:rw,size=1g --tmpfs /home/edf:rw,size=64m \
 #                -e EDF_PASSWORD=… edf-analyzer
-# Eine 200-MB-EDF wird von MNE vollständig in den Speicher geladen und als float64 gehalten;
-# ohne Grenze kann eine einzelne große Datei den Host in den Swap ziehen. Das ist der
-# realistische Fall — nicht ein Angreifer, sondern eine legitime lange Aufnahme.
+# Eine EDF wird von MNE vollständig geladen und als float64 gehalten, mehrfach kopiert.
+# Gemessene RAM-Spitze über alle Seiten (01.10.2026, 32 Kanäle, 500 Hz, eine Sitzung):
+#     20 min / 39 MB → 1,85 GB    40 min / 77 MB → 2,40 GB    90 min / 173 MB → 3,89 GB
+# Die Werte enthalten ~0,5 GB Grundbedarf des Prozesses. Unter 2 GB stürzt schon eine
+# 20-Minuten-Aufnahme ab. Ohne Grenze reißt eine lange Aufnahme die übrigen Dienste auf
+# dem Host mit; mit Grenze wird nur dieser Container beendet und neu gestartet.
+# Ein Healthcheck „rechnet es noch?" brächte ohne Orchestrator nichts: Docker startet
+# einen als unhealthy markierten Container NICHT neu.
 
 CMD ["streamlit", "run", "app.py", \
      "--server.port=8501", \

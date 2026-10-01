@@ -98,7 +98,7 @@ Ohne das Paket läuft die App **vollständig** — es fehlen nur die Vergleichsd
 die Oberfläche sagt das ausdrücklich, statt still etwas anderes zu rechnen. Der eigene
 Detektor ist ohnehin in beiden Fällen der Standard.
 
-Danach [http://localhost:8501](http://localhost:8501) öffnen. Der Upload erwartet eine EDF-Datei (max. 200 MB).
+Danach [http://localhost:8501](http://localhost:8501) öffnen. Der Upload erwartet eine EDF-Datei (max. 100 MB und höchstens 30 Mio. Messwerte, also Kanäle × Abtastrate × Dauer; das sind etwa 2 h bei 21 Kanälen und 200 Hz).
 
 ### Ausprobieren ohne eigene Aufnahme
 

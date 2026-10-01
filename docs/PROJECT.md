@@ -28,7 +28,7 @@ edf-analyzer/
 ├── anonymization_log.json     # Audit-Log (lokal, nicht in Git)
 │
 ├── .streamlit/
-│   └── config.toml            # maxUploadSize = 1024 MB, Port 8501
+│   └── config.toml            # maxUploadSize = 100 MB, Port 8501
 │
 ├── core/
 │   ├── loader.py              # EDF laden, Kanal-Erkennung, MNE-Wrapper
