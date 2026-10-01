@@ -8,6 +8,7 @@ Aktuell: W0 Methoden-Transparenz · W1 validierte R-Zacken-Detektion mit Roh-EKG
 import numpy as np
 import pandas as pd
 import streamlit as st
+from core.cleanup import CACHE_TTL_S, CACHE_MAX  # noqa: E402
 import plotly.graph_objects as go
 
 from core.i18n import tr
@@ -37,7 +38,7 @@ _DET_STYLE = {
 }
 
 
-@st.cache_data(show_spinner="Erkenne R-Zacken (mehrere Detektoren) …")
+@st.cache_data(show_spinner="Erkenne R-Zacken (mehrere Detektoren) …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _detect_all(edf_path: str, ch: str):
     from analysis.ecg import (detect_r_peaks_polarity_safe, detect_r_peaks_validated_ex,
                               build_rr_series, compute_hrv_time_domain)
@@ -208,7 +209,7 @@ def _render_rpeak_visual(edf, edf_path):
                "vertraut.")
 
 
-@st.cache_data(show_spinner="Berechne Aperiodik (eigen + FOOOF) …")
+@st.cache_data(show_spinner="Berechne Aperiodik (eigen + FOOOF) …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _fooof_compare(edf_path, ch, hi, knee):
     from analysis.aperiodic import welch_psd, fit_aperiodic
     from analysis.aperiodic_fooof import fit_fooof
@@ -305,7 +306,7 @@ def _render_fooof(edf, edf_path):
                "**Default** in den bestehenden Seiten — hier nur der validierte Vergleich.")
 
 
-@st.cache_data(show_spinner="Berechne HRV-Spektrum (Welch + Lomb-Scargle) …")
+@st.cache_data(show_spinner="Berechne HRV-Spektrum (Welch + Lomb-Scargle) …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _hrv_spectrum_compare(edf_path, ch):
     from views.ecg_hrv import compute_rr
     from analysis.hrv_freq import compute_frequency_domain, resample_rr, psd_welch
@@ -379,7 +380,7 @@ def _render_lombscargle(edf, edf_path):
                "HRV-Frequenzanalyse (Welch/Burg) bleibt **Default**.")
 
 
-@st.cache_data(show_spinner="Berechne Asymmetrie (absolut + relativ) …")
+@st.cache_data(show_spinner="Berechne Asymmetrie (absolut + relativ) …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _asym_compute(edf_path):
     from views.report import _compute_bandpower
     from views.eeg_spectrum import _highpass
@@ -433,7 +434,7 @@ def _render_asymmetry(edf, edf_path):
                "weiterhin die **absolute** Variante als Default.")
 
 
-@st.cache_data(show_spinner="Berechne DFA (α1 + α2) …")
+@st.cache_data(show_spinner="Berechne DFA (α1 + α2) …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _dfa_compare(edf_path, ch):
     from views.ecg_hrv import compute_rr
     from analysis.ecg import dfa_alpha1, dfa_alpha12
@@ -491,7 +492,7 @@ def _render_dfa(edf, edf_path):
                "bestehende HRV-Seite nutzt weiterhin die eigene α1-Variante als Default.")
 
 
-@st.cache_data(show_spinner="Berechne Spektrum (Welch + Multitaper) …")
+@st.cache_data(show_spinner="Berechne Spektrum (Welch + Multitaper) …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _mt_compare(edf_path, ch):
     from views.eeg_spectrum import (_compute_psd, _highpass, _band_power, _peak_freq,
                                     _spectral_edge, BANDS)

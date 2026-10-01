@@ -2,6 +2,7 @@
 
 import numpy as np
 import streamlit as st
+from core.cleanup import CACHE_TTL_S, CACHE_MAX  # noqa: E402
 import plotly.graph_objects as go
 
 from core.i18n import tr
@@ -12,7 +13,7 @@ from views.eeg_spectrum import _highpass, _alpha_band, BANDS
 FIT_LO, FIT_HI = 1.0, 40.0
 
 
-@st.cache_data(show_spinner="Berechne Exponenten je Kanal…")
+@st.cache_data(show_spinner="Berechne Exponenten je Kanal…", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _all_channel_exponents(edf_path, fmin, fmax, channels=None, overrides_key=""):
     """Aperiodischer Exponent + R² für die angegebenen (oder alle) EEG-Kanäle.
 

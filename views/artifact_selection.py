@@ -10,6 +10,7 @@ from dataclasses import replace
 
 import numpy as np
 import streamlit as st
+from core.cleanup import CACHE_TTL_S, CACHE_MAX  # noqa: E402
 import streamlit.components.v1 as components
 import plotly.graph_objects as go
 
@@ -36,7 +37,7 @@ def _mmss(s: float) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
-@st.cache_data(show_spinner="Berechne Amplituden-Verteilung je Kanal …")
+@st.cache_data(show_spinner="Berechne Amplituden-Verteilung je Kanal …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _cached_channel_amplitudes(edf_path: str, overrides_key: str, win_s: float = 1.0):
     """Peak-to-Peak-Amplitude je Kanal in nicht-überlappenden `win_s`-Fenstern über die
     GESAMTE Aufnahme (Histogramm-Konzept Punkt 4, siehe [[project_edf_ui_redesign]]) —
@@ -68,7 +69,7 @@ _REGION_PRESETS = {
 }
 
 
-@st.cache_data(show_spinner="Berechne Artefakt-Maske …")
+@st.cache_data(show_spinner="Berechne Artefakt-Maske …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _cached_mask(edf_path: str, overrides_key: str, flag_sus: float, consensus_n: int,
                  min_island: float, region: str):
     """Gecachte Masken-Berechnung. Cache-Key umfasst Kanal-Overrides UND die justierten
@@ -81,7 +82,7 @@ def _cached_mask(edf_path: str, overrides_key: str, flag_sus: float, consensus_n
     return mask_from_edf(edf, p)
 
 
-@st.cache_data(show_spinner="Erkenne R-Zacken …")
+@st.cache_data(show_spinner="Erkenne R-Zacken …", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _cached_rr(edf_path: str, ecg_name: str, overrides_key: str):
     """Gecachte R-Zacken-/RR-Erkennung für den HRV-Vergleich."""
     edf = apply_channel_overrides(load_and_prepare(edf_path))
@@ -799,7 +800,7 @@ def render():
     # unabhängig von Datei, Alter und Nutzer (externes Review + eigene Ratsche, siehe
     # tests/test_cache_isolation.py). `overrides_key` gehört dazu, weil die Funktion die
     # manuellen Kanalkorrekturen aus dem Session-State liest.
-    @st.cache_data(show_spinner=False)   # Spinner an der Aufrufstelle, hinter dem Knopf
+    @st.cache_data(show_spinner=False, ttl=CACHE_TTL_S, max_entries=CACHE_MAX)   # Spinner an der Aufrufstelle, hinter dem Knopf
     def _export_corrected(path, seg_tuple, disp, age, sex, pediatric, overrides_key):
         from analysis.report_export import collect_sections, build_pdf, build_excel
         e = apply_channel_overrides(load_and_prepare(path))

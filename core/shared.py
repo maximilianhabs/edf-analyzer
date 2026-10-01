@@ -4,6 +4,7 @@ import html
 import os
 import numpy as np
 import streamlit as st
+from core.cleanup import CACHE_TTL_S, CACHE_MAX_GROSS  # noqa: E402
 import plotly.graph_objects as go
 
 from core.i18n import tr
@@ -128,9 +129,16 @@ def render_sidebar_status():
         has_ecg = False
         has_hv  = False
         if edf is None:
+            # NUR die angezeigten Kennwerte ablegen, nicht das ganze Dict. Bis 2026-10-01 lag hier
+            # die komplette Aufnahme samt Datenmatrix — und weil st.cache_data Kopien ausgibt, war
+            # das je aktiver Sitzung eine zusätzliche Vollkopie (≈ 4× Dateigröße), nur um Dauer,
+            # Kanalzahl, EKG ja/nein und Hyperventilation anzuzeigen.
             try:
                 from core.shared import load_and_prepare as _lp
-                edf = _lp(edf_path)
+                _voll = _lp(edf_path)
+                edf = {k: _voll.get(k) for k in ("duration_s", "eeg_map", "ecg_channels",
+                                                 "annotations")}
+                del _voll
                 st.session_state["_edf_cache_meta"] = edf
             except Exception:
                 edf = {}
@@ -571,7 +579,7 @@ def render_head_diagram(pairs):
 # show_spinner=False + expliziter st.spinner an der Aufrufstelle (get_edf_or_stop): ein
 # Dekorator-Argument wird beim IMPORT ausgewertet, ein t()-Aufruf dort würde die Sprache
 # dauerhaft auf den beim Prozessstart geltenden Wert einfrieren.
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=CACHE_TTL_S, max_entries=CACHE_MAX_GROSS)
 def load_and_prepare(path: str):
     """Lädt EDF, extrahiert alle Kanäle als numpy-Matrix, filtert ECG vorab.
 
@@ -751,7 +759,32 @@ def load_and_prepare(path: str):
     }
 
 
-@st.cache_data(show_spinner=False)  # s. load_and_prepare: Spinner-Text an der Aufrufstelle
+# ── Komplexitätsmaße, zwischengespeichert ─────────────────────────────────────
+# Sample Entropy und LZC rechnen in Python-Schleifen und kosten je Aufruf rund 1 s (Mac) bzw.
+# rund 4 s (Server, gemessen 2026-10-01). Sie liefen bis dahin UNGECACHT im Seitenaufbau — und
+# Streamlit führt die Seite bei jedem Klick neu aus. Auf „EEG-Spektrum" und „Report" bedeutete
+# das live rund 8–10 s Wartezeit pro Klick, nicht nur beim ersten Öffnen.
+#
+# Schlüssel ist bewusst der INHALT des Signals (das Array wird gehasht), nicht eine Datei-Kennung:
+# Ein anderes Signal ergibt zwingend einen anderen Schlüssel, Vertauschungen wie bei den
+# Caches mit `_`-Parametern (siehe tests/test_cache_isolation.py) sind hier ausgeschlossen. Das
+# Hashen eines Segments kostet Millisekunden. `max_entries` begrenzt den Speicher — die
+# Ergebnisse sind einzelne Zahlen, gross wird nur der Schlüssel.
+@st.cache_data(show_spinner=False, max_entries=256, ttl=CACHE_TTL_S)
+def sampen_cached(x, m=2, r=None, max_n=4000):
+    """`analysis.complexity.sample_entropy`, inhaltsbasiert zwischengespeichert."""
+    from analysis.complexity import sample_entropy
+    return sample_entropy(x, m=m, r=r, max_n=max_n)
+
+
+@st.cache_data(show_spinner=False, max_entries=256, ttl=CACHE_TTL_S)
+def lzc_cached(x, fs):
+    """`analysis.complexity.lziv_complexity`, inhaltsbasiert zwischengespeichert."""
+    from analysis.complexity import lziv_complexity
+    return lziv_complexity(x, fs)
+
+
+@st.cache_data(show_spinner=False, ttl=CACHE_TTL_S, max_entries=CACHE_MAX_GROSS)  # s. load_and_prepare: Spinner-Text an der Aufrufstelle
 def get_filtered_eeg(_data, eeg_map, sfreq, low_hz, high_hz, datei_id):
     """Bandpass-Filter auf die EEG-Kanäle der Datenmatrix.
 

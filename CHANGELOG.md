@@ -5,6 +5,44 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Geändert — Performance: schnellere Klicks, begrenzter Speicher (01.10.2026)
+
+Anlass: Rückmeldung „läuft online langsam, bleibt hängen, nicht mehr so smooth wie zu Beginn".
+Eigenes Review, gemessen in einer Umgebung, die Paket für Paket dem Server entspricht; der
+Server rechnet dabei rund **4× langsamer** als ein aktueller Mac (gleiche Berechnung 4,2 s statt
+1,1 s). Drei Ursachen, drei Schritte — **alle berechneten Werte bleiben unverändert** (geprüft).
+
+**1. Sample Entropy und LZC wurden bei jedem Klick neu gerechnet.** Streamlit führt die Seite
+bei jeder Interaktion neu aus; beide Maße liefen ungecacht im Seitenaufbau (`eeg_spectrum.py`,
+`report.py`, `ecg_hrv.py`). Jetzt über `core.shared.sampen_cached` / `lzc_cached`
+zwischengespeichert, mit dem **Inhalt des Signals** als Schlüssel — ein anderes Signal ergibt
+zwingend einen anderen Schlüssel, Vertauschungen sind damit ausgeschlossen. Ergebnisse
+identisch zur ungecachten Rechnung (Stichproben beider Fixtures), Verwechslungsprobe bestanden.
+
+| Seite, jeder Klick | vorher (Mac) | nachher (Mac) | live hochgerechnet |
+|---|---|---|---|
+| EEG-Spektrum | 2,42 s | 0,55 s | ≈ 10 s → ≈ 2 s |
+| Report | 2,41 s | 0,27 s | ≈ 8 s → ≈ 1 s |
+
+**2. Die Seitenleiste hielt je Sitzung eine Vollkopie der Aufnahme.** Für vier Anzeigen (Dauer,
+Kanalzahl, EKG, Hyperventilation) lag das komplette Dict samt Datenmatrix im Session-State —
+und weil `st.cache_data` Kopien ausgibt, war das je aktiver Sitzung eine zusätzliche Kopie.
+Jetzt nur noch die vier Angaben: **20 MB → ≈ 0** pro Sitzung (Fixture), Anzeige unverändert.
+
+**3. Kein Zwischenspeicher hatte eine Grenze.** Jeder Upload legte in allen rund 20 Speichern
+neue Einträge an, gemessen **+50 MB je Upload**, freigegeben erst durch einen Neustart — auch
+lange nachdem die Datei gelöscht war. Jetzt haben alle 22 `st.cache_data` eine Lebensdauer von
+4 h (= Lebensdauer der Datei, `core/cleanup.py: CACHE_TTL_S`) und eine Höchstzahl an Einträgen
+(4 für die beiden Speicher mit voller Datenmatrix, 32 sonst). Fällt ein Eintrag heraus, wird neu
+gerechnet — langsamer, nie falsch. Gemessen über 9 Uploads: Speicher **pendelt sich bei
+rund +185 MB ein** statt linear weiterzuwachsen.
+
+Absicherung: `tests/test_cache_isolation.py` prüft jetzt zusätzlich, dass **jeder**
+Zwischenspeicher `ttl` und `max_entries` hat. 95 Tests grün, Preflight grün.
+
+Noch offen aus demselben Review (siehe „Bekannt, noch offen"): Epochen-Filterung im
+EEG-Viewer, doppeltes Einlesen der EDF auf zwei Seiten, stillschweigend geschluckte Fehler.
+
 ### Behoben — Zwischenspeicher konnten Aufnahmen und Reports verschiedener Patienten vertauschen
 
 **Schwerwiegend.** Streamlit lässt Funktionsparameter mit führendem Unterstrich (`_x`) beim
@@ -54,10 +92,11 @@ Zwei externe Reviews, von uns im Code nachgeprüft. Noch nicht behoben, in abste
   einen beliebigen Fehler der Artefakterkennung durch eine leere Maske — der Report weist dann
   „0 Segmente, 100 % sauber" aus. Ergebnisse brauchen unterscheidbare Zustände (erfolgreich,
   zu wenig Daten, nicht verfügbar, fehlgeschlagen).
-- **Speicher wächst mit jedem Upload.** Keiner der rund 20 Zwischenspeicher hat eine Größen- oder
-  Zeitgrenze; jeder Upload erzeugt neue Einträge (gemessen: rund 4× Dateigrösse allein für die
-  geladene Aufnahme), die erst ein Neustart freigibt. Der Datei-Cleanup löscht Dateien, nicht
-  Cache-Einträge. Erklärt, warum die App im Betrieb zäher wird.
+- ~~**Speicher wächst mit jedem Upload.**~~ Behoben am 01.10.2026, siehe „Geändert —
+  Performance" oben.
+- **Fehler werden stillschweigend geschluckt:** acht Stellen mit `except Exception: pass` oder
+  Ersatzwert ohne Log (u. a. `report.py`, `ecg_hrv.py`, `channel_report.py`) — Werte fehlen
+  dann, ohne dass jemand erfährt, warum.
 - **Der EEG-Viewer filtert bei jeder Filteränderung die ganze Aufnahme**, obwohl nur eine Epoche
   angezeigt wird. Beschleunigung nur mit ausreichend Randdaten und Vergleichstest gegen den
   Ganzaufnahme-Filter, sonst entstehen Randartefakte.

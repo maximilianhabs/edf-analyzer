@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from core.cleanup import CACHE_TTL_S, CACHE_MAX  # noqa: E402
 
 from core.i18n import tr
 from core.shared import EPOCH_SEC, ecg_figure, get_edf_or_stop, get_patient_info, section_header, safe_slider, render_banner, status_dot, kpi_tile
@@ -44,7 +45,7 @@ def _select_stablest_window(r_times: np.ndarray, rr_ms: np.ndarray,
     return best_start
 
 
-@st.cache_data(show_spinner="Berechne R-Peaks…")
+@st.cache_data(show_spinner="Berechne R-Peaks…", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def compute_rr(path, channel):
     """R-Peak-Erkennung via QRS-Band-Detektor (Pan-Tompkins, 5–15 Hz) mit
     Fiducial-Refinement auf den echten R-Zacken-Scheitel. Präzisere R-Timing-
@@ -1274,7 +1275,7 @@ def render():
     _dfa = _dfa_fn(rr_ms)
     dfa_a1 = _dfa["alpha1"] if _dfa else float("nan")
     # Sample Entropy der RR-Reihe — Komplexität/Regelmäßigkeit (nichtlinear)
-    from analysis.complexity import sample_entropy as _sampen_fn
+    from core.shared import sampen_cached as _sampen_fn   # zwischengespeichert, s. dort
     samp_en = _sampen_fn(rr_ms) if len(rr_ms) >= 20 else float("nan")
 
     rr_raw       = rr_data["rr_ms_raw"]

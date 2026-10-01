@@ -111,3 +111,24 @@ def test_report_seite_liefert_jedem_nutzer_seinen_eigenen_report(monkeypatch):
     sha_b = hashlib.sha256(Path(B).read_bytes()).hexdigest().encode()
     assert sha_b in manifest_b, "Report von Nutzer B trägt nicht die Prüfsumme seiner Datei"
     assert sha_a not in manifest_b, "Report von Nutzer B trägt die Prüfsumme der Datei von A"
+
+
+def test_jeder_zwischenspeicher_ist_begrenzt():
+    """Ratsche: Bis 2026-10-01 hatte keiner der Zwischenspeicher eine Grenze; jeder Upload legte
+    neue Einträge an (gemessen ≈ +50 MB), die erst ein Neustart freigab. Jeder `st.cache_data`
+    braucht deshalb `ttl` UND `max_entries` (siehe core/cleanup.py, CACHE_TTL_S)."""
+    import ast
+
+    unbegrenzt = []
+    for py in list((ROOT / "core").glob("*.py")) + list((ROOT / "views").glob("*.py")):
+        for fn in ast.walk(ast.parse(py.read_text(encoding="utf-8"))):
+            if not isinstance(fn, ast.FunctionDef):
+                continue
+            for d in fn.decorator_list:
+                if isinstance(d, ast.Call) and "cache_data" in ast.unparse(d.func):
+                    kws = {k.arg for k in d.keywords}
+                    if not {"ttl", "max_entries"} <= kws:
+                        unbegrenzt.append(f"{py.name}:{fn.lineno} {fn.name}")
+                elif not isinstance(d, ast.Call) and "cache_data" in ast.unparse(d):
+                    unbegrenzt.append(f"{py.name}:{fn.lineno} {fn.name} (ohne Klammern)")
+    assert not unbegrenzt, "Zwischenspeicher ohne ttl/max_entries:\n  " + "\n  ".join(unbegrenzt)

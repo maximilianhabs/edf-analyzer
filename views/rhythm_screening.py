@@ -18,6 +18,7 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
+from core.cleanup import CACHE_TTL_S, CACHE_MAX  # noqa: E402
 
 from core.i18n import tr
 from core.shared import get_edf_or_stop, section_header, render_banner, status_dot
@@ -46,7 +47,7 @@ def _overrides_key(edf_path: str, ch: str, method_label: str) -> str:
     return f"rhythm_removed_peaks::{edf_path}::{ch}::{method_label}"
 
 
-@st.cache_data(show_spinner="Erkenne R-Zacken für Rhythmus-Screening…")
+@st.cache_data(show_spinner="Erkenne R-Zacken für Rhythmus-Screening…", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _detect(edf_path: str, ch: str, method: str | None):
     from core.loader import load_edf
     raw = load_edf(edf_path, preload=True)
@@ -89,7 +90,7 @@ def _detect(edf_path: str, ch: str, method: str | None):
     return sig_v * 1e6, peaks, fs, was_flipped, fallback_reason, gaps
 
 
-@st.cache_data(show_spinner="Vergleiche mit/ohne Polaritäts-Korrektur…")
+@st.cache_data(show_spinner="Vergleiche mit/ohne Polaritäts-Korrektur…", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _detect_flip_diagnostic(edf_path: str, ch: str):
     """UI-Wrapper um `analysis.ecg.flip_diagnostic()` (gemeinsamer, getesteter Helfer — auch
     von ecg_hrv.py genutzt). Reproduziert BEWUSST den alten, fehleranfälligen Pfad (Peak-

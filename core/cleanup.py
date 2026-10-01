@@ -20,6 +20,19 @@ _BASE = os.path.join(tempfile.gettempdir(), "edf_analyzer")
 MAX_AGE_H = 4.0            # Dateien älter als 4 h werden gelöscht (deutlich < 24 h)
 SWEEP_INTERVAL_S = 600     # alle 10 min kehren → spätestens 4 h 10 min bis zur Löschung
 
+# ── Grenzen für die Streamlit-Zwischenspeicher ────────────────────────────────
+# Bis 2026-10-01 hatte keiner der rund 20 Zwischenspeicher eine Grenze. Jeder Upload trägt eine
+# zufällige Kennung im Pfad, erzeugte also neue Einträge — gemessen rund +50 MB je Upload, die
+# erst ein Neustart freigab, auch nachdem die Datei selbst längst gelöscht war. Das erklärt, warum
+# die App im Betrieb immer zäher wurde.
+#
+# Lebensdauer = Lebensdauer der Datei: Nach MAX_AGE_H ist die Aufnahme gelöscht, jeder Eintrag
+# dazu nur noch Ballast. Fällt ein Eintrag vorher heraus, wird neu gerechnet — langsamer, nie
+# falsch. tests/test_cache_isolation.py prüft, dass jeder Zwischenspeicher begrenzt ist.
+CACHE_TTL_S = int(MAX_AGE_H * 3600)
+CACHE_MAX_GROSS = 4    # Einträge mit vollständiger Datenmatrix (Aufnahme, gefilterte EEG-Matrix)
+CACHE_MAX = 32         # alles andere (Detektionen, Kennwerte, Exporte)
+
 
 def sweep_once(max_age_h: float = MAX_AGE_H) -> int:
     """Löscht alle Session-Ordner älter als max_age_h. Gibt Anzahl gelöschter Ordner zurück."""

@@ -2,6 +2,7 @@
 
 import numpy as np
 import streamlit as st
+from core.cleanup import CACHE_TTL_S, CACHE_MAX  # noqa: E402
 import plotly.graph_objects as go
 from scipy.signal import spectrogram
 
@@ -141,7 +142,7 @@ def _dominant_band_peak(freqs, psd, alpha_band=(8.0, 13.0), aperiodic_res: dict 
             "power_pct": powers[dom_name] / total * 100.0}
 
 
-@st.cache_data(show_spinner="Berechne LZC-Komplexität…")
+@st.cache_data(show_spinner="Berechne LZC-Komplexität…", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _lzc_cached(seg_bytes: bytes, n: int, fs: float) -> dict:
     """Gecachte LZC-Berechnung (langsam, O(N²)) — Key = Segment-Bytes."""
     from analysis.complexity import lziv_complexity
@@ -174,7 +175,7 @@ def _active_settings_note(use_multitaper: bool, use_art_filter: bool) -> None:
                f"Extremartefakt-Filter **{_af}** — änderbar oben in den Analyse-Optionen.")
 
 
-@st.cache_data(show_spinner="Berechne A/P-Gradient (PAR)…")
+@st.cache_data(show_spinner="Berechne A/P-Gradient (PAR)…", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
 def _compute_par(edf_path, t_start, t_end, a_lo, a_hi, multitaper, amp_thresh, overrides_key=""):
     """Anterior-Posterior-Ratio der absoluten Alpha-Power über den ganzen Kopf.
 
@@ -590,7 +591,7 @@ def _render_single_channel(ch_label, sig_full, fs, dur_s, t_start, t_end, panel_
     _lzc = {"shuffle": float("nan"), "phase": float("nan")}
     if f_psd is not None:
         from analysis.aperiodic import fit_aperiodic as _fit_ap, band_power_defs as _bpd
-        from analysis.complexity import sample_entropy as _sampen
+        from core.shared import sampen_cached as _sampen   # zwischengespeichert, s. dort
         _res_ap = _fit_ap(f_psd, p_psd, fmin=1.0, fmax=min(20.0, float(f_psd[-1])))
         _apow = _bpd(f_psd, p_psd, alpha_band[0], alpha_band[1], res=_res_ap)
         _sef95 = _spectral_edge(f_psd, p_psd, 0.95)

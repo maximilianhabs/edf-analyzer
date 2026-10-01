@@ -5,6 +5,7 @@ import math
 import numpy as np
 import pandas as pd
 import streamlit as st
+from core.cleanup import CACHE_TTL_S, CACHE_MAX  # noqa: E402
 from scipy.signal import welch
 
 from core.i18n import tr
@@ -363,7 +364,6 @@ def render():
                     if freqs_p is not None and len(freqs_p) > 2:
                         from views.eeg_spectrum import _spectral_edge, _compute_par
                         from analysis.aperiodic import fit_aperiodic, band_power_defs
-                        from analysis.complexity import sample_entropy, lziv_complexity
                         with st.spinner(tr("report.computing_spectral")):
                             _sef95 = _spectral_edge(freqs_p, psd_p, 0.95)
                             _medf  = _spectral_edge(freqs_p, psd_p, 0.50)
@@ -372,8 +372,9 @@ def render():
                             _r2_20 = _rap20["r2"] if _rap20 else float("nan")
                             _flat_a = band_power_defs(freqs_p, psd_p, 8, 13, res=_rap20)["flattened"]
                             _seg = sig_post[int(t_start * sfreq):int(t_end * sfreq)]
-                            _sampen = sample_entropy(_seg, max_n=4000) if len(_seg) >= 100 else float("nan")
-                            _lzc = lziv_complexity(_seg, sfreq) if len(_seg) >= int(5 * sfreq) else {"shuffle": float("nan"), "phase": float("nan")}
+                            from core.shared import sampen_cached, lzc_cached
+                            _sampen = sampen_cached(_seg, max_n=4000) if len(_seg) >= 100 else float("nan")
+                            _lzc = lzc_cached(_seg, sfreq) if len(_seg) >= int(5 * sfreq) else {"shuffle": float("nan"), "phase": float("nan")}
                         st.markdown(tr("report.spectral_header"))
                         st.dataframe(pd.DataFrame([
                             {_P: tr("report.p_sef95"), _V: _nan(_sef95, ".1f"), _U: "Hz", _R: tr("report.ref_drops_slowing")},
@@ -412,7 +413,7 @@ def render():
     # unabhängig von Datei, Alter und Nutzer (externes Review + eigene Ratsche, siehe
     # tests/test_cache_isolation.py). `overrides_key` gehört dazu, weil die Funktion die
     # manuellen Kanalkorrekturen aus dem Session-State liest.
-    @st.cache_data(show_spinner=False)  # Spinner an der Aufrufstelle, s. core/shared.py
+    @st.cache_data(show_spinner=False, ttl=CACHE_TTL_S, max_entries=CACHE_MAX)  # Spinner an der Aufrufstelle, s. core/shared.py
     def _export_bytes(path, disp, age, sex, pediatric, overrides_key):
         from analysis.report_export import (collect_sections, build_excel, build_pdf,
                                             build_manifest)
@@ -426,7 +427,7 @@ def render():
     _base = _disp.rsplit(".", 1)[0] if _disp else "report"
     _rep_age, _rep_sex = get_patient_info()
     _rep_pediatric = st.session_state.get("is_pediatric", False)
-    @st.cache_data(show_spinner=False)  # Parameter ohne `_` — siehe _export_bytes oben
+    @st.cache_data(show_spinner=False, ttl=CACHE_TTL_S, max_entries=CACHE_MAX)  # Parameter ohne `_` — siehe _export_bytes oben
     def _glory_bytes(path, disp, age, pediatric, overrides_key):
         from analysis.glory_report import build_glory_pdf
         e = apply_channel_overrides(load_and_prepare(path))
