@@ -88,7 +88,7 @@ Status: ✅ erledigt · 🔧 in Arbeit · ⬜ offen · ⏸ bewusst zurückgestel
 | Veraltete Exporte, Fehler als „100 % sauber", versteckte Cache-Eingaben | R6 | a7e7d87 |
 | Report-HRV nach Kanalkorrektur, 30 stille Fehler protokolliert, README-Validierungsstand | R4, R6 | 90343d7 |
 | Ressourcengrenzen des Containers, Upload-Grenze nach Messwerten | R4, eigene Messung | be55b90 |
-| Multitaper-Skalierung, Artefakt-Rückfall (2×), Epochenlänge, Absturz ohne Alpha-Peak | R7 | lokal, noch nicht committet |
+| Multitaper-Skalierung, Artefakt-Rückfall (2×), Epochenlänge, Absturz ohne Alpha-Peak | R7 | 5fd724b |
 | Absturz bei sehr kurzen Aufnahmen (EKG & HRV) | U 29.09. | c01ee69 |
 | MIT-BIH-Benchmarks (R-Zacken, CosEn, P-Wellen) veröffentlicht | R1 | siehe docs/BENCHMARKS.md |
 
