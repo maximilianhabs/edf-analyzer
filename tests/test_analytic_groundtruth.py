@@ -251,3 +251,45 @@ def test_poincare_erfuellt_die_definierende_identitaet():
         assert abs(links - rechts) <= toleranz, (
             f"SD1²+SD2² = {links:.3f} ≠ 2·SDNN² = {rechts:.3f} (Amplitude {amp} ms, "
             f"rundungsbedingt zulässig wären {toleranz:.3f})")
+
+
+@pytest.mark.parametrize("fs", [200, 256, 500])
+@pytest.mark.parametrize("multitaper", [False, True])
+def test_sinusleistung_bei_welch_und_multitaper_gleich(fs, multitaper):
+    """Ein Sinus der Amplitude A hat die Leistung A²/2. Welch und Multitaper müssen sie beide
+    treffen. Bis 2026-10-02 lieferte der Multitaper 25 statt 50: Die Verdopplung für das
+    einseitige Spektrum fehlte (Review R7)."""
+    from analysis.spectral import _compute_psd, _band_power
+    t = np.arange(fs * 60) / fs
+    x = 10 * np.sin(2 * np.pi * 10 * t)
+    f, p = _compute_psd(x, fs, multitaper=multitaper)
+    assert _band_power(f, p, 8, 13) == pytest.approx(50.0, rel=0.02)
+
+
+def test_ohne_saubere_epoche_gibt_es_kein_spektrum():
+    """Sind alle Epochen über der Artefaktschwelle, darf kein unauffällig aussehendes Spektrum
+    entstehen. Bis 2026-10-02 wurden dann stillschweigend alle Epochen verwendet (Review R7)."""
+    from analysis.spectral import _compute_psd
+    fs = 256
+    x = 500 * np.sin(2 * np.pi * 10 * np.arange(fs * 30) / fs)    # 1000 µV Spitze-Spitze
+    assert _compute_psd(x, fs, amp_thresh_uv=150.0) == (None, None)
+    f, _ = _compute_psd(x, fs, amp_thresh_uv=9999.0)
+    assert f is not None
+
+
+def test_ausgewiesene_epochenlaenge():
+    """Die Epochen sind nominal 4 s, aber auf 1024 Punkte begrenzt."""
+    from analysis.spectral import epoch_seconds
+    assert epoch_seconds(200, 10**9) == pytest.approx(4.0)
+    assert epoch_seconds(256, 10**9) == pytest.approx(4.0)
+    assert epoch_seconds(500, 10**9) == pytest.approx(2.048)
+
+
+def test_visueller_report_ohne_sauberes_eeg_zeigt_keine_kennwerte():
+    """Ist die ganze Aufnahme Artefakt, darf der visuelle Report keine Spektralkennwerte
+    zeigen. Bis 2026-10-02 rechnete `_clean_concat` dann auf dem ganzen Signal (Review R7)."""
+    from analysis.glory_report import _clean_concat
+    sig = np.ones(1000)
+    assert len(_clean_concat(sig, 100, [{"start_s": 0.0, "end_s": 10.0}])) == 0
+    assert len(_clean_concat(sig, 100, [{"start_s": 0.0, "end_s": 5.0}])) == 500
+    assert len(_clean_concat(sig, 100, [])) == 1000

@@ -112,14 +112,23 @@ def _epoch_starts(n: int, nperseg: int):
     return list(range(0, n - nperseg + 1, step))
 
 
+def epoch_seconds(fs: float, n_samples: int) -> float:
+    """Tatsächliche Epochenlänge von `_compute_psd` in Sekunden (Ziel 4 s, max. 1024 Punkte)."""
+    return min(int(fs * 4), n_samples // 2, 1024) / fs
+
+
 def _compute_psd(sig, fs, nperseg=None, multitaper=False, amp_thresh_uv=9999.0):
     """Leistungsspektraldichte (Welch oder Multitaper), epochenweise gemittelt.
 
     Artefaktbehandlung: Epochen, deren Peak-to-Peak-Amplitude > amp_thresh_uv liegt,
     werden **komplett aus dem Mittel weggelassen** (statt per linearer Brücke
-    interpoliert — das erzeugte Steigungssprünge und spektrales Splatter). Bleiben
-    zu wenige saubere Epochen übrig (< 1), wird ausnahmsweise die gesamte (auch
-    artefaktbehaftete) Epochenmenge verwendet, damit weiterhin ein Spektrum entsteht.
+    interpoliert — das erzeugte Steigungssprünge und spektrales Splatter). Bleibt keine
+    saubere Epoche übrig, gibt es kein Spektrum (`None, None`), der Aufrufer zeigt „—".
+    Bis 2026-10-02 wurden dann stillschweigend alle Epochen verwendet: Aus einem komplett
+    verworfenen Abschnitt entstanden unauffällig aussehende Kennwerte (Review R7).
+
+    Epochenlänge: Ziel 4 s, aber höchstens 1024 Punkte (bei 500 Hz also 2,05 s); siehe
+    `epoch_seconds`.
     """
     nperseg = nperseg or min(int(fs * 4), len(sig) // 2, 1024)
     if nperseg < 64:
@@ -129,12 +138,19 @@ def _compute_psd(sig, fs, nperseg=None, multitaper=False, amp_thresh_uv=9999.0):
     if not starts:
         return None, None
 
-    # Saubere Epochen selektieren (ptp <= Schwelle); Fallback auf alle Epochen
+    # Saubere Epochen selektieren (ptp <= Schwelle). Keine saubere Epoche → kein Spektrum.
     clean_starts = [i for i in starts if np.ptp(sig[i:i + nperseg]) <= amp_thresh_uv]
     if not clean_starts:
-        clean_starts = starts
+        return None, None
 
     freqs = np.fft.rfftfreq(nperseg, d=1.0 / fs)
+    # Einseitiges Spektrum: positive Frequenzen ×2, außer DC und (bei gerader Länge) Nyquist.
+    # Gilt für Welch UND Multitaper. Bis 2026-10-02 fehlte der Faktor beim Multitaper, die
+    # absolute Leistung war dort halbiert (Review R7; relative Anteile waren nicht betroffen).
+    scale_2s = np.full(len(freqs), 2.0)
+    scale_2s[0] = 1.0
+    if nperseg % 2 == 0:
+        scale_2s[-1] = 1.0
 
     if multitaper:
         # Thomson (1982) DPSS — NW=3, K=5 gut für Alpha-Detektion (bandwidth ≈ 1.5 Hz)
@@ -151,7 +167,7 @@ def _compute_psd(sig, fs, nperseg=None, multitaper=False, amp_thresh_uv=9999.0):
                     continue
                 tapered = epoch * taper
                 fft_coeffs = np.fft.rfft(tapered)
-                ep_psd += eig * (np.abs(fft_coeffs) ** 2) / (fs * np.sum(taper ** 2))
+                ep_psd += eig * scale_2s * (np.abs(fft_coeffs) ** 2) / (fs * np.sum(taper ** 2))
                 w_sum += eig
             if w_sum > 0:
                 psds.append(ep_psd / w_sum)
@@ -159,10 +175,6 @@ def _compute_psd(sig, fs, nperseg=None, multitaper=False, amp_thresh_uv=9999.0):
         # Welch, epochenweise (Hann-Fenster, Density-Skalierung wie scipy.welch)
         win = np.hanning(nperseg)
         U = np.sum(win ** 2)                       # Fensterleistung
-        scale_2s = np.full(len(freqs), 2.0)        # einseitiges Spektrum: ×2 …
-        scale_2s[0] = 1.0                          # … außer DC
-        if nperseg % 2 == 0:
-            scale_2s[-1] = 1.0                     # … und Nyquist (bei gerader Länge)
         psds = []
         for i in clean_starts:
             epoch = sig[i:i + nperseg]

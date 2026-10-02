@@ -5,6 +5,35 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Behoben — Spektralanalyse: Multitaper-Skalierung, Artefakt-Rückfall (02.10.2026, Review R7)
+
+Ein externes Review der EEG-Spektralanalyse, alle Punkte im Code nachgeprüft. Übersicht aller
+Reviews und offenen Punkte: [docs/REVIEW_TRACKER.md](docs/REVIEW_TRACKER.md).
+
+- **Multitaper halbierte die absolute Leistung** (`analysis/spectral.py`): Die Verdopplung für
+  das einseitige Spektrum fehlte. Ein 10-Hz-Sinus der Amplitude 10 ergab 25 statt 50 µV²; Welch
+  war richtig. Betroffen war nur die absolute Leistung bei eingeschaltetem Multitaper (Spektrum-
+  Seite, Methodenvergleich). Relative Anteile, Peak-, Median- und Kantenfrequenz waren nicht
+  betroffen, die Reports nutzen den Multitaper nicht.
+- **Keine saubere Epoche → trotzdem alle verwendet**: Waren mit eingeschaltetem
+  Artefaktfilter alle Epochen über der Schwelle, rechnete `_compute_psd` auf allen Epochen
+  weiter. Jetzt entsteht kein Spektrum, die Anzeige zeigt „—".
+- **Dasselbe im visuellen Report** (`glory_report._clean_concat`, eigener Zusatzfund): War die
+  ganze Aufnahme als Artefakt markiert, kam das ganze Signal zurück. Jetzt keine
+  Spektralkennwerte, kein A/P-Gradient und keine Aperiodik.
+- **Versteckter Absturz im visuellen Report**: Die Prüfung `v == v` sollte NaN aussortieren,
+  ließ aber einen fehlenden Wert durch (`None == None` ist wahr). Ohne Alpha-Peak, also ohne
+  O1/O2 oder ohne sauberes EEG, brach der Report mit `KeyError` ab. Gefunden durch den neuen
+  Test.
+- **Epochenlänge ausgewiesen**: nominal 4 s, aber höchstens 1024 Punkte, bei 500 Hz also
+  2,05 s. Die Spektrum-Seite zeigt den tatsächlichen Wert, `docs/PREPROCESSING.md` ist
+  korrigiert.
+
+Tests: Sinusleistung bei Welch und Multitaper für 200/256/500 Hz, kein Spektrum ohne saubere
+Epoche, Epochenlänge, `_clean_concat`, ganzer visueller Report bei komplett
+artefaktbehafteter Aufnahme. Gegenprobe: ohne die Änderungen schlagen 7 Tests fehl.
+Alle 116 Tests bestanden, Preflight grün, 78/78 Kennwerte identisch, alle zehn Seiten fehlerfrei.
+
 ### Betrieb — Ressourcengrenzen für den Container (01.10.2026)
 
 Der Container lief ohne RAM- und CPU-Grenze. Jetzt gelten auf dem Server 2,5 GB RAM plus

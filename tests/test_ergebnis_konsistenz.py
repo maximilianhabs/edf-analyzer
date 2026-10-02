@@ -245,3 +245,26 @@ def test_visueller_report_zeigt_fehlgeschlagene_artefakterkennung(monkeypatch):
     text = " ".join(s.extract_text() or "" for s in PdfReader(io.BytesIO(pdf)).pages)
     assert "fehlgeschlagen" in text, "fehlgeschlagene Erkennung nicht ausgewiesen"
     assert "100%" not in text.replace(" ", ""), "zeigt weiterhin 100 % sauberes EEG"
+
+
+def test_visueller_report_bei_komplett_artefaktbehafteter_aufnahme(monkeypatch):
+    """Ist alles als Artefakt markiert, darf der Report keine Spektralkennwerte erfinden.
+    Bis 2026-10-02 rechnete er dann auf dem ganzen, artefaktbehafteten Signal (Review R7).
+    Der Report muss trotzdem entstehen."""
+    import io
+    from types import SimpleNamespace
+
+    import analysis.artifacts as art
+    import analysis.glory_report as gr
+    import core.shared as sh
+    from pypdf import PdfReader
+
+    edf = sh.load_and_prepare(DATEI)
+    alles = SimpleNamespace(segments=[{"start_s": 0.0, "end_s": edf["duration_s"]}], clean_frac=0.0)
+    monkeypatch.setattr(art, "mask_from_edf", lambda _edf: alles)
+
+    d = gr._collect(edf, DATEI, age=52)
+    assert d.get("psd_f") is None
+    assert "rel" not in d and "par" not in d and "ap" not in d
+    pdf = gr.build_glory_pdf(edf, DATEI, "a.edf", age=52, is_pediatric=False)
+    assert len(PdfReader(io.BytesIO(pdf)).pages) >= 1

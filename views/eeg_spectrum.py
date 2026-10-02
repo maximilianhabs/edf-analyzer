@@ -166,14 +166,17 @@ def _group_header(number: str, title: str, subtitle: str) -> None:
         "</div>", unsafe_allow_html=True)
 
 
-def _active_settings_note(use_multitaper: bool, use_art_filter: bool) -> None:
+def _active_settings_note(use_multitaper: bool, use_art_filter: bool, fs=None) -> None:
     """Zeigt sichtbar, welche globalen ⚙️-Einstellungen diese Sektion gerade beeinflussen —
     Multitaper/Artefaktfilter wirken seitenweit, nicht lokal; ohne diesen Hinweis muss man
     zum Nachschauen nach oben scrollen (User-Feedback 2026-08-03)."""
     _mt = "Multitaper" if use_multitaper else "Welch"
     _af = "an (≥150 µV)" if use_art_filter else "aus"
+    # Tatsächliche Epochenlänge zeigen: Ziel 4 s, aber max. 1024 Punkte (Review R7, 02.10.2026)
+    from analysis.spectral import epoch_seconds
+    _ep = f" · Epochen **{epoch_seconds(fs, 10**9):.2f} s**" if fs else ""
     st.caption(f"⚙️ Aktive Einstellungen dieser Sektion: Methode **{_mt}** · "
-               f"Extremartefakt-Filter **{_af}** — änderbar oben in den Analyse-Optionen.")
+               f"Extremartefakt-Filter **{_af}**{_ep} — änderbar oben in den Analyse-Optionen.")
 
 
 @st.cache_data(show_spinner="Berechne A/P-Gradient (PAR)…", ttl=CACHE_TTL_S, max_entries=CACHE_MAX)
@@ -823,7 +826,7 @@ def render():
 
     if has_consensus:
         section_header(tr("spectrum.consensus_panel"), tr("spectrum.consensus_panel_sub"))
-        _active_settings_note(use_multitaper, use_art_filter)
+        _active_settings_note(use_multitaper, use_art_filter, fs)
         st.caption(
             "ACNS-Empfehlung für Vigilanz- und Verlangsamungsmonitoring. "
             "Posterior = okzipitaler Alpha-Grundrhythmus · Anterior = frontales Beta/Delta."
@@ -1019,7 +1022,7 @@ def render():
     if len(asym_chs) >= 2 and ("O1" in asym_chs and "O2" in asym_chs
                                 or "F3" in asym_chs and "F4" in asym_chs):
         section_header(tr("spectrum.asymmetry"), "AI = (L−R)/(L+R) × 100% · nach Frequenzband · Nuwer 1997", color="#2980b9")
-        _active_settings_note(use_multitaper, use_art_filter)
+        _active_settings_note(use_multitaper, use_art_filter, fs)
         st.markdown(
             "<div style='background:#f0f4ff;border-left:4px solid #2980b9;"
             "padding:12px 16px;border-radius:6px;margin-bottom:12px'>"
@@ -1106,7 +1109,7 @@ def render():
     # ANTERIOR-POSTERIOR-GRADIENT (PAR) — ganzer Kopf
     # ══════════════════════════════════════════════════════════════════════════
     section_header(tr("spectrum.ap_gradient"), tr("spectrum.ap_gradient_sub"))
-    _active_settings_note(use_multitaper, use_art_filter)
+    _active_settings_note(use_multitaper, use_art_filter, fs)
     st.markdown(
         "<div style='background:#eef3fb;border-left:4px solid #2471a3;border-radius:8px;"
         "padding:10px 14px;margin:2px 0 8px 0;font-size:13px'>"
@@ -1257,7 +1260,7 @@ def render():
     # EINZELKANAL-ANALYSE
     # ══════════════════════════════════════════════════════════════════════════
     section_header(tr("spectrum.single_channel"), tr("spectrum.single_channel_sub"))
-    _active_settings_note(use_multitaper, use_art_filter)
+    _active_settings_note(use_multitaper, use_art_filter, fs)
 
     defaults = [c for c in ["O1", "O2"] if c in all_eeg] or all_eeg[:min(2, len(all_eeg))]
     with st.container(border=True):
@@ -1283,7 +1286,7 @@ def render():
     # REFERENZ-EPOCH (einmalig, mit Kanal-Auswahl)
     # ══════════════════════════════════════════════════════════════════════════
     section_header(tr("spectrum.reference_epoch"), tr("spectrum.reference_epoch_sub"))
-    _active_settings_note(use_multitaper, use_art_filter)
+    _active_settings_note(use_multitaper, use_art_filter, fs)
     st.caption(
         "Wähle einen Kanal und navigiere mit dem Slider (← → Pfeiltasten) zu einem "
         "visuell qualitätsgeprüften 10-Sekunden-Segment. Das Gesamtfenster-Spektrum (grau) "

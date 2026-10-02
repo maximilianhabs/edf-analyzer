@@ -83,6 +83,10 @@ def _hp(sig, fs, cut=1.0):
     return filtfilt(b, a, sig)
 
 
+class _KeinSauberesEEG(Exception):
+    """Kein sauberer Abschnitt übrig — dann werden keine Kennwerte berechnet."""
+
+
 def _clean_concat(sig, fs, segments):
     """Entfernt die Artefakt-Segmente aus einem Signal (behält nur saubere Samples).
     So spiegelt das Spektrum den echten Grundrhythmus des Patienten wider, nicht
@@ -92,7 +96,9 @@ def _clean_concat(sig, fs, segments):
     keep = np.ones(len(sig), dtype=bool)
     for s in segments:
         keep[max(0, int(s["start_s"] * fs)):min(len(sig), int(s["end_s"] * fs))] = False
-    return sig[keep] if keep.any() else sig
+    # Alles Artefakt → leeres Signal, daraus entsteht kein Spektrum und der Report zeigt „—".
+    # Bis 2026-10-02 kam hier das ganze, artefaktbehaftete Signal zurück (Review R7).
+    return sig[keep]
 
 
 def _best_alpha_window(post, sf, dur, segments, win=60.0):
@@ -219,6 +225,8 @@ def _collect(edf, edf_path, age=None, is_pediatric=False):
             if fa is not None and f is not None:
                 d["rel_ant"] = {n: _band_power(fa, pa, lo, hi) for n, lo, hi, _ in BANDS}
         try:
+            if f is None:
+                raise _KeinSauberesEEG   # ohne sauberes Spektrum auch kein PAR
             from views.eeg_spectrum import _compute_par
             _bt_par, _wl_par = d.get("spec_window", (None, None))
             _pt0 = _bt_par if _bt_par is not None else 0.0
@@ -226,6 +234,8 @@ def _collect(edf, edf_path, age=None, is_pediatric=False):
             parres = _compute_par(edf_path, _pt0, _pt1, 8.0, 13.0, False, 9999.0)
             if parres["n_post"] >= 2 and parres["n_ant"] >= 2:
                 d["par"] = parres["par"]
+        except _KeinSauberesEEG:
+            pass
         except Exception:
             logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             pass
@@ -243,9 +253,13 @@ def _collect(edf, edf_path, age=None, is_pediatric=False):
                 d["ai"][(lbl, n)] = (a_ - b_) / (a_ + b_) * 100 if (a_ + b_) > 1e-9 else np.nan
         # Aperiodik (seg ist bereits artefaktbereinigt)
         try:
+            if f is None:
+                raise _KeinSauberesEEG
             from analysis.aperiodic import welch_psd, fit_aperiodic
             fw, pw = welch_psd(seg, sf, fmax=45.0)
             d["ap"] = fit_aperiodic(fw, pw, 1, 40)
+        except _KeinSauberesEEG:
+            pass
         except Exception:
             logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
             d["ap"] = None
@@ -289,9 +303,13 @@ def _collect(edf, edf_path, age=None, is_pediatric=False):
     # Normbereich, User-Wunsch 2026-08-09. ────────────────────────────────────────────────
     from analysis.report_metadata import grade_hrv, grade_eeg
     d["grades"] = {}
-    if d.get("alpha_peak") == d.get("alpha_peak"):
+    # `v == v` allein reicht nicht: Fehlt der Wert ganz, ist `None == None` wahr und der
+    # Zugriff stürzt ab (gefunden 2026-10-02 mit einer komplett artefaktbehafteten Aufnahme).
+    def _vorhanden(v):
+        return v is not None and v == v
+    if _vorhanden(d.get("alpha_peak")):
         d["grades"]["alpha_peak"] = grade_eeg("ap_post", d["alpha_peak"], age=age)
-    if d.get("par") == d.get("par"):
+    if _vorhanden(d.get("par")):
         d["grades"]["par"] = grade_eeg("par", d["par"], age=age)
     if d.get("ecg"):
         td, fd = d["ecg"]["td"], (d["ecg"]["fd"] or {})

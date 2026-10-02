@@ -101,12 +101,13 @@ Findet sich kein sauberes Fenster, fällt die Wahl auf die mittleren 5 Minuten.
 
 ```
 analysis/spectral.py::_compute_psd
-  Epochen 4 s (nperseg = min(4·fs, len/2, 1024)), 50 % Überlapp
+  Epochen nominal 4 s, tatsächlich nperseg = min(4·fs, len/2, 1024): bei fs > 256 Hz kürzer (500 Hz → 2,05 s, Auflösung 0,49 Hz); die Spektrum-Seite zeigt den tatsächlichen Wert. 50 % Überlapp
   Fenster Hann · Mittelwertabzug je Epoche (detrend constant)
   Skalierung Density (einseitig, ×2 außer DC und Nyquist)
   Ausgabeband 1–30 Hz (FREQ_MAX)
   optional: Multitaper (DPSS, NW=3, K=5) statt Welch
   optional: Epochen mit ptp > amp_thresh_uv werden VERWORFEN, nicht interpoliert
+  keine saubere Epoche übrig → kein Spektrum (Anzeige „—"), kein Rückfall auf alle Epochen
 ```
 
 Die Verwerfen-statt-Interpolieren-Entscheidung ist bewusst: eine lineare Brücke über eine
