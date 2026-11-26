@@ -103,21 +103,90 @@ def detect_polarity_flip(signal: np.ndarray, sfreq: float, candidates=None,
     `detect_r_peaks`); wenn None, wird `detect_r_peaks` intern aufgerufen. Gibt True zurück,
     wenn geflippt werden sollte (R-Zacke ist im Rohsignal negativ dominant). Siehe
     [[project_edf_rhythm_screening]] für die Herleitung und den zugehörigen Nachverfeinerungs-
-    Bug in `refine_peaks`/`detect_r_peaks`, den dieser Flip VOR der Verfeinerung vermeidet."""
+    Bug in `refine_peaks`/`detect_r_peaks`, den dieser Flip VOR der Verfeinerung vermeidet.
+
+    **Filterung vor der Entscheidung (Fix 2026-11-26).** Bis dahin wurden `max()`
+    und `min()` auf dem Signal so verglichen, wie der Aufrufer es übergab. Das machte das
+    Ergebnis davon abhängig, ob die aufrufende Stelle VOR oder NACH ihrem Anzeige-Bandpass
+    fragte. Ursächlich ist der TIEFPASS-Anteil: hochfrequentes Rauschen erzeugt schmale
+    positive Spitzen, die `max()` anheben, während die breitere, echte Auslenkung von der
+    Glättung kaum berührt wird. Nachgemessen an `CA1773D9`: roh und nach reinem 0,5-Hz-
+    Hochpass bleibt die Entscheidung `False`, schon ein reiner 40-Hz-Tiefpass dreht sie auf
+    `True` (max +0,352 → +0,307 mV, min praktisch unverändert). Eine wandernde Grundlinie war
+    hier NICHT die Ursache — das war die erste, widerlegte Vermutung. In der App entschieden drei
+    Stellen unterschiedlich (`core/shared.py::load_and_prepare` und
+    `views/channel_report.py` auf dem Rohsignal, `views/ecg_hrv.py` nach eigener Filterung),
+    und dieselbe Aufnahme erschien je nach Seite aufrecht oder invertiert.
+    Realer Fall `CA1773D9` (POL X1, nahezu symmetrischer QRS, Verhältnis der Beträge 0,93 —
+    die Entscheidung hing an 7 %): roh median(max) +0,352 mV gegen median(min) −0,328 mV
+    ⇒ `False`; nach Bandpass +0,318 gegen −0,358 mV ⇒ `True`.
+    Die Ensemble-Mittelung über alle Schläge zeigt R, P und T eindeutig negativ — `True` ist
+    die richtige Antwort, der ungefilterte Pfad irrte.
+    Die Entscheidung wird jetzt IMMER auf einem intern bandpassgefilterten Signal getroffen,
+    unabhängig davon, was übergeben wurde. Damit liefert die Funktion für dieselbe Aufnahme
+    überall dasselbe Ergebnis. Das zurückgegebene `bool` bezieht sich weiterhin auf das
+    übergebene Signal; gefiltert wird nur für die Entscheidung, nie für den Aufrufer.
+    Gemessen über alle 92 lokal vorliegenden Aufnahmen mit POL X1: 88 eindeutig, 3 knapp und
+    unverändert, **genau eine** (`CA1773D9`) ändert ihr Ergebnis — und zwar zum Richtigen.
+    """
+    sig = _flip_decision_band(signal, sfreq)
     if candidates is None:
-        candidates = detect_r_peaks(signal, sfreq)
+        # Auch die Kandidaten auf dem gefilterten Signal suchen: würden sie auf dem roh
+        # übergebenen Signal bestimmt, hinge ihre Lage bei verrauschten Aufnahmen wieder vom
+        # Filterzustand des Aufrufers ab — und damit über die Fensterlage erneut das
+        # Ergebnis. Nur so ist die Entscheidung wirklich eingangsunabhängig
+        # (nachgewiesen in tests/test_polaritaet_konsistenz.py).
+        candidates = detect_r_peaks(sig, sfreq)
     if len(candidates) == 0:
         return False
     half_w = int(half_win_ms / 1000.0 * sfreq)
     max_amps, min_amps = [], []
     for p in candidates:
-        lo, hi = max(0, p - half_w), min(len(signal), p + half_w)
-        seg = signal[lo:hi]
+        lo, hi = max(0, p - half_w), min(len(sig), p + half_w)
+        seg = sig[lo:hi]
         if len(seg):
             max_amps.append(seg.max()); min_amps.append(seg.min())
     if not max_amps:
         return False
     return bool(abs(np.median(min_amps)) > abs(np.median(max_amps)))
+
+
+# Band für die Polaritäts-Entscheidung: 0,5–40 Hz, identisch mit dem EKG-Anzeigeband, das die
+# App ohnehin überall verwendet (`core/shared.py::load_and_prepare`, `views/ecg_hrv.py`).
+# Genau dieselbe Grenze zu nehmen ist der Kern des Fixes: eine Stelle, die bereits gefiltert
+# übergibt, und eine, die roh übergibt, kommen dadurch zwangsläufig zum selben Ergebnis.
+# Wirksam ist vor allem die obere Grenze (siehe `detect_polarity_flip`); die untere ist
+# mitgenommen, damit das Band exakt dem Anzeigeband entspricht.
+_FLIP_BAND_HZ = (0.5, 40.0)
+
+
+def _flip_decision_band(signal: np.ndarray, sfreq: float) -> np.ndarray:
+    """Signal für die Polaritäts-Entscheidung ins EKG-Band bringen (s. `detect_polarity_flip`).
+
+    Nur für die Entscheidung — das Ergebnis wird nie an den Aufrufer zurückgegeben, dessen
+    Signal bleibt unangetastet.
+
+    Bewusst defensiv: schlägt die Filterung fehl (zu kurzes Signal für `filtfilt`, oder eine
+    Abtastrate, bei der die obere Grenze über Nyquist läge), wird das Signal unverändert
+    zurückgegeben. Eine etwas schlechtere Entscheidung ist hier besser als eine Ausnahme, die
+    eine ganze Seite abstürzen lässt — der Aufrufer hat keinen sinnvollen Weg, darauf zu
+    reagieren.
+    """
+    from scipy.signal import butter, filtfilt
+
+    lo_hz, hi_hz = _FLIP_BAND_HZ
+    nyq = sfreq / 2.0
+    if nyq <= lo_hz:
+        return signal
+    try:
+        if nyq <= hi_hz:
+            # Abtastrate zu niedrig für den Tiefpass — dann wenigstens hochpassfiltern.
+            b, a = butter(2, lo_hz / nyq, btype="high")
+        else:
+            b, a = butter(4, [lo_hz / nyq, hi_hz / nyq], btype="band")
+        return filtfilt(b, a, signal)
+    except ValueError:
+        return signal
 
 
 def detect_r_peaks_polarity_safe(signal: np.ndarray, sfreq: float) -> tuple:
@@ -230,6 +299,41 @@ def validated_detectors_available() -> bool:
 #: verpasste R-Zacke, sondern ein ausgefallener Detektor. Bewusst großzügig: eine echte
 #: Asystolie dieser Länge wäre ebenfalls ein Befund, den man sehen will.
 COVERAGE_GAP_S = 10.0
+
+#: Relative Abweichung zwischen Detektor-Herzfrequenz und der QRS-Rate des Kanalklassifizierers,
+#: ab der die Oberfläche warnt.
+RATE_MISMATCH_REL = 0.25
+
+
+def detector_rate_bpm(rr_ms_raw) -> float:
+    """Mittlere Herzfrequenz (min^-1) aus den ungereinigten RR-Intervallen des Detektors.
+
+    Rechnet bewusst wie ``core/channel_classifier.py`` (dort: Intervalle ausserhalb
+    0,5–1,7 x Median verwerfen, dann 60 / mittleres RR), damit beide Raten vergleichbar sind.
+    Der Median allein wäre bei Doppelzählung (abwechselnd kurz/lang) ein Zufallstreffer; der
+    Mittelwert über die gefilterten Intervalle gibt die Doppelzählung korrekt als ~2x Rate
+    wieder. Nähte und kurze Aussetzer fallen durch den Filter. Gibt 0.0 zurück, wenn zu wenig
+    Daten vorliegen.
+    """
+    rr = np.asarray(rr_ms_raw, dtype=float) / 1000.0
+    rr = rr[rr > 0]
+    if len(rr) < 5:
+        return 0.0
+    med = np.median(rr)
+    rr = rr[(rr > med * 0.5) & (rr < med * 1.7)]
+    if len(rr) < 4 or rr.mean() <= 0:
+        return 0.0
+    return float(60.0 / rr.mean())
+
+
+def rate_mismatch(detector_bpm: float, classifier_bpm: float,
+                  threshold: float = RATE_MISMATCH_REL) -> bool:
+    """True, wenn beide Raten gültig sind und relativ (zur Klassifizierer-Rate) um mehr als
+    `threshold` auseinanderliegen. Fehlt eine Rate (<= 0), gibt es keinen Befund — lieber
+    kein Hinweis als ein falscher."""
+    if detector_bpm <= 0 or classifier_bpm <= 0:
+        return False
+    return abs(detector_bpm - classifier_bpm) / classifier_bpm > threshold
 
 
 def coverage_gaps(peaks: np.ndarray, sfreq: float, duration_s: float,
