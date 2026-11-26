@@ -5,6 +5,32 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Behoben — EKG-Polarität war je nach Seite verschieden (26.11.2026)
+
+Dieselbe Aufnahme erschien in der Kanal-Identifikation und im Rhythmus-Screening invertiert
+(P- und T-Welle nach unten), im EEG-Viewer dagegen aufrecht. Ursache war nicht die Anzeige,
+sondern die Entscheidung selbst: `detect_polarity_flip()` verglich die lokalen Extremwerte
+auf dem Signal so, wie der Aufrufer es übergab. Hochfrequentes Rauschen hebt dabei das
+Maximum an, ohne die breitere echte Auslenkung zu berühren — bei nahezu symmetrischem QRS
+kippt die Entscheidung dadurch je nachdem, ob eine Stelle vor oder nach ihrem Anzeige-Bandpass
+fragt. Die Entscheidung läuft jetzt immer über ein intern auf 0,5–40 Hz gefiltertes Signal.
+
+Nachgeprüft über alle 92 lokal vorliegenden Aufnahmen mit POL X1: Genau eine ändert ihr
+Ergebnis, und zwar zum Richtigen. Für alle anderen bleibt alles, wie es war.
+
+### Neu — Aufnahmeunterbrechungen und unplausible EKG-Kanäle werden gemeldet (26.11.2026)
+
+- **Aufnahmeunterbrechungen**: Vermerkt das Gerät eine Unterbrechung (`Recording Gap`), stehen
+  die Aufnahmeteile im EDF trotzdem lückenlos aneinander. An jeder Naht entsteht ein
+  künstlich verlängertes RR-Intervall, das im Tachogramm wie eine Asystolie aussieht. EKG/HRV
+  und Rhythmus-Screening weisen jetzt darauf hin. An einem Routine-EEG mit vier solchen
+  Lücken ergaben die ungefilterten Werte SDNN 140 ms statt 35,3 ms.
+- **Unplausible EKG-Kanäle**: Weicht die aus den R-Zacken bestimmte Herzfrequenz um mehr als
+  25 % von der QRS-Rate der Kanalklassifikation ab, erscheint ein Hinweis — typisch für
+  Doppelzählung der T-Welle oder einen Kanal, der gar kein EKG führt.
+
+Beide Hinweise ändern keinen berechneten Wert und keine Kanalwahl.
+
 ### Neu — „bester Grundrhythmus" und „Verlauf über die Aufnahme" getrennt ausgewiesen (03.10.2026, Review R7)
 
 Die Reports rechnen Bandpower, Alpha-Gipfel und Ratios auf dem sauberen 60-s-Fenster mit dem
