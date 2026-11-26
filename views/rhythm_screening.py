@@ -21,7 +21,8 @@ import streamlit as st
 from core.cleanup import CACHE_TTL_S, CACHE_MAX  # noqa: E402
 
 from core.i18n import tr
-from core.shared import get_edf_or_stop, section_header, render_banner, status_dot
+from core.shared import (get_edf_or_stop, section_header, render_banner, status_dot,
+                         render_recording_gap_banner)
 from analysis.ecg_quality import sqi_segments
 from analysis.rhythm_screening import classify_afib_risk, combine_with_pwave
 from analysis.ectopy_detection import ectopy_summary
@@ -161,6 +162,9 @@ def render():
             f"dieser Seite gelten nur für die übrigen Abschnitte. Bitte im Rohsignal prüfen, "
             f"ob dort wirklich keine Schläge sind oder der Detektor ausgesetzt hat.",
             icon=":material/warning:")
+    # Aufnahmeunterbrechungen: hier am gefährlichsten, weil diese Seite Pausen bewertet und
+    # eine Naht (künstlich langes RR) wie eine Asystolie aussieht. Nur Hinweis.
+    render_recording_gap_banner(edf.get("annotations"), "rhythm")
     dur_s = len(sig_uv) / fs
 
     # Polaritäts-Hinweis (User-Vorgabe 2026-08-08, PRÄZISIERT 2026-08-08 nach Gegenprüfung mit

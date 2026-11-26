@@ -13,6 +13,8 @@ from core.cleanup import CACHE_TTL_S, CACHE_MAX  # noqa: E402
 
 from core.i18n import tr
 from core.shared import EPOCH_SEC, ecg_figure, get_edf_or_stop, get_patient_info, section_header, safe_slider, render_banner, status_dot, kpi_tile
+from core.shared import render_recording_gap_banner
+from analysis.ecg import RATE_MISMATCH_REL, detector_rate_bpm, rate_mismatch
 
 
 def _section(title: str, subtitle: str = "") -> None:
@@ -1171,6 +1173,26 @@ def render():
             "warning",
             tr("ecg_hrv.coverage_gap_title", min=f"{_fehlend / 60:.1f}"),
             tr("ecg_hrv.coverage_gap_body", segments=_liste))
+
+    # ── Aufnahmeunterbrechungen (Annotation "Recording Gap ...") ────────────────────────
+    # Die Aufnahmeteile stehen im EDF lückenlos aneinander; die Naht erscheint als künstlich
+    # verlängertes RR-Intervall (im realen Fall 2,3 s / 2,1 s) und sieht wie eine Asystolie
+    # aus. Reiner Hinweis — es wird nichts herausgerechnet oder verändert.
+    render_recording_gap_banner(edf.get("annotations"), "hrv")
+
+    # ── Raten-Plausibilität (Klassifizierer vs. Detektor) ──────────────────────────────
+    # Der Klassifizierer ermittelt je Kanal eine QRS-Rate (features["qrs_rate"]); weicht die
+    # Rate des hier gewählten Detektors deutlich davon ab, ist der Kanal kein verlässliches
+    # EKG oder der Detektor zählt doppelt (z. B. T-Welle). Wer manuell einen anderen Kanal
+    # wählt, bekäme sonst eine falsche Herzfrequenz ohne jede Warnung. Nur Hinweis.
+    _cls = (edf.get("channel_classifications") or {}).get(ecg_ch)
+    _cls_rate = float((_cls.features or {}).get("qrs_rate") or 0.0) if _cls else 0.0
+    _det_rate = detector_rate_bpm(rr_data["rr_ms_raw"])
+    if rate_mismatch(_det_rate, _cls_rate):
+        render_banner(
+            "warning", tr("ecg_hrv.rate_mismatch_title"),
+            tr("ecg_hrv.rate_mismatch_body", ch=ecg_ch, det=f"{_det_rate:.0f}",
+               cls=f"{_cls_rate:.0f}", thr=f"{RATE_MISMATCH_REL * 100:.0f}"))
 
     # ── Polaritäts-Hinweis (User-Anfrage 2026-08-08, PRÄZISIERT 2026-08-08 — gleiche Logik/UI
     # wie views/rhythm_screening.py, dort ausführlich hergeleitet + gegengeprüft mit

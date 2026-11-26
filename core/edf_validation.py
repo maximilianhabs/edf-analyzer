@@ -25,6 +25,7 @@ ist** — nicht „ungültige Datei".
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from typing import List
 
@@ -305,3 +306,60 @@ def _lies_samples_pro_block(sig_header: bytes, n_signals: int):
         except ValueError:
             return None
     return werte
+
+
+# "Recording Gap" (Nihon Kohden) — Gross-/Kleinschreibung und Leerraum nicht voraussetzen.
+_GAP_MARKER = re.compile(r"recording\s+gap", re.IGNORECASE)
+# Dauer als HHHH:MM:SS (vierstellige Stundenzahl beim Nihon-Kohden-Format, hier bewusst
+# `\d+`, damit auch kürzere Stundenfelder anderer Firmware-Staende nicht durchfallen).
+_GAP_DURATION = re.compile(r"(\d+):(\d{1,2}):(\d{1,2})")
+
+
+def recording_gaps(annotations: list[dict]) -> list[dict]:
+    """Aufnahmeunterbrechungen finden, die das Gerät als Annotation hinterlegt hat.
+
+    **Warum das wichtig ist.** Nihon-Kohden-Geräte schreiben bei einer Unterbrechung der
+    Aufnahme (Pause, Neustart, Elektrodenkontrolle) eine Annotation der Form
+    ``Recording Gap HHHH:MM:SS`` — die Dauer des *fehlenden* Stücks. Im EDF selbst stehen die
+    Aufnahmeteile jedoch **lückenlos aneinander**; die Signalachse enthält die Pause nicht.
+    Am Übergang liegen die letzte R-Zacke vor und die erste nach der Unterbrechung deshalb
+    scheinbar direkt hintereinander, mit einem RR-Intervall in der Grösse der Pause. Im
+    Tachogramm sieht das aus wie eine Asystolie, ist aber keine, sondern eine Naht.
+    Realer Fall (20-min-Routine-EEG, 200 Hz, zwei Lücken à 20 s und 12 s): die Nähte
+    erschienen als RR von 2,3 s bzw. 2,1 s; ungefiltert ergaben sie SDNN 140 ms / RMSSD
+    199 ms statt der korrekten 35,3 / 23,7 ms. Diese Funktion ändert daran nichts, sie macht
+    die Naht nur **benennbar**, damit die Oberfläche davor warnen kann.
+
+    Parameter
+    ---------
+    annotations:
+        Liste von Dicts mit ``onset_s`` und ``description`` (Form von
+        ``edf["annotations"]``, siehe ``core/shared.py``). Einträge ohne diese Schlüssel
+        werden übersprungen, statt die Seite abstürzen zu lassen.
+
+    Rückgabe
+    --------
+    Je Fund ein Dict ``{"onset_s": float, "gap_s": float | None, "description": str}``,
+    in der Reihenfolge der Eingabe. ``gap_s`` ist die geparste Dauer in Sekunden; ist sie
+    nicht lesbar, steht dort ``None`` — die Lücke wird trotzdem gemeldet, denn eine Lücke
+    ohne Dauer zu verschweigen wäre gefährlicher als eine ohne Zahl zu zeigen.
+    """
+    funde: list[dict] = []
+    for ann in annotations or []:
+        try:
+            desc = str(ann["description"])
+            onset = float(ann["onset_s"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not _GAP_MARKER.search(desc):
+            continue
+        gap_s = None
+        # Dauer nur HINTER dem Stichwort suchen, damit ein Zeitstempel davor nicht
+        # fälschlich als Dauer gelesen wird.
+        rest = desc[_GAP_MARKER.search(desc).end():]
+        m = _GAP_DURATION.search(rest)
+        if m:
+            h, mi, se = (int(x) for x in m.groups())
+            gap_s = float(h * 3600 + mi * 60 + se)
+        funde.append({"onset_s": onset, "gap_s": gap_s, "description": desc})
+    return funde

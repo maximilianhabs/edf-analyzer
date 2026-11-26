@@ -262,6 +262,35 @@ def render_banner(kind: str, title: str, body: str, icon: str = None) -> None:
     )
 
 
+def render_recording_gap_banner(annotations, context: str) -> None:
+    """Warnt vor Aufnahmeunterbrechungen, die das Gerät als Annotation vermerkt hat.
+
+    Die Teile stehen im EDF lückenlos aneinander; an jeder Naht entsteht ein künstlich
+    verlängertes RR-Intervall, das wie eine Asystolie aussieht (Begründung und realer Fall:
+    `core/edf_validation.py::recording_gaps`). Reiner Hinweis, verändert keinen Kennwert.
+
+    context: "hrv" (Hinweis zur Artefaktmaske) | "rhythm" (Hinweis zur Pausenbewertung).
+    Ohne Lücke passiert nichts.
+    """
+    from core.edf_validation import recording_gaps
+    gaps = recording_gaps(annotations or [])
+    if not gaps:
+        return
+
+    def _eintrag(g):
+        txt = f"{g['onset_s']:.0f} s"
+        return f"{txt} ({g['gap_s']:.0f} s)" if g["gap_s"] is not None else txt
+
+    liste = ", ".join(_eintrag(g) for g in gaps[:6])
+    if len(gaps) > 6:
+        liste += f" (+{len(gaps) - 6})"
+    note = (tr("shared.recording_gap_note_hrv") if context == "hrv"
+            else tr("shared.recording_gap_note_rhythm"))
+    render_banner(
+        "warning", tr("shared.recording_gap_title", n=len(gaps)),
+        tr("shared.recording_gap_body", gaps=liste) + " " + note)
+
+
 def status_dot(zone: str, size: int = 9) -> str:
     """HTML-Farbpunkt (ersetzt 🔴🟡🟢⚪-Ampel-Emoji, Phase 2 GUI-Redesign, siehe
     [[project_edf_ui_redesign]]). NUR innerhalb von st.markdown(unsafe_allow_html=True)

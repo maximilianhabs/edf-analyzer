@@ -81,6 +81,20 @@ STRINGS = {
             "loading_edf": "Lade und verarbeite EDF…",
             "filtering_eeg": "Filtere EEG…",
             "channel_override_reason": "Manuell geändert von {old} auf {new}",
+            "recording_gap_title": "Aufnahmeunterbrechungen in dieser Datei: {n}",
+            "recording_gap_body":
+                "Das Gerät hat an folgenden Zeitpunkten eine Unterbrechung vermerkt (Dauer des "
+                "fehlenden Stücks in Klammern): {gaps}. Im EDF stehen die Aufnahmeteile "
+                "lückenlos aneinander. An jeder dieser Nähte entsteht ein künstlich "
+                "verlängertes RR-Intervall (etwa in Länge der Lücke). Das ist <b>keine Pause "
+                "und keine Asystolie</b> und darf nicht als solche gewertet werden.",
+            "recording_gap_note_hrv":
+                "Die Artefaktmaske verwirft diese Intervalle normalerweise; die bereinigten "
+                "Kennwerte sind dann gültig. Die ungefilterten Rohwerte (SDNN/RMSSD aus "
+                "allen Intervallen) sind durch die Nähte verfälscht.",
+            "recording_gap_note_rhythm":
+                "Pausen- und Rhythmusbefunde an diesen Zeitpunkten bitte nicht als "
+                "Asystolie deuten, sondern im Rohsignal gegenprüfen.",
         },
         "file_patient": {
             "title": "Datei & Patient",
@@ -585,6 +599,15 @@ STRINGS = {
                 "Verstärkersättigung, ein Amplitudensprung, an dem sich die adaptive Schwelle "
                 "des Detektors nicht mehr erholt — oder tatsächlich fehlende Schläge. Bitte im "
                 "Rohsignal nachsehen, bevor die Werte verwendet werden.",
+            "rate_mismatch_title": "Herzfrequenz widerspricht der Kanalklassifizierung",
+            "rate_mismatch_body":
+                "Aus den erkannten R-Zacken ergibt sich für Kanal {ch} eine mittlere "
+                "Herzfrequenz von {det} min⁻¹, die Kanalklassifizierung hatte für denselben "
+                "Kanal eine QRS-Rate von {cls} min⁻¹ ermittelt. Eine so große Abweichung "
+                "(&gt; {thr} %) spricht für eine Doppelzählung (z. B. wird die T-Welle "
+                "mitgezählt) oder dafür, dass dieser Kanal gar kein EKG führt. Bitte das "
+                "Signal im Viewer sichten und gegebenenfalls einen anderen Kanal wählen. Die "
+                "angezeigten Werte wurden nicht verändert.",
             "too_few_beats_segment": "Zu wenige Schläge in diesem Segment für HRV-Analyse.",
             "chart_explanation": "Diagramm-Erklärung",
             "diagnosis_no_channel": "Diagnose — warum wurde kein Kanal erkannt?",
@@ -700,6 +723,20 @@ STRINGS = {
             "loading_edf": "Loading and processing EDF…",
             "filtering_eeg": "Filtering EEG…",
             "channel_override_reason": "Manually changed from {old} to {new}",
+            "recording_gap_title": "Recording interruptions in this file: {n}",
+            "recording_gap_body":
+                "The device noted an interruption at the following times (duration of the "
+                "missing piece in brackets): {gaps}. In the EDF the recording parts follow "
+                "each other without a gap. Every such seam produces an artificially "
+                "lengthened RR interval (about the length of the gap). This is <b>not a "
+                "pause and not asystole</b> and must not be rated as one.",
+            "recording_gap_note_hrv":
+                "The artifact mask normally discards these intervals; the cleaned values "
+                "are then valid. The unfiltered raw values (SDNN/RMSSD from all intervals) "
+                "are distorted by the seams.",
+            "recording_gap_note_rhythm":
+                "Please do not read pause or rhythm findings at these times as asystole; "
+                "check them against the raw signal.",
         },
         "file_patient": {
             "title": "File & Patient",
@@ -1194,6 +1231,14 @@ STRINGS = {
                 "amplitude step from which the detector's adaptive threshold does not recover "
                 "— or genuinely absent beats. Please check the raw signal before using these "
                 "values.",
+            "rate_mismatch_title": "Heart rate contradicts the channel classification",
+            "rate_mismatch_body":
+                "The detected R peaks give a mean heart rate of {det} min⁻¹ for channel {ch}, "
+                "whereas the channel classification found a QRS rate of {cls} min⁻¹ for the "
+                "same channel. A deviation this large (&gt; {thr} %) points to double "
+                "counting (e.g. the T wave is counted as well) or to the channel not carrying "
+                "an ECG at all. Please inspect the signal in the viewer and, if necessary, "
+                "choose another channel. The displayed values have not been changed.",
             "too_few_beats_segment": "Too few beats in this segment for HRV analysis.",
             "chart_explanation": "Chart explanation",
             "diagnosis_no_channel": "Diagnostics — why was no channel detected?",
