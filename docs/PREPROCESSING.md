@@ -97,6 +97,11 @@ lieferte für dieselbe Aufnahme abweichende PAR-Werte — gefunden im Cross-Repo
 
 Findet sich kein sauberes Fenster, fällt die Wahl auf die mittleren 5 Minuten.
 
+Dieses Fenster beschreibt den **besten Grundrhythmus**, nicht die ganze Aufnahme. Daneben
+weisen die Reports den **Verlauf** aus (`analysis/eeg_course.py`): dieselben Kennwerte je
+sauberem, nicht überlappendem 60-s-Abschnitt, als Median und 25.–75. Perzentil. Weichen
+Hauptfenster und Median deutlich ab, war die Aufnahme nicht durchgehend wie im besten Abschnitt.
+
 ### 4. Leistungsspektrum
 
 ```

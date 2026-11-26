@@ -65,8 +65,12 @@ def _footer(fig, prov_line, with_disclaimer=True):
     fig.text(0.035, 0.014, prov_line, fontsize=6.5, color=C_MUTED, va="center")
 
 
-def _cap(fig, y, text):
-    """Klartext-Zeile unter einer Grafik: was sehe ich / warum wichtig."""
+def _cap(fig, y, text, breite=None):
+    """Klartext-Zeile unter einer Grafik: was sehe ich / warum wichtig.
+    `breite`: Zeichen je Zeile; ohne Angabe kein Umbruch (bisheriges Verhalten)."""
+    if breite:
+        import textwrap
+        text = textwrap.fill(text, breite)
     fig.text(0.035, y, text, fontsize=8.8, color=C_MUTED, va="center")
 
 
@@ -213,6 +217,12 @@ def _collect(edf, edf_path, age=None, is_pediatric=False):
             d["rel"] = {k: v / tot * 100 for k, v in bp.items()}
             d["alpha_peak"] = _peak_freq(f, p, 8, 13)
             d["dar"] = bp["Delta"] / (bp["Alpha"] or 1e-9)
+            # Zweites Auswertungsziel: Verlauf über alle sauberen 60-s-Abschnitte (Review R7)
+            try:
+                from analysis.eeg_course import representative_course
+                d["verlauf"] = representative_course(d["post"], sf, d["segments"])
+            except Exception:
+                logging.getLogger(__name__).warning("Verlauf nicht berechenbar", exc_info=True)
         # A/P-Gradient — nutzt DENSELBEN "ganzer Kopf"-Geometrie-Mittel-PAR wie der Standard-
         # Report (views/eeg_spectrum.py::_compute_par, auch von der Live-App-Seite genutzt),
         # STATT eines eigenen, einfacheren O1/O2-vs-F3/F4-Verhältnisses. Cross-Report-
@@ -549,7 +559,7 @@ def _page_spectrum(pdf, d):
 
     # PSD mit farbigen Bändern
     f, p = d.get("psd_f"), d.get("psd_p")
-    ax = fig.add_axes([0.055, 0.11, 0.90, 0.28])
+    ax = fig.add_axes([0.055, 0.165, 0.90, 0.225])   # Platz für die dreizeilige Unterschrift
     if f is not None:
         for n, lo, hi, c in BANDS:
             m = (f >= lo) & (f < hi)
@@ -570,11 +580,29 @@ def _page_spectrum(pdf, d):
     ax.set_title("Leistungsspektrum — wo sitzt die Energie?", fontsize=10.5,
                  fontweight="bold", color=C_INK, loc="left", pad=6)
     ax.legend(frameon=False, fontsize=8.5, ncol=4, loc="upper right")
-    _cap(fig, 0.055, "Der okzipitale Alpha-Gipfel ist der Grundrhythmus des wachen, entspannten Gehirns "
-                     "(hier aus dem sauberen Abschnitt mit dem klarsten Alpha). Verschiebt er sich "
-                     "nach links (langsamer), spricht das für eine Funktionsstörung.")
+    _cap(fig, 0.085, "Der okzipitale Alpha-Gipfel ist der Grundrhythmus des wachen, entspannten Gehirns. "
+                     "Verschiebt er sich nach links (langsamer), spricht das für eine Funktionsstörung. "
+                     + _fenster_text(d), breite=175)
     _footer(fig, d.get("prov_line", ""))
     pdf.savefig(fig); plt.close(fig)
+
+
+def _fenster_text(d) -> str:
+    """Sagt, aus welchem Abschnitt Spektrum und Bandverteilung stammen, und stellt den
+    Verlauf über die ganze Aufnahme daneben (Review R7, 02.10.2026)."""
+    bt, wl = d.get("spec_window", (None, None))
+    if bt is not None:
+        teil = (f"Spektrum und Bandverteilung stammen aus dem besten Abschnitt ({bt:.0f}–"
+                f"{bt + wl:.0f} s, klarstes Alpha), nicht aus der ganzen Aufnahme.")
+    else:
+        teil = "Spektrum und Bandverteilung stammen aus allen sauberen Abschnitten."
+    zf = (d.get("verlauf") or {}).get("zusammenfassung") or {}
+    a = zf.get("Alpha relativ")
+    if a and bt is not None:
+        n = d["verlauf"]["n_sauber"]
+        teil += (f" Über {n} saubere Minuten liegt Alpha im Median bei {a['median']:.0f} % "
+                 f"(25.–75. Perzentil {a['q25']:.0f}–{a['q75']:.0f} %).")
+    return teil
 
 
 # ── Seite 4: EEG Topografie & Symmetrie ───────────────────────────────────────

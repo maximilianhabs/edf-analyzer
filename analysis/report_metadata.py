@@ -183,6 +183,12 @@ def grade_hrv(param: str, value, age, heart_rate, rmssd_ms=None, is_pediatric: b
             source = ("Hansen 2024" if param in
                       ("sdnn", "rmssd", "hf_power", "lf_power", "total_power", "cv")
                       else "Task Force 1996 / Literatur")
+    except KeyError:
+        # Erwarteter Fall, kein Fehler: Für diesen Parameter (mittleres RR, pNN20, SD1 …) gibt
+        # es keine Normwerte. Seit der Protokollierung vom 01.10.2026 schrieb das je Report
+        # zehn Tracebacks ins Log, in denen echte Fehler untergegangen wären.
+        return {"zone": "info", "severity": "—", "direction": "—", "label": "—",
+                "source": "—", "ref_text": "—"}
     except Exception:
         logging.getLogger(__name__).warning("Fehler abgefangen, Ersatzwert verwendet", exc_info=True)
         return {"zone": "info", "severity": "—", "direction": "—", "label": "—",

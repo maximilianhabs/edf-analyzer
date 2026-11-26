@@ -5,6 +5,39 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.0.0/).
 
 ## [Unreleased]
 
+### Neu — „bester Grundrhythmus" und „Verlauf über die Aufnahme" getrennt ausgewiesen (03.10.2026, Review R7)
+
+Die Reports rechnen Bandpower, Alpha-Gipfel und Ratios auf dem sauberen 60-s-Fenster mit dem
+klarsten posterioren Alpha. Das beschreibt den bestmöglichen Grundrhythmus, ist aber nicht
+repräsentativ: Phasen mit Müdigkeit oder Verlangsamung fallen heraus. Bisher stand das nur in
+der Herkunftszeile.
+
+- **Neues Modul `analysis/eeg_course.py`**: dieselben Kennwerte für jeden sauberen, nicht
+  überlappenden 60-s-Abschnitt der Aufnahme, zusammengefasst als Median und 25.–75. Perzentil.
+  Unter drei sauberen Abschnitten gibt es keine Aussage.
+- **Tabellen-Report (PDF/Excel)**: neuer Abschnitt „EEG — Hauptfenster und Verlauf über die
+  Aufnahme (posterior)". Er nennt das Hauptfenster mit Zeitangabe und Auswahlgrund, die Zahl
+  der sauberen Abschnitte und stellt Hauptfenster und Verlaufsmedian nebeneinander (relative
+  Bandanteile, Delta/Alpha, Alpha-Schwerpunkt).
+- **Visueller Report**: Die Unterschrift des Spektrums nennt das Fenster mit Zeitangabe und
+  den Alpha-Median über die sauberen Minuten.
+- **Die bisherigen Werte ändern sich nicht** (78/78 Kennwerte identisch).
+- Herkunftszeile: Die PSD-Epochenlänge wird jetzt aus der Abtastrate berechnet statt fest als
+  „4 s" angegeben.
+
+Dabei gefunden und behoben: Seit der Protokollierung vom 01.10. schrieb jeder Report zehn
+Tracebacks ins Log, weil es für manche HRV-Werte (mittleres RR, pNN20, SD1 …) keine Normwerte
+gibt. Das ist der erwartete Fall, kein Fehler, und wird nicht mehr protokolliert. Ein Test
+stellt sicher, dass ein normaler Report keine Warnung ins Log schreibt.
+
+Tests (`tests/test_eeg_verlauf.py`): konstruiertes Signal aus 5 min Alpha und 5 min Theta.
+Das Hauptfenster liegt im Alpha-Teil, der Verlauf zeigt die Verlangsamung; Artefaktabschnitte
+fallen heraus; zu wenige Abschnitte ergeben keine Aussage. Alle 122 Tests bestanden, Preflight
+grün, alle zehn Seiten fehlerfrei.
+
+Noch offen zu diesem Punkt: Der Verlauf erscheint bisher nur in den Reports, nicht auf der
+Spektrum-Seite der App.
+
 ### Behoben — Spektralanalyse: Multitaper-Skalierung, Artefakt-Rückfall (02.10.2026, Review R7)
 
 Ein externes Review der EEG-Spektralanalyse, alle Punkte im Code nachgeprüft. Übersicht aller

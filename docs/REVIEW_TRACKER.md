@@ -39,7 +39,8 @@ Status: ✅ erledigt · 🔧 in Arbeit · ⬜ offen · ⏸ bewusst zurückgestel
 
 | # | Punkt | Quelle | Status |
 |---|---|---|---|
-| 2.1 | Zwei Auswertungsziele trennen: „bester Grundrhythmus" (alphastarkes Fenster, wie bisher) und „repräsentativer Verlauf" (mehrere saubere Abschnitte, Schwankung). Im Report kennzeichnen. | R7 | ⬜ |
+| 2.1 | Zwei Auswertungsziele trennen: „bester Grundrhythmus" und „repräsentativer Verlauf". In beiden Reports umgesetzt (`analysis/eeg_course.py`). | R7 | ✅ |
+| 2.1b | Den Verlauf auch auf der Spektrum-Seite der App zeigen (bisher nur in den Reports). | R7 | ⬜ |
 | 2.2 | Langsames Delta < 1 Hz: eigener, optionaler Pfad. Bandgrenzen nicht einfach verschieben. | R7 | ⬜ |
 | 2.3 | Zusätzlicher FOOOF-Fit 25–45 Hz neben dem Breitbandfit. Nicht austauschbar, beide anzeigen. | R7, P1 | ⬜ |
 | 2.4 | Interpretation: Exponent nicht als direktes E/I-Maß darstellen; Alpha-Schwerpunkt und Peakfrequenz unterscheiden. | R7 | ⬜ |
@@ -89,6 +90,7 @@ Status: ✅ erledigt · 🔧 in Arbeit · ⬜ offen · ⏸ bewusst zurückgestel
 | Report-HRV nach Kanalkorrektur, 30 stille Fehler protokolliert, README-Validierungsstand | R4, R6 | 90343d7 |
 | Ressourcengrenzen des Containers, Upload-Grenze nach Messwerten | R4, eigene Messung | be55b90 |
 | Multitaper-Skalierung, Artefakt-Rückfall (2×), Epochenlänge, Absturz ohne Alpha-Peak | R7 | 5fd724b |
+| Hauptfenster und Verlauf getrennt ausgewiesen; erwartete Fälle nicht mehr als Fehler im Log | R7, eigener Fund | lokal, noch nicht committet |
 | Absturz bei sehr kurzen Aufnahmen (EKG & HRV) | U 29.09. | c01ee69 |
 | MIT-BIH-Benchmarks (R-Zacken, CosEn, P-Wellen) veröffentlicht | R1 | siehe docs/BENCHMARKS.md |
 

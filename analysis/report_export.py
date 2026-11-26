@@ -85,8 +85,17 @@ def _eeg_metrics(edf, edf_path, segments=None, window_hint_segments=None):
         _bt, _wl = _best_alpha_window(post, sf, dur, window_hint_segments or [])
         if _bt is not None:
             t0, t1 = _bt, _bt + _wl
+            m["fenster"] = (t0, t1, "alpha")
         else:
             ana = min(dur, 300.0); t0 = max(0.0, (dur - ana) / 2); t1 = t0 + ana
+            m["fenster"] = (t0, t1, "mitte")
+        # Zweites Auswertungsziel neben dem „besten Grundrhythmus": der Verlauf über alle
+        # sauberen 60-s-Abschnitte (Review R7, 02.10.2026). Ändert die Werte oben nicht.
+        try:
+            from analysis.eeg_course import representative_course
+            m["verlauf"] = representative_course(post, sf, window_hint_segments or [])
+        except Exception:
+            logging.getLogger(__name__).warning("Verlauf nicht berechenbar", exc_info=True)
 
     bp_p, fp, pp, ap_p = _compute_bandpower(post, sf, t0, t1)
     if not bp_p:
@@ -383,7 +392,7 @@ def _add_provenance(sections, edf, edf_path, corr_segments, age, is_pediatric,
     from core.version import provenance, provenance_lines
     # Die Parameter, die das Ergebnis tatsächlich verschieben — nicht jede Einstellung der
     # Oberfläche, sondern das, was in die Zahlen eingeht.
-    from analysis.spectral import FREQ_MAX
+    from analysis.spectral import FREQ_MAX, epoch_seconds
     params = {
         "Artefaktmaske": ("Erkennung fehlgeschlagen" if artefakt_fehler
                           else f"{len(corr_segments)} Segment(e)" if corr_segments
@@ -396,11 +405,14 @@ def _add_provenance(sections, edf, edf_path, corr_segments, age, is_pediatric,
         # und Überlapp lässt sich eine Bandpower nicht reproduzieren, auch wenn Version und
         # Commit danebenstehen.
         "EEG-Hochpass": "1 Hz, Butterworth 4. Ordnung, nullphasig (filtfilt)",
-        "PSD-Verfahren": f"Welch, Epochen 4 s, Hann, 50 % Überlapp, Density, 1–{FREQ_MAX:g} Hz",
+        "PSD-Verfahren": (f"Welch, Epochen {epoch_seconds(edf['sfreq'], 10**9):g} s, Hann, "
+                          f"50 % Überlapp, Density, 1–{FREQ_MAX:g} Hz"),
         "Multitaper (optional)": "DPSS, NW=3, K=5",
         "QRS-Detektion": "Bandpass 5–15 Hz (Ordnung 2), 150-ms-Integration, ±40-ms-Refinement",
         "HRV-Frequenzdomäne": "PCHIP-Resampling 4 Hz; Welch und Burg (Ordnung 16)",
-        "Analysefenster": "bestes sauberes 60-s-Fenster nach posteriorer Alpha-Relativpower",
+        "Analysefenster": ("bestes sauberes 60-s-Fenster nach posteriorer Alpha-Relativpower "
+                           "(bester Grundrhythmus, nicht repräsentativ); zusätzlich Verlauf "
+                           "über alle sauberen 60-s-Abschnitte"),
     }
     try:
         prov = provenance(edf_path, params)
@@ -416,6 +428,42 @@ def _add_provenance(sections, edf, edf_path, corr_segments, age, is_pediatric,
         "wrap": True,
         "col_widths_mm": [52, 134],
     })
+
+
+def _add_verlauf_section(sections, ef):
+    """Hauptfenster (bester Grundrhythmus) und repräsentativer Verlauf nebeneinander.
+
+    Die Spalte „Hauptfenster" ist die Spalte „Gesamt" der Bandpower-Tabelle darüber. Weichen
+    Hauptfenster und Median deutlich ab, war die Aufnahme nicht durchgehend so wie im besten
+    Abschnitt, etwa mit Phasen von Müdigkeit oder Verlangsamung."""
+    fenster, verlauf = ef.get("fenster"), ef.get("verlauf")
+    if not fenster or not verlauf:
+        return
+    t0, t1, art = fenster
+    art_txt = ("bester Grundrhythmus: sauberes 60-s-Fenster mit dem höchsten relativen "
+               "Alpha posterior" if art == "alpha"
+               else "kein sauberes 60-s-Fenster gefunden: mittlere 5 min der Aufnahme")
+    zf = verlauf["zusammenfassung"]
+    rows = [["Hauptfenster", f"{t0:.0f}–{t1:.0f} s", "", "", art_txt],
+            ["Verlauf", f"{verlauf['n_sauber']} von {verlauf['n_abschnitte']}", "", "Abschnitte",
+             "saubere, nicht überlappende 60-s-Abschnitte der ganzen Aufnahme"]]
+    if not zf:
+        rows.append(["Verlauf", "—", "", "", "zu wenige saubere Abschnitte für eine Aussage "
+                     "(mindestens 3)"])
+    else:
+        haupt = {f"{bn.split()[0]} relativ": ef.get("rel_post", {}).get(bn) for bn in _BN}
+        haupt["Delta/Alpha"] = ef.get("dar")
+        haupt["Alpha-Schwerpunkt"] = ef.get("cog_post")
+        einheit = {"Delta/Alpha": "", "Alpha-Schwerpunkt": "Hz"}
+        for name, w in zf.items():
+            fmt = ".2f" if name == "Delta/Alpha" else ".1f"
+            rows.append([name, _f(haupt.get(name), fmt), _f(w["median"], fmt),
+                         einheit.get(name, "%"),
+                         f"25.–75. Perzentil {_f(w['q25'], fmt)}–{_f(w['q75'], fmt)}"])
+    sections.append({"name": "EEG — Hauptfenster und Verlauf über die Aufnahme (posterior)",
+                     "columns": ["Parameter", "Hauptfenster", "Verlauf (Median)", "Einheit",
+                                 "Hinweis"],
+                     "rows": rows, "wrap": True, "col_widths_mm": [36, 26, 28, 20, 76]})
 
 
 def _add_eeg_sections(sections, ef, ec, age=None):
@@ -447,6 +495,7 @@ def _add_eeg_sections(sections, ef, ec, age=None):
         g, c = pair(ef, ec, "abs_post", bn, ".2f")
         rows.append([f"{bn} absolut", g, c, "µV²", "posterior"])
     sections.append({"name": "EEG-Bandpower posterior O1/O2", "columns": gc, "rows": rows})
+    _add_verlauf_section(sections, ef)
 
     if ef.get("rel_ant"):
         rows = []
