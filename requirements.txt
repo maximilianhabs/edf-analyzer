@@ -24,7 +24,13 @@ numpy>=1.24.0,<3
 pandas>=2.0.0,<3
 matplotlib>=3.7.0,<4
 plotly>=6.9.0,<7
-streamlit>=1.36.0,<2
+# FESTGENAGELT, nicht auf eine Spanne lockern. Ein Rebuild am 26.11.2026 zog über die alte
+# Spanne (>=1.36,<2) ungewollt 1.67 statt der erprobten 1.62 — danach hing die Epochen-
+# Navigation im EEG-Viewer und in EKG & HRV und sprang auf die erste Epoche zurück.
+# 1.62 ist der Stand, auf dem die App geprüft ist. Vor einer Anhebung: Epochen-Navigation
+# beider Seiten durchklicken, und laut [[project_edf_nebenbefunde]] zusätzlich am echten
+# iPhone testen (Streamlit 1.57 brach dort die Seitenleisten-Navigation).
+streamlit==1.62.0
 pyedflib>=0.1.28,<1
 reportlab>=4.0.0,<6
 openpyxl>=3.1.5,<4
